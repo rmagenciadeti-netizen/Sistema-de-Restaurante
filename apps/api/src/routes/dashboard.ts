@@ -1,41 +1,27 @@
-import { Router, Request, Response } from 'express';
+import { Router } from 'express';
+import { prisma } from '../lib/prisma';
+import { requireAuth, requireMaster, requireTenant } from '../middleware/auth';
 
 export const dashboardRoutes = Router();
-
-dashboardRoutes.get('/master', (_req: Request, res: Response) => {
-  res.json({
-    summary: {
-      totalCompanies: 248,
-      activeCompanies: 194,
-      suspendedCompanies: 18,
-      trialCompanies: 36,
-      mrr: 89240.5,
-      arr: 1058886,
-      overdue: 12650,
-      newRegistrations: 32,
-      openTickets: 14,
-    },
-    plans: [
-      { name: 'Básico', count: 92, revenue: 21480 },
-      { name: 'Profissional', count: 81, revenue: 28050 },
-      { name: 'Premium', count: 54, revenue: 24500 },
-      { name: 'Enterprise', count: 21, revenue: 15210 },
-    ],
-    modules: [
-      { name: 'PDV', usage: 97 },
-      { name: 'Delivery', usage: 88 },
-      { name: 'Produção', usage: 76 },
-      { name: 'Fiscal', usage: 69 },
-      { name: 'WhatsApp', usage: 82 },
-      { name: 'Financeiro', usage: 91 },
-    ],
-    infra: {
-      databaseSizeGb: 96,
-      storageGb: 214,
-      storageUsedPct: 64,
-      apiErrors: 7,
-      failedIntegrations: 3,
-      queueMessages: 1420,
-    },
-  });
+dashboardRoutes.get('/master', requireAuth, requireMaster, async (_req, res, next) => {
+  try {
+    const [totalCompanies, activeCompanies, trialCompanies, suspendedCompanies, users, orders, products] = await Promise.all([
+      prisma.tenant.count(), prisma.tenant.count({ where: { status: 'ACTIVE' } }), prisma.tenant.count({ where: { status: 'TRIAL' } }),
+      prisma.tenant.count({ where: { status: { in: ['SUSPENDED', 'BLOCKED'] } } }), prisma.user.count(), prisma.order.count(), prisma.product.count(),
+    ]);
+    return res.json({ totalCompanies, activeCompanies, trialCompanies, suspendedCompanies, users, orders, products, note: 'Financial and infrastructure metrics require configured billing and monitoring integrations.' });
+  } catch (error) { return next(error); }
+});
+dashboardRoutes.get('/restaurant', requireAuth, requireTenant, async (req, res, next) => {
+  try {
+    const tenantId = req.auth!.tenantId!;
+    const unitFilter = req.auth!.unitId ? { unitId: req.auth!.unitId } : {};
+    const [products, employees, orders, openOrders] = await Promise.all([
+      prisma.product.count({ where: { tenantId, ...unitFilter, active: true } }),
+      prisma.employee.count({ where: { tenantId, ...unitFilter, status: 'ACTIVE' } }),
+      prisma.order.count({ where: { tenantId, ...unitFilter } }),
+      prisma.order.count({ where: { tenantId, ...unitFilter, status: { in: ['OPEN', 'PREPARING', 'READY'] } } }),
+    ]);
+    return res.json({ products, employees, orders, openOrders });
+  } catch (error) { return next(error); }
 });

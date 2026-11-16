@@ -1,83 +1,29 @@
-import { Router, Request, Response } from 'express';
+import { Router } from 'express';
 import { z } from 'zod';
-
-const productSchema = z.object({
-  name: z.string().min(2),
-  category: z.string().min(2),
-  sector: z.string().min(2),
-  price: z.number().min(0),
-  cost: z.number().min(0),
-  stock: z.number().min(0).default(0),
-  active: z.boolean().default(true),
-});
-
-const products = [
-  {
-    id: 'prod-1',
-    name: 'Hambúrguer Clássico',
-    category: 'Sanduíches',
-    sector: 'Cozinha',
-    price: 32.9,
-    cost: 14.5,
-    stock: 45,
-    active: true,
-    prepTimeMinutes: 12,
-  },
-  {
-    id: 'prod-2',
-    name: 'Pizza Margherita',
-    category: 'Pizzas',
-    sector: 'Pizzaria',
-    price: 48.0,
-    cost: 19.2,
-    stock: 20,
-    active: true,
-    prepTimeMinutes: 18,
-  },
-  {
-    id: 'prod-3',
-    name: 'Açaí 500ml',
-    category: 'Sobremesas',
-    sector: 'Açaí',
-    price: 26.0,
-    cost: 9.8,
-    stock: 35,
-    active: true,
-    prepTimeMinutes: 8,
-  },
-];
+import { prisma } from '../lib/prisma';
+import { requireAuth, requireTenant } from '../middleware/auth';
 
 export const productRoutes = Router();
-
-productRoutes.get('/', (_req: Request, res: Response) => {
-  res.json({ total: products.length, items: products });
+productRoutes.use(requireAuth, requireTenant);
+const schema = z.object({ name: z.string().min(2), categoryId: z.string().uuid().optional(), sectorId: z.string().uuid().optional(), unitId: z.string().uuid().optional(), code: z.string().max(50).optional(), price: z.number().nonnegative(), cost: z.number().nonnegative().optional(), active: z.boolean().default(true), prepTimeMinutes: z.number().int().nonnegative().optional() });
+productRoutes.get('/', async (req, res, next) => {
+  try {
+    const page = Math.max(1, Number(req.query.page) || 1); const pageSize = Math.min(100, Math.max(1, Number(req.query.pageSize) || 25));
+    const where = { tenantId: req.auth!.tenantId!, ...(req.auth!.unitId ? { OR: [{ unitId: req.auth!.unitId }, { unitId: null }] } : {}) };
+    const [items, total] = await Promise.all([prisma.product.findMany({ where, include: { category: true, sector: true }, orderBy: { name: 'asc' }, skip: (page - 1) * pageSize, take: pageSize }), prisma.product.count({ where })]);
+    return res.json({ items, total, page, pageSize });
+  } catch (error) { return next(error); }
 });
-
-productRoutes.get('/:id', (req: Request, res: Response) => {
-  const product = products.find((item) => item.id === req.params.id);
-  if (!product) {
-    return res.status(404).json({ message: 'Product not found.' });
-  }
-  return res.json(product);
-});
-
-productRoutes.post('/', (req: Request, res: Response) => {
-  const parsed = productSchema.safeParse(req.body);
-  if (!parsed.success) {
-    return res.status(400).json({ message: 'Validation failed', errors: parsed.error.flatten() });
-  }
-
-  const product = {
-    id: `prod-${Date.now()}`,
-    prepTimeMinutes: 10,
-    ...parsed.data,
-  };
-
-  products.push(product);
-  return res.status(201).json(product);
-});
-
-productRoutes.get('/summary/stock', (_req: Request, res: Response) => {
-  const totalStock = products.reduce((sum, item) => sum + item.stock, 0);
-  res.json({ totalStock, lowStock: products.filter((item) => item.stock < 10).length });
+productRoutes.post('/', async (req, res, next) => {
+  try {
+    const parsed = schema.safeParse(req.body);
+    if (!parsed.success) return res.status(400).json({ message: 'Validation failed', errors: parsed.error.flatten() });
+    const { unitId, categoryId, sectorId, ...data } = parsed.data;
+    const effectiveUnitId = unitId ?? req.auth!.unitId;
+    if (effectiveUnitId && !await prisma.unit.findFirst({ where: { id: effectiveUnitId, tenantId: req.auth!.tenantId! } })) return res.status(400).json({ message: 'Unit does not belong to this tenant' });
+    if (categoryId && !await prisma.productCategory.findFirst({ where: { id: categoryId, tenantId: req.auth!.tenantId! } })) return res.status(400).json({ message: 'Category does not belong to this tenant' });
+    if (sectorId && !await prisma.productionSector.findFirst({ where: { id: sectorId, tenantId: req.auth!.tenantId! } })) return res.status(400).json({ message: 'Production sector does not belong to this tenant' });
+    const item = await prisma.product.create({ data: { ...data, tenantId: req.auth!.tenantId!, unitId: effectiveUnitId, categoryId, sectorId } });
+    return res.status(201).json(item);
+  } catch (error) { return next(error); }
 });

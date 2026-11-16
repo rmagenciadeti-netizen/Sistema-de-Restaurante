@@ -1,76 +1,30 @@
-const modules = [
-  {
-    title: 'Master SaaS',
-    description: 'Dashboard administrativo do proprietário',
-    icon: '📊',
-  },
-  {
-    title: 'Empresas e Unidades',
-    description: 'Multiempresa, multiunidade e isolamento por tenant',
-    icon: '🏢',
-  },
-  {
-    title: 'Funcionários e Permissões',
-    description: 'Cargos, escalas, comissões e acessos granulares',
-    icon: '👥',
-  },
-  {
-    title: 'PDV e Comandas',
-    description: 'Caixas, mesas, pedidos e fechamento operacional',
-    icon: '🧾',
-  },
-  {
-    title: 'Produtos e Produção',
-    description: 'Cardápio, setor de produção, KDS e impressão inteligente',
-    icon: '🍽️',
-  },
-  {
-    title: 'Delivery e CRM',
-    description: 'WhatsApp, clientes, entregadores e canais digitais',
-    icon: '📦',
-  },
-];
+# RM Restaurant SaaS
 
-const overview = [
-  { label: 'Empresas ativas', value: '194' },
-  { label: 'Mês de receita', value: 'R$ 89.2k' },
-  { label: 'Pedidos', value: '68.4k' },
-  { label: 'Notas fiscais', value: '12.8k' },
-];
+Monólito modular para operação de restaurantes, com Next.js, TypeScript, PostgreSQL/Prisma e Docker. Este repositório está em desenvolvimento: integrações fiscais, WhatsApp, pagamentos, impressão física e conformidade trabalhista exigem configuração, homologação e testes próprios; não são simuladas como integrações reais.
 
-export default function HomePage() {
-  return (
-    <main className="min-h-screen bg-slate-950 p-8 text-slate-100">
-      <div className="mx-auto max-w-7xl">
-        <header className="mb-8 flex items-center justify-between border-b border-slate-800 pb-6">
-          <div>
-            <p className="text-xs uppercase tracking-[0.3em] text-blue-400">RM Restaurant SaaS</p>
-            <h1 className="mt-2 text-3xl font-bold">ERP completo para restaurantes</h1>
-          </div>
-          <div className="rounded-full border border-emerald-500/40 bg-emerald-500/10 px-3 py-1 text-sm text-emerald-300">
-            Sistema operacional online
-          </div>
-        </header>
+## Executar localmente
 
-        <section className="mb-8 grid gap-4 md:grid-cols-4">
-          {overview.map((item) => (
-            <div key={item.label} className="rounded-xl border border-slate-800 bg-slate-900 p-5 shadow-lg">
-              <div className="text-sm text-slate-400">{item.label}</div>
-              <div className="mt-3 text-2xl font-bold text-white">{item.value}</div>
-            </div>
-          ))}
-        </section>
+1. Copie `.env.example` para `.env`, configure um `JWT_SECRET` aleatório com pelo menos 32 caracteres e altere as credenciais de desenvolvimento.
+2. Suba o PostgreSQL: `docker compose up -d postgres`.
+3. Instale dependências: `npm install`.
+4. Gere o client e aplique o schema: `npm run db:generate && npm run db:migrate`.
+5. Crie o usuário Master com as variáveis de ambiente configuradas: `npm run seed:master`.
+6. Inicie API e web em terminais separados: `npm run dev:api` e `npm run dev`.
 
-        <section className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
-          {modules.map((module) => (
-            <div key={module.title} className="rounded-2xl border border-slate-800 bg-slate-900 p-5 transition hover:border-blue-500/60 hover:bg-slate-800">
-              <div className="mb-4 text-3xl">{module.icon}</div>
-              <h2 className="text-xl font-semibold text-white">{module.title}</h2>
-              <p className="mt-2 text-sm text-slate-300">{module.description}</p>
-            </div>
-          ))}
-        </section>
-      </div>
-    </main>
-  );
-}
+## API inicial
+
+- `GET /api/v1/health` — health check público.
+- `POST /api/v1/auth/login` — login por email/senha; retorna token Bearer.
+- `GET /api/v1/tenants` e `/stats/summary` — Master Admin.
+- `GET|POST /api/v1/units` — contexto autenticado do tenant.
+- `GET /api/v1/dashboard/master` — métricas agregadas reais disponíveis no banco.
+- `GET /api/v1/dashboard/restaurant` — indicadores do tenant.
+- `GET|POST /api/v1/employees`, `/products`, `/production/sectors` e `/orders` — operações com escopo de tenant no backend.
+- `GET /api/v1/production/kds` — itens ativos encaminhados ao setor de produção.
+- `PATCH /api/v1/orders/:id/status` — transição inicial de status do pedido.
+
+Operações protegidas exigem `Authorization: Bearer <token>`. O tenant é obtido do usuário autenticado, nunca de um `tenantId` arbitrário enviado pelo cliente. Para produção, configure TLS, segredos fortes, rate limiting, backups testados e políticas de autorização por função/unidade antes de expor a API.
+
+## Escopo implementado e limitações
+
+A fundação inclui autenticação por token, escopo de tenant/unidade, migração inicial por Prisma, auditoria básica, cadastro inicial de funcionários/produtos/setores, pedidos com preços recalculados a partir do catálogo e agregações reais para os dashboards. Ainda não é um ERP completo: planos/assinaturas e cobrança, permissões granulares, mesas e comandas, estoque/fichas técnicas, adicionais/combos, caixa/pagamentos, comissão e gorjetas, impressora/agente/KDS com transições, fiscal, delivery, CRM, WhatsApp, suporte SaaS, LGPD operacional e relatórios avançados precisam ser implementados e validados em etapas. PostgreSQL RLS, testes automatizados, documentação OpenAPI e hardening operacional também são pendências explícitas; não declare o produto pronto para produção sem elas.

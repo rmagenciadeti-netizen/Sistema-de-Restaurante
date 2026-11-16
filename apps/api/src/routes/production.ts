@@ -1,68 +1,26 @@
-import { Router, Request, Response } from 'express';
+import { Router } from 'express';
+import { z } from 'zod';
+import { prisma } from '../lib/prisma';
+import { requireAuth, requireTenant } from '../middleware/auth';
 
 export const productionRoutes = Router();
-
-const sectors = [
-  {
-    id: 'sec-1',
-    name: 'Cozinha',
-    code: 'CK',
-    autoPrint: true,
-    status: 'ACTIVE',
-    color: '#ef4444',
-    responsible: 'Chef',
-  },
-  {
-    id: 'sec-2',
-    name: 'Pizzaria',
-    code: 'PZ',
-    autoPrint: true,
-    status: 'ACTIVE',
-    color: '#f59e0b',
-    responsible: 'Pizzaiolo',
-  },
-  {
-    id: 'sec-3',
-    name: 'Bar',
-    code: 'BR',
-    autoPrint: true,
-    status: 'ACTIVE',
-    color: '#10b981',
-    responsible: 'Barman',
-  },
-  {
-    id: 'sec-4',
-    name: 'Expedição',
-    code: 'EX',
-    autoPrint: false,
-    status: 'ACTIVE',
-    color: '#3b82f6',
-    responsible: 'Expedidor',
-  },
-];
-
-const kdsQueue = [
-  { id: 'kds-1', item: 'Hambúrguer Clássico', sector: 'Cozinha', status: 'Em preparo', table: 8 },
-  { id: 'kds-2', item: 'Pizza Margherita', sector: 'Pizzaria', status: 'Pronto', table: 5 },
-  { id: 'kds-3', item: 'Açaí 500ml', sector: 'Açaí', status: 'Em preparo', table: 12 },
-];
-
-productionRoutes.get('/sectors', (_req: Request, res: Response) => {
-  res.json({ total: sectors.length, items: sectors });
+productionRoutes.use(requireAuth, requireTenant);
+const sectorSchema = z.object({ name: z.string().min(2), code: z.string().max(30).optional(), unitId: z.string().uuid().optional(), color: z.string().max(20).optional(), autoPrint: z.boolean().default(false), showOnKds: z.boolean().default(true) });
+productionRoutes.get('/sectors', async (req, res, next) => {
+  try { const items = await prisma.productionSector.findMany({ where: { tenantId: req.auth!.tenantId!, ...(req.auth!.unitId ? { OR: [{ unitId: req.auth!.unitId }, { unitId: null }] } : {}) }, include: { printers: true }, orderBy: { name: 'asc' } }); return res.json({ items, total: items.length }); }
+  catch (error) { return next(error); }
 });
-
-productionRoutes.get('/kds', (_req: Request, res: Response) => {
-  res.json({ items: kdsQueue, total: kdsQueue.length });
+productionRoutes.post('/sectors', async (req, res, next) => {
+  try {
+    const parsed = sectorSchema.safeParse(req.body);
+    if (!parsed.success) return res.status(400).json({ message: 'Validation failed', errors: parsed.error.flatten() });
+    const unitId = parsed.data.unitId ?? req.auth!.unitId;
+    if (unitId && !await prisma.unit.findFirst({ where: { id: unitId, tenantId: req.auth!.tenantId! } })) return res.status(400).json({ message: 'Unit does not belong to this tenant' });
+    const sector = await prisma.productionSector.create({ data: { ...parsed.data, tenantId: req.auth!.tenantId!, unitId } });
+    return res.status(201).json(sector);
+  } catch (error) { return next(error); }
 });
-
-productionRoutes.post('/sectors', (req: Request, res: Response) => {
-  const sector = {
-    id: `sec-${Date.now()}`,
-    ...req.body,
-    status: req.body.status || 'ACTIVE',
-    autoPrint: Boolean(req.body.autoPrint),
-  };
-
-  sectors.push(sector);
-  return res.status(201).json(sector);
+productionRoutes.get('/kds', async (req, res, next) => {
+  try { const items = await prisma.orderItem.findMany({ where: { order: { tenantId: req.auth!.tenantId!, ...(req.auth!.unitId ? { unitId: req.auth!.unitId } : {}), status: { in: ['OPEN', 'PREPARING', 'READY'] } } }, include: { product: { include: { sector: true } }, order: { select: { id: true, code: true, createdAt: true } } }, orderBy: { createdAt: 'asc' }, take: 200 }); return res.json({ items, total: items.length }); }
+  catch (error) { return next(error); }
 });

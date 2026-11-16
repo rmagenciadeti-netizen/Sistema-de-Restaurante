@@ -1,104 +1,30 @@
-import { Router, Request, Response } from 'express';
-import { z } from 'zod';
-
-const tenantSchema = z.object({
-  name: z.string().min(2),
-  slug: z.string().min(2),
-  status: z.enum(['ACTIVE', 'TRIAL', 'SUSPENDED', 'BLOCKED']).default('TRIAL'),
-  plan: z.enum(['BASIC', 'PRO', 'PREMIUM', 'ENTERPRISE']).default('BASIC'),
-  country: z.string().default('BR'),
-});
-
-type TenantRecord = {
-  id: string;
-  name: string;
-  slug: string;
-  status: 'ACTIVE' | 'TRIAL' | 'SUSPENDED' | 'BLOCKED';
-  plan: 'BASIC' | 'PRO' | 'PREMIUM' | 'ENTERPRISE';
-  country: string;
-  createdAt: string;
-};
-
-const tenants: TenantRecord[] = [
-  {
-    id: 'tenant-demo-1',
-    name: 'Alma Grill',
-    slug: 'alma-grill',
-    status: 'ACTIVE',
-    plan: 'PREMIUM',
-    country: 'BR',
-    createdAt: new Date().toISOString(),
-  },
-  {
-    id: 'tenant-demo-2',
-    name: 'Ponto do Açaí',
-    slug: 'ponto-do-acai',
-    status: 'TRIAL',
-    plan: 'PRO',
-    country: 'BR',
-    createdAt: new Date().toISOString(),
-  },
-  {
-    id: 'tenant-demo-3',
-    name: 'Marmita do Bairro',
-    slug: 'marmita-do-bairro',
-    status: 'SUSPENDED',
-    plan: 'BASIC',
-    country: 'BR',
-    createdAt: new Date().toISOString(),
-  },
-];
+import { Router } from 'express';
+import { UserRole } from '@prisma/client';
+import { prisma } from '../lib/prisma';
+import { requireAuth, requireMaster } from '../middleware/auth';
 
 export const tenantRoutes = Router();
-
-tenantRoutes.get('/', (_req: Request, res: Response) => {
-  res.json({
-    total: tenants.length,
-    items: tenants,
-  });
+tenantRoutes.use(requireAuth, requireMaster);
+tenantRoutes.get('/', async (_req, res, next) => {
+  try { const items = await prisma.tenant.findMany({ orderBy: { createdAt: 'desc' }, include: { _count: { select: { units: true, users: true } } } }); return res.json({ total: items.length, items }); }
+  catch (error) { return next(error); }
 });
-
-tenantRoutes.get('/:id', (req: Request, res: Response) => {
-  const tenant = tenants.find((item) => item.id === req.params.id);
-
-  if (!tenant) {
-    return res.status(404).json({ message: 'Tenant not found.' });
-  }
-
-  return res.json(tenant);
+tenantRoutes.get('/stats/summary', async (_req, res, next) => {
+  try {
+    const [total, active, trial, suspended] = await Promise.all([
+      prisma.tenant.count(), prisma.tenant.count({ where: { status: 'ACTIVE' } }),
+      prisma.tenant.count({ where: { status: 'TRIAL' } }), prisma.tenant.count({ where: { status: 'SUSPENDED' } }),
+    ]);
+    return res.json({ total, active, trial, suspended });
+  } catch (error) { return next(error); }
 });
-
-tenantRoutes.post('/', (req: Request, res: Response) => {
-  const parsed = tenantSchema.safeParse(req.body);
-
-  if (!parsed.success) {
-    return res.status(400).json({
-      message: 'Validation failed',
-      errors: parsed.error.flatten(),
-    });
-  }
-
-  const tenant: TenantRecord = {
-    id: `tenant-${Date.now()}`,
-    name: parsed.data.name,
-    slug: parsed.data.slug,
-    status: parsed.data.status,
-    plan: parsed.data.plan,
-    country: parsed.data.country,
-    createdAt: new Date().toISOString(),
-  };
-
-  tenants.push(tenant);
-
-  return res.status(201).json(tenant);
+tenantRoutes.patch('/:id/status', async (req, res, next) => {
+  try {
+    const status = req.body?.status;
+    if (!['ACTIVE', 'TRIAL', 'SUSPENDED', 'BLOCKED'].includes(status)) return res.status(400).json({ message: 'Invalid tenant status' });
+    const tenant = await prisma.tenant.update({ where: { id: req.params.id }, data: { status } });
+    await prisma.auditLog.create({ data: { actorUserId: req.auth!.userId, tenantId: tenant.id, action: 'TENANT_STATUS_CHANGED', entityType: 'Tenant', entityId: tenant.id, metadata: { status } } });
+    return res.json(tenant);
+  } catch (error) { return next(error); }
 });
-
-tenantRoutes.get('/stats/summary', (_req: Request, res: Response) => {
-  res.json({
-    active: tenants.filter((tenant) => tenant.status === 'ACTIVE').length,
-    trial: tenants.filter((tenant) => tenant.status === 'TRIAL').length,
-    suspended: tenants.filter((tenant) => tenant.status === 'SUSPENDED').length,
-    blocked: tenants.filter((tenant) => tenant.status === 'BLOCKED').length,
-    total: tenants.length,
-  });
-});
+void UserRole;
