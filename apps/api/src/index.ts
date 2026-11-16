@@ -2,6 +2,11 @@ import 'dotenv/config';
 import express from 'express';
 import cors from 'cors';
 import { tenantRoutes } from './routes/tenants';
+import { dashboardRoutes } from './routes/dashboard';
+import { employeeRoutes } from './routes/employees';
+import { productRoutes } from './routes/products';
+import { productionRoutes } from './routes/production';
+import { orderRoutes } from './routes/orders';
 
 const app = express();
 const PORT = Number(process.env.PORT || 4000);
@@ -16,6 +21,7 @@ app.get('/api/v1/health', (_req, res) => {
     version: '1.0.0',
     stack: 'monolith-modular',
     multiTenant: true,
+    modules: ['master-admin', 'tenants', 'employees', 'orders', 'products', 'production'],
     timestamp: new Date().toISOString(),
   });
 });
@@ -41,6 +47,11 @@ app.get('/api/v1/modules', (_req, res) => {
 });
 
 app.use('/api/v1/tenants', tenantRoutes);
+app.use('/api/v1/dashboard', dashboardRoutes);
+app.use('/api/v1/employees', employeeRoutes);
+app.use('/api/v1/products', productRoutes);
+app.use('/api/v1/production', productionRoutes);
+app.use('/api/v1/orders', orderRoutes);
 
 app.listen(PORT, () => {
   console.log(`RM Restaurant API running on http://localhost:${PORT}`);

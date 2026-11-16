@@ -1,0 +1,104 @@
+import { Router, Request, Response } from 'express';
+import { z } from 'zod';
+
+const tenantSchema = z.object({
+  name: z.string().min(2),
+  slug: z.string().min(2),
+  status: z.enum(['ACTIVE', 'TRIAL', 'SUSPENDED', 'BLOCKED']).default('TRIAL'),
+  plan: z.enum(['BASIC', 'PRO', 'PREMIUM', 'ENTERPRISE']).default('BASIC'),
+  country: z.string().default('BR'),
+});
+
+type TenantRecord = {
+  id: string;
+  name: string;
+  slug: string;
+  status: 'ACTIVE' | 'TRIAL' | 'SUSPENDED' | 'BLOCKED';
+  plan: 'BASIC' | 'PRO' | 'PREMIUM' | 'ENTERPRISE';
+  country: string;
+  createdAt: string;
+};
+
+const tenants: TenantRecord[] = [
+  {
+    id: 'tenant-demo-1',
+    name: 'Alma Grill',
+    slug: 'alma-grill',
+    status: 'ACTIVE',
+    plan: 'PREMIUM',
+    country: 'BR',
+    createdAt: new Date().toISOString(),
+  },
+  {
+    id: 'tenant-demo-2',
+    name: 'Ponto do Açaí',
+    slug: 'ponto-do-acai',
+    status: 'TRIAL',
+    plan: 'PRO',
+    country: 'BR',
+    createdAt: new Date().toISOString(),
+  },
+  {
+    id: 'tenant-demo-3',
+    name: 'Marmita do Bairro',
+    slug: 'marmita-do-bairro',
+    status: 'SUSPENDED',
+    plan: 'BASIC',
+    country: 'BR',
+    createdAt: new Date().toISOString(),
+  },
+];
+
+export const tenantRoutes = Router();
+
+tenantRoutes.get('/', (_req: Request, res: Response) => {
+  res.json({
+    total: tenants.length,
+    items: tenants,
+  });
+});
+
+tenantRoutes.get('/:id', (req: Request, res: Response) => {
+  const tenant = tenants.find((item) => item.id === req.params.id);
+
+  if (!tenant) {
+    return res.status(404).json({ message: 'Tenant not found.' });
+  }
+
+  return res.json(tenant);
+});
+
+tenantRoutes.post('/', (req: Request, res: Response) => {
+  const parsed = tenantSchema.safeParse(req.body);
+
+  if (!parsed.success) {
+    return res.status(400).json({
+      message: 'Validation failed',
+      errors: parsed.error.flatten(),
+    });
+  }
+
+  const tenant: TenantRecord = {
+    id: `tenant-${Date.now()}`,
+    name: parsed.data.name,
+    slug: parsed.data.slug,
+    status: parsed.data.status,
+    plan: parsed.data.plan,
+    country: parsed.data.country,
+    createdAt: new Date().toISOString(),
+  };
+
+  tenants.push(tenant);
+
+  return res.status(201).json(tenant);
+});
+
+tenantRoutes.get('/stats/summary', (_req: Request, res: Response) => {
+  res.json({
+    active: tenants.filter((tenant) => tenant.status === 'ACTIVE').length,
+    trial: tenants.filter((tenant) => tenant.status === 'TRIAL').length,
+    suspended: tenants.filter((tenant) => tenant.status === 'SUSPENDED').length,
+    blocked: tenants.filter((tenant) => tenant.status === 'BLOCKED').length,
+    total: tenants.length,
+  });
+});

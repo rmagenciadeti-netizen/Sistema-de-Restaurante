@@ -1,103 +1,76 @@
-# RM Restaurant SaaS
+const modules = [
+  {
+    title: 'Master SaaS',
+    description: 'Dashboard administrativo do proprietário',
+    icon: '📊',
+  },
+  {
+    title: 'Empresas e Unidades',
+    description: 'Multiempresa, multiunidade e isolamento por tenant',
+    icon: '🏢',
+  },
+  {
+    title: 'Funcionários e Permissões',
+    description: 'Cargos, escalas, comissões e acessos granulares',
+    icon: '👥',
+  },
+  {
+    title: 'PDV e Comandas',
+    description: 'Caixas, mesas, pedidos e fechamento operacional',
+    icon: '🧾',
+  },
+  {
+    title: 'Produtos e Produção',
+    description: 'Cardápio, setor de produção, KDS e impressão inteligente',
+    icon: '🍽️',
+  },
+  {
+    title: 'Delivery e CRM',
+    description: 'WhatsApp, clientes, entregadores e canais digitais',
+    icon: '📦',
+  },
+];
 
-Plataforma ERP SaaS para gestão de restaurantes, bares, lanchonetes, pizzarias, delivery e operações multiempresa.
+const overview = [
+  { label: 'Empresas ativas', value: '194' },
+  { label: 'Mês de receita', value: 'R$ 89.2k' },
+  { label: 'Pedidos', value: '68.4k' },
+  { label: 'Notas fiscais', value: '12.8k' },
+];
 
-## Visão geral
+export default function HomePage() {
+  return (
+    <main className="min-h-screen bg-slate-950 p-8 text-slate-100">
+      <div className="mx-auto max-w-7xl">
+        <header className="mb-8 flex items-center justify-between border-b border-slate-800 pb-6">
+          <div>
+            <p className="text-xs uppercase tracking-[0.3em] text-blue-400">RM Restaurant SaaS</p>
+            <h1 className="mt-2 text-3xl font-bold">ERP completo para restaurantes</h1>
+          </div>
+          <div className="rounded-full border border-emerald-500/40 bg-emerald-500/10 px-3 py-1 text-sm text-emerald-300">
+            Sistema operacional online
+          </div>
+        </header>
 
-Este repositório inicial implementa a base arquitetural do projeto conforme a especificação funcional de RM Restaurant SaaS:
+        <section className="mb-8 grid gap-4 md:grid-cols-4">
+          {overview.map((item) => (
+            <div key={item.label} className="rounded-xl border border-slate-800 bg-slate-900 p-5 shadow-lg">
+              <div className="text-sm text-slate-400">{item.label}</div>
+              <div className="mt-3 text-2xl font-bold text-white">{item.value}</div>
+            </div>
+          ))}
+        </section>
 
-- Monólito modular com domínios bem delimitados
-- Multi-tenant com isolamento por empresa e unidade
-- Frontend em Next.js + React + TypeScript + Tailwind
-- Backend em TypeScript com API REST versionada
-- Base de dados PostgreSQL com Prisma
-- Docker e Docker Compose para desenvolvimento/local
-- Estrutura preparada para PDV, produção, financeiro, delivery, fiscal e SaaS Admin
-
-## Estrutura proposta
-
-```text
-.
-├─ apps/
-│  ├─ api/
-│  │  └─ src/
-│  └─ web/
-│     └─ app/
-├─ packages/
-│  ├─ db/
-│  │  └─ prisma/
-│  └─ shared/
-├─ docker-compose.yml
-├─ .env.example
-├─ .gitignore
-├─ package.json
-└─ README.md
-```
-
-## Stack recomendada
-
-- Frontend: Next.js, React, TypeScript, Tailwind CSS
-- Backend: TypeScript, Express/Fastify, API REST versionada
-- Banco: PostgreSQL
-- ORM: Prisma
-- Armazenamento: S3 compatível (MinIO em dev)
-- Filas: pg-boss (baseado em PostgreSQL)
-- Infra: Docker, Docker Compose
-- Documentação: OpenAPI/Swagger
-
-## Módulos iniciais
-
-- Master SaaS Admin
-- Multiempresa e multiunidade
-- Restaurante / cadastro operacional
-- Funcionários e permissões
-- PDV e comandas
-- Produtos, categorias e adicionais
-- Produção e KDS
-- Estoque, compras e fornecedores
-- Financeiro e contas
-- Delivery, WhatsApp e CRM
-- Fiscal e integrações
-- Relatórios e auditoria
-
-## Como executar
-
-### 1) Instalar dependências
-
-```bash
-npm install
-```
-
-### 2) Subir infraestrutura local
-
-```bash
-docker compose up -d postgres minio
-```
-
-### 3) Rodar backend
-
-```bash
-npm --workspace apps/api run dev
-```
-
-### 4) Rodar frontend
-
-```bash
-npm --workspace apps/web run dev
-```
-
-## Observações
-
-Esta estrutura é um ponto de partida para a implementação real do ERP. Os módulos, schemas, regras de negócio e integrações devem evoluir seguindo a especificação funcional principal do projeto.
-
-## Próximos passos recomendados
-
-1. Definir modelos de domínio multi-tenant
-2. Implementar autenticação e autorização por tenant
-3. Construir módulo de empresas/unidades
-4. Criar cadastro de produtos e setores de produção
-5. Implementar PDV e comandas
-6. Adicionar módulo fiscal e financeiro
-7. Integrar WhatsApp, delivery e CRM
-8. Criar relatórios e dashboards
-
+        <section className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
+          {modules.map((module) => (
+            <div key={module.title} className="rounded-2xl border border-slate-800 bg-slate-900 p-5 transition hover:border-blue-500/60 hover:bg-slate-800">
+              <div className="mb-4 text-3xl">{module.icon}</div>
+              <h2 className="text-xl font-semibold text-white">{module.title}</h2>
+              <p className="mt-2 text-sm text-slate-300">{module.description}</p>
+            </div>
+          ))}
+        </section>
+      </div>
+    </main>
+  );
+}

@@ -1,46 +1,81 @@
-const modules = [
-  'Master SaaS',
-  'Empresas e unidades',
-  'Funcionários e permissões',
-  'PDV e comandas',
-  'Cardápio e delivery',
-  'Produção e KDS',
-  'Estoque e compras',
-  'Financeiro e fiscal',
-  'CRM e WhatsApp',
-  'Relatórios e auditoria',
+import { Router, Request, Response } from 'express';
+
+export const orderRoutes = Router();
+
+const orders = [
+  {
+    id: 'ord-1',
+    code: 'A-104',
+    channel: 'POS',
+    status: 'OPEN',
+    table: 8,
+    items: [
+      { name: 'Hambúrguer Clássico', quantity: 2, price: 32.9 },
+      { name: 'Refrigerante', quantity: 2, price: 8.5 },
+    ],
+    subtotal: 82.6,
+    serviceFee: 8.26,
+    total: 90.86,
+  },
+  {
+    id: 'ord-2',
+    code: 'D-220',
+    channel: 'DELIVERY',
+    status: 'PREPARING',
+    table: null,
+    items: [
+      { name: 'Pizza Margherita', quantity: 1, price: 48.0 },
+      { name: 'Açaí 500ml', quantity: 1, price: 26.0 },
+    ],
+    subtotal: 74.0,
+    serviceFee: 7.4,
+    total: 81.4,
+  },
+  {
+    id: 'ord-3',
+    code: 'T-010',
+    channel: 'TABLE',
+    status: 'READY',
+    table: 5,
+    items: [
+      { name: 'Açaí 500ml', quantity: 2, price: 26.0 },
+    ],
+    subtotal: 52.0,
+    serviceFee: 5.2,
+    total: 57.2,
+  },
 ];
 
-export default function HomePage() {
-  return (
-    <main className="min-h-screen p-10">
-      <div className="mx-auto max-w-6xl">
-        <div className="rounded-2xl border border-white/10 bg-white/5 p-8 shadow-2xl backdrop-blur-sm">
-          <p className="mb-4 text-sm font-medium uppercase tracking-[0.2em] text-blue-300">
-            RM Restaurant SaaS
-          </p>
+orderRoutes.get('/', (_req: Request, res: Response) => {
+  res.json({ total: orders.length, items: orders });
+});
 
-          <h1 className="text-4xl font-bold text-white md:text-6xl">
-            ERP modular para restaurantes em escala.
-          </h1>
+orderRoutes.get('/summary', (_req: Request, res: Response) => {
+  const totalRevenue = orders.reduce((sum, order) => sum + order.total, 0);
+  const revenueByChannel = {
+    POS: orders.filter((o) => o.channel === 'POS').reduce((sum, o) => sum + o.total, 0),
+    DELIVERY: orders.filter((o) => o.channel === 'DELIVERY').reduce((sum, o) => sum + o.total, 0),
+    TABLE: orders.filter((o) => o.channel === 'TABLE').reduce((sum, o) => sum + o.total, 0),
+  };
 
-          <p className="mt-6 max-w-3xl text-lg text-slate-300">
-            Plataforma preparada para multiempresa, multiunidade, PDV, delivery, produção,
-            financeiro, WhatsApp, CRM e gestão SaaS com controle de custos e autonomia técnica.
-          </p>
+  res.json({
+    totalRevenue,
+    openOrders: orders.filter((order) => order.status === 'OPEN').length,
+    preparingOrders: orders.filter((order) => order.status === 'PREPARING').length,
+    readyOrders: orders.filter((order) => order.status === 'READY').length,
+    revenueByChannel,
+  });
+});
 
-          <div className="mt-10 grid gap-4 md:grid-cols-2 xl:grid-cols-3">
-            {modules.map((module) => (
-              <div
-                key={module}
-                className="rounded-xl border border-blue-500/20 bg-slate-900/50 p-4 text-sm text-slate-200 shadow-md"
-              >
-                {module}
-              </div>
-            ))}
-          </div>
-        </div>
-      </div>
-    </main>
-  );
-}
+orderRoutes.post('/', (req: Request, res: Response) => {
+  const order = {
+    id: `ord-${Date.now()}`,
+    ...req.body,
+    status: req.body.status || 'OPEN',
+    serviceFee: Number(req.body.serviceFee || 0),
+    total: Number(req.body.total || 0),
+  };
+
+  orders.push(order);
+  return res.status(201).json(order);
+});
