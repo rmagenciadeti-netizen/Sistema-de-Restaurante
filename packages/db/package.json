@@ -1,0 +1,13 @@
+{
+  "name": "@rm-restaurant/db",
+  "private": true,
+  "version": "1.0.0",
+  "scripts": {
+    "db:generate": "prisma generate",
+    "db:migrate": "prisma migrate dev --name init",
+    "db:studio": "prisma studio"
+  },
+  "devDependencies": {
+    "prisma": "^5.18.0"
+  }
+}
