@@ -17,20 +17,19 @@ orderRoutes.get('/', async (req, res, next) => {
 });
 orderRoutes.post('/', async (req, res, next) => {
   try {
-    const parsed = createSchema.safeParse(req.body);
-    if (!parsed.success) return res.status(400).json({ message: 'Validation failed', errors: parsed.error.flatten() });
+    const parsed = createSchema.safeParse(req.body); if (!parsed.success) return res.status(400).json({ message: 'Validation failed', errors: parsed.error.flatten() });
     const tenantId = req.auth!.tenantId!; const unitId = parsed.data.unitId ?? req.auth!.unitId;
     if (parsed.data.unitId && req.auth!.unitId && parsed.data.unitId !== req.auth!.unitId) return res.status(403).json({ message: 'Unit access denied' });
     if (unitId && !await prisma.unit.findFirst({ where: { id: unitId, tenantId } })) return res.status(400).json({ message: 'Unit does not belong to this tenant' });
-    const ids = [...new Set(parsed.data.items.map((item) => item.productId))];
+    const ids = [...new Set(parsed.data.items.map(item => item.productId))];
     const products = await prisma.product.findMany({ where: { id: { in: ids }, tenantId, active: true, ...(unitId ? { OR: [{ unitId }, { unitId: null }] } : {}) } });
     if (products.length !== ids.length) return res.status(400).json({ message: 'One or more products are unavailable in this tenant or unit' });
-    const byId = new Map(products.map((product) => [product.id, product]));
-    const subtotal = parsed.data.items.reduce((sum, line) => sum.add((byId.get(line.productId)!.price).mul(line.quantity)), new Prisma.Decimal(0));
+    const byId = new Map(products.map(product => [product.id, product]));
+    const subtotal = parsed.data.items.reduce((sum, line) => sum.add(byId.get(line.productId)!.price.mul(line.quantity)), new Prisma.Decimal(0));
     const order = await prisma.order.create({ data: {
       tenantId, unitId, channel: parsed.data.channel, code: `P-${Date.now()}`, customerName: parsed.data.customerName, tableLabel: parsed.data.tableLabel,
       subtotal, total: subtotal, status: OrderStatus.OPEN,
-      items: { create: parsed.data.items.map((line) => { const product = byId.get(line.productId)!; return { productId: product.id, quantity: line.quantity, unitPrice: product.price, total: product.price.mul(line.quantity), notes: line.notes, sectorId: product.sectorId }; }) },
+      items: { create: parsed.data.items.map(line => { const product = byId.get(line.productId)!; return { productId: product.id, quantity: line.quantity, unitPrice: product.price, total: product.price.mul(line.quantity), notes: line.notes, sectorId: product.sectorId }; }) },
     }, include: { items: { include: { product: true } } } });
     await prisma.auditLog.create({ data: { tenantId, actorUserId: req.auth!.userId, action: 'ORDER_CREATED', entityType: 'Order', entityId: order.id } });
     return res.status(201).json(order);
@@ -38,8 +37,7 @@ orderRoutes.post('/', async (req, res, next) => {
 });
 orderRoutes.patch('/:id/status', async (req, res, next) => {
   try {
-    const status = z.nativeEnum(OrderStatus).safeParse(req.body?.status);
-    if (!status.success) return res.status(400).json({ message: 'Invalid order status' });
+    const status = z.nativeEnum(OrderStatus).safeParse(req.body?.status); if (!status.success) return res.status(400).json({ message: 'Invalid order status' });
     const order = await prisma.order.findFirst({ where: { id: req.params.id, tenantId: req.auth!.tenantId!, ...(req.auth!.unitId ? { unitId: req.auth!.unitId } : {}) } });
     if (!order) return res.status(404).json({ message: 'Order not found' });
     const updated = await prisma.order.update({ where: { id: order.id }, data: { status: status.data } });

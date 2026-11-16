@@ -1,88 +1,20 @@
 'use client';
 
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
+import { api } from '../../lib/api';
+import { AppShell, Notice, panelClass } from '../../components/app-shell';
 
-const apiBase = process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:4000/api/v1';
-
-export default function LoginPage() {
-  const router = useRouter();
-  const [email, setEmail] = useState('admin@example.com');
-  const [password, setPassword] = useState('replace-with-a-unique-password-12-chars-minimum');
-  const [loading, setLoading] = useState(false);
-  const [error, setError] = useState('');
-
-  async function handleSubmit(event: React.FormEvent<HTMLFormElement>) {
-    event.preventDefault();
-    setLoading(true);
-    setError('');
-
-    try {
-      const response = await fetch(`${apiBase}/auth/login`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ email, password }),
-      });
-
-      const payload = await response.json();
-      if (!response.ok) {
-        throw new Error(payload.message ?? 'Falha ao fazer login');
-      }
-
-      localStorage.setItem('rm_restaurant_token', payload.accessToken);
-      localStorage.setItem('rm_restaurant_user', JSON.stringify(payload.user));
-      router.push('/dashboard');
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'Erro inesperado');
-    } finally {
-      setLoading(false);
-    }
-  }
-
-  return (
-    <main className="flex min-h-screen items-center justify-center bg-slate-950 px-6 py-12">
-      <div className="w-full max-w-md rounded-2xl border border-slate-800 bg-slate-900 p-8 shadow-2xl">
-        <p className="text-xs uppercase tracking-[0.3em] text-blue-400">RM Restaurant SaaS</p>
-        <h1 className="mt-4 text-3xl font-bold text-white">Acesso ao sistema</h1>
-        <p className="mt-2 text-sm text-slate-400">Entre com suas credenciais para acessar o painel do restaurante.</p>
-
-        <form onSubmit={handleSubmit} className="mt-8 space-y-5">
-          <div>
-            <label className="mb-2 block text-sm text-slate-300">E-mail</label>
-            <input
-              value={email}
-              onChange={(event) => setEmail(event.target.value)}
-              className="w-full rounded-xl border border-slate-700 bg-slate-950 px-4 py-3 text-white outline-none ring-0 transition focus:border-blue-500"
-              placeholder="admin@example.com"
-            />
-          </div>
-
-          <div>
-            <label className="mb-2 block text-sm text-slate-300">Senha</label>
-            <input
-              type="password"
-              value={password}
-              onChange={(event) => setPassword(event.target.value)}
-              className="w-full rounded-xl border border-slate-700 bg-slate-950 px-4 py-3 text-white outline-none ring-0 transition focus:border-blue-500"
-              placeholder="Sua senha"
-            />
-          </div>
-
-          {error ? (
-            <div className="rounded-lg border border-red-500/50 bg-red-500/10 px-3 py-2 text-sm text-red-200">
-              {error}
-            </div>
-          ) : null}
-
-          <button
-            type="submit"
-            disabled={loading}
-            className="w-full rounded-xl bg-blue-600 px-4 py-3 font-semibold text-white transition hover:bg-blue-500 disabled:cursor-not-allowed disabled:opacity-60"
-          >
-            {loading ? 'Entrando...' : 'Entrar'}
-          </button>
-        </form>
-      </div>
-    </main>
-  );
+type Summary = { totalCompanies?: number; activeCompanies?: number; trialCompanies?: number; suspendedCompanies?: number; users?: number; orders?: number; products?: number; employees?: number; openOrders?: number; note?: string };
+export default function DashboardPage() {
+  const [summary, setSummary] = useState<Summary | null>(null); const [error, setError] = useState(''); const router = useRouter();
+  useEffect(() => { const user = (() => { try { return JSON.parse(localStorage.getItem('rm_restaurant_user') ?? '{}'); } catch { return {}; } })(); const endpoint = user.role === 'MASTER_ADMIN' ? '/dashboard/master' : '/dashboard/restaurant'; api<Summary>(endpoint).then(setSummary).catch(e => { if (e instanceof Error && (e as { status?: number }).status === 401) router.replace('/login'); else setError(e instanceof Error ? e.message : 'Erro ao carregar painel'); }); }, [router]);
+  const isMaster = typeof window !== 'undefined' && (() => { try { return JSON.parse(localStorage.getItem('rm_restaurant_user') ?? '{}').role === 'MASTER_ADMIN'; } catch { return false; } })();
+  const cards = isMaster ? [['Empresas', summary?.totalCompanies], ['Ativas', summary?.activeCompanies], ['Em teste', summary?.trialCompanies], ['Suspensas', summary?.suspendedCompanies], ['Usuários', summary?.users], ['Pedidos', summary?.orders]] : [['Produtos ativos', summary?.products], ['Funcionários', summary?.employees], ['Pedidos', summary?.orders], ['Pedidos abertos', summary?.openOrders]];
+  return <AppShell title={isMaster ? 'Painel Master' : 'Painel do restaurante'}>
+    {error && <Notice message={error} />}
+    <section className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">{cards.map(([label, value]) => <article key={String(label)} className={panelClass}><p className="text-sm text-slate-400">{label}</p><p className="mt-3 text-3xl font-bold">{value ?? '—'}</p></article>)}</section>
+    {summary?.note && <p className="mt-5 text-sm text-slate-400">{summary.note}</p>}
+    <section className={`${panelClass} mt-6`}><h2 className="text-lg font-semibold">Atalhos operacionais</h2><p className="mt-2 text-sm text-slate-400">Use a navegação para gerenciar empresas, unidades, equipe, catálogo, produção e pedidos. Os dados apresentados vêm da API e do PostgreSQL.</p></section>
+  </AppShell>;
 }

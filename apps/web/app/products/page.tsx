@@ -1,0 +1,18 @@
+'use client';
+
+import { useEffect, useState } from 'react';
+import { api, ListResponse, Product, Sector } from '../../lib/api';
+import { AppShell, buttonClass, Field, Notice, panelClass } from '../../components/app-shell';
+
+export default function ProductsPage() {
+  const [items, setItems] = useState<Product[]>([]); const [sectors, setSectors] = useState<Sector[]>([]); const [message, setMessage] = useState('');
+  const [form, setForm] = useState({ name: '', code: '', price: '', cost: '', sectorId: '' });
+  async function load() { try { const [products, production] = await Promise.all([api<ListResponse<Product>>('/products'), api<ListResponse<Sector>>('/production/sectors')]); setItems(products.items); setSectors(production.items); } catch (e) { setMessage(e instanceof Error ? e.message : 'Erro ao carregar catálogo'); } }
+  useEffect(() => { void load(); }, []);
+  async function submit(event: React.FormEvent) { event.preventDefault(); setMessage(''); try { await api('/products', { method: 'POST', body: JSON.stringify({ name: form.name, code: form.code || undefined, price: Number(form.price), cost: Number(form.cost || 0), sectorId: form.sectorId || undefined, active: true }) }); setForm({ name: '', code: '', price: '', cost: '', sectorId: '' }); setMessage('Produto cadastrado.'); await load(); } catch (e) { setMessage(e instanceof Error ? e.message : 'Erro ao cadastrar produto'); } }
+  return <AppShell title="Produtos e produção">
+    {message && <Notice message={message} kind={message.includes('cadastrado') ? 'success' : 'error'} />}
+    <section className={`${panelClass} mb-6`}><h2 className="mb-4 text-lg font-semibold">Novo produto</h2><form onSubmit={submit} className="grid gap-4 md:grid-cols-2 xl:grid-cols-3"><Field label="Nome" required value={form.name} onChange={e => setForm({ ...form, name: e.target.value })} /><Field label="Código" value={form.code} onChange={e => setForm({ ...form, code: e.target.value })} /><Field label="Preço de venda (R$)" type="number" min="0" step="0.01" required value={form.price} onChange={e => setForm({ ...form, price: e.target.value })} /><Field label="Custo (R$)" type="number" min="0" step="0.01" value={form.cost} onChange={e => setForm({ ...form, cost: e.target.value })} /><label className="text-sm text-slate-300">Setor de produção<select className="mt-1 w-full rounded-lg border border-slate-700 bg-slate-950 px-3 py-2" value={form.sectorId} onChange={e => setForm({ ...form, sectorId: e.target.value })}><option value="">Sem setor</option>{sectors.map(sector => <option key={sector.id} value={sector.id}>{sector.name}</option>)}</select></label><div className="flex items-end"><button className={buttonClass}>Adicionar produto</button></div></form></section>
+    <section className={panelClass}><h2 className="mb-4 text-lg font-semibold">Catálogo ({items.length})</h2><div className="overflow-x-auto"><table className="w-full text-left text-sm"><thead className="text-slate-400"><tr><th className="p-3">Produto</th><th className="p-3">Código</th><th className="p-3">Setor</th><th className="p-3">Preço</th><th className="p-3">Status</th></tr></thead><tbody>{items.map(item => <tr key={item.id} className="border-t border-slate-800"><td className="p-3">{item.name}</td><td className="p-3">{item.code || '—'}</td><td className="p-3">{item.sector?.name || '—'}</td><td className="p-3">R$ {Number(item.price).toFixed(2)}</td><td className="p-3">{item.active ? 'Ativo' : 'Inativo'}</td></tr>)}</tbody></table>{items.length === 0 && <p className="p-4 text-slate-400">Nenhum produto cadastrado.</p>}</div></section>
+  </AppShell>;
+}
