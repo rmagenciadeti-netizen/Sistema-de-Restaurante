@@ -6,7 +6,8 @@
     "dev": "tsx watch src/index.ts",
     "build": "tsc",
     "start": "node dist/index.js",
-    "seed:master": "tsx src/seed-master.ts"
+    "seed:master": "tsx src/seed-master.ts",
+    "test": "tsx --test src/**/*.test.ts"
   },
   "dependencies": {
     "@prisma/client": "^5.18.0",
@@ -14,6 +15,7 @@
     "cors": "^2.8.5",
     "dotenv": "^16.4.5",
     "express": "^4.19.2",
+    "express-rate-limit": "^7.4.0",
     "jsonwebtoken": "^9.0.2",
     "zod": "^3.23.8"
   },

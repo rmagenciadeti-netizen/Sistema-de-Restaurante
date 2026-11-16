@@ -1,12 +1,14 @@
 import { Router } from 'express';
+import { rateLimit } from 'express-rate-limit';
 import { z } from 'zod';
 import bcrypt from 'bcryptjs';
 import { prisma } from '../lib/prisma';
 import { signAccessToken, requireAuth } from '../middleware/auth';
 
 export const authRoutes = Router();
-const loginSchema = z.object({ email: z.string().email(), password: z.string().min(1) });
-authRoutes.post('/login', async (req, res, next) => {
+const loginLimiter = rateLimit({ windowMs: 15 * 60 * 1000, limit: 10, standardHeaders: 'draft-7', legacyHeaders: false, message: { message: 'Too many login attempts. Try again later.' } });
+const loginSchema = z.object({ email: z.string().email(), password: z.string().min(1).max(200) });
+authRoutes.post('/login', loginLimiter, async (req, res, next) => {
   try {
     const input = loginSchema.safeParse(req.body); if (!input.success) return res.status(400).json({ message: 'Invalid credentials format' });
     const user = await prisma.user.findUnique({ where: { email: input.data.email.toLowerCase() }, include: { tenant: true } });

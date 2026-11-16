@@ -1,28 +1,29 @@
 # RM Restaurant SaaS
 
-Monólito modular para operação de restaurantes, com Next.js, TypeScript, PostgreSQL/Prisma e Docker. A interface web conecta-se às APIs autenticadas de empresas, unidades, funcionários, produtos, produção e pedidos. Este projeto continua em desenvolvimento; integrações fiscais, WhatsApp, pagamentos, impressão física e conformidade trabalhista dependem de configuração, homologação e testes específicos.
+Monólito modular para restaurantes, com Next.js, TypeScript, PostgreSQL/Prisma e Docker. Integrações fiscais, WhatsApp, pagamentos e impressão física requerem provedor, contrato/homologação e configuração próprios; a API não finge envio ou autorização de terceiros.
 
-## Executar localmente
+## Desenvolvimento local
 
-1. Copie `.env.example` para `.env`, configure um `JWT_SECRET` aleatório com pelo menos 32 caracteres e altere as credenciais de desenvolvimento.
-2. Suba o PostgreSQL: `docker compose up -d postgres`.
-3. Instale dependências: `npm install`.
-4. Gere o client e aplique o schema: `npm run db:generate && npm run db:migrate`.
-5. Crie o usuário Master: `npm run seed:master`.
-6. Inicie API e web em terminais separados: `npm run dev:api` e `npm run dev`.
+1. Copie `.env.example` para `.env`; configure segredo JWT aleatório com 32+ caracteres e credenciais fortes.
+2. Inicie o banco: `docker compose up -d postgres`.
+3. Instale pacotes: `npm install`.
+4. Gere o cliente e aplique migração: `npm run db:generate && npm run db:migrate`.
+5. Crie o Master: `npm run seed:master`.
+6. Inicie `npm run dev:api` e `npm run dev` em terminais separados.
+7. Testes disponíveis: `npm run test --workspace apps/api`.
 
-## Interface disponível
+## Módulos e endpoints novos
 
-- `/login` — login por e-mail/senha.
-- `/dashboard` — painel Master ou do restaurante, conforme o papel autenticado.
-- `/companies` — listagem, criação de empresa com unidade e administrador inicial, e alteração de status (Master).
-- `/units` — listar/criar unidades do tenant.
-- `/employees` — listar/cadastrar funcionários.
-- `/products` — catálogo e associação ao setor de produção.
-- `/orders` — criação de pedido no motor central e atualização inicial de status.
+- CRUD parcial/soft delete: atualizações em `/employees/:id`, `/products/:id` e `/units/:id`; registros operacionais usam status, preservando histórico.
+- Produção/KDS: `GET /production/kds?sectorId=...`, `PATCH /production/items/:id/status`.
+- Estoque e fichas: `GET|POST /inventory/ingredients`, `POST /inventory/ingredients/:id/movements`, `GET /inventory/movements`, `GET|PUT /inventory/recipes/:productId`.
+- Caixa/pagamentos: `POST|GET /cash/sessions`, `POST /cash/sessions/:id/close`, `POST|GET /cash/payments`.
+- Entrega: `GET|POST /delivery`, `PATCH /delivery/:id/status`.
+- WhatsApp: `POST|GET /whatsapp/outbox`. O endpoint apenas enfileira um registro auditável; envio real requer adaptador de provedor oficial e worker configurado.
+- Financeiro e relatórios: `GET|POST /financial/entries`, `GET /financial/summary`, `GET /reports/overview?from=ISO&to=ISO`.
 
-Todas as rotas privadas usam token Bearer. O tenant vem do usuário autenticado. Não envie nem confie em `tenantId` fornecido pelo navegador. Empresa criada pelo Master inicia em período de teste; a política de acesso considera `TRIAL` utilizável. Status de bloqueio/suspensão impede o login.
+Rotas privadas exigem token Bearer. Os escopos tenant/unidade vêm do contexto autenticado. O login tem limitação de tentativas, CORS aceita origens configuradas, o corpo JSON tem limite e erros internos não são expostos ao cliente. Testes ainda são iniciais e devem ser ampliados com testes de integração de isolamento de tenant antes de produção.
 
-## Limitações
+## Limitações relevantes
 
-As telas são uma primeira interface operacional, não um ERP completo. Ainda faltam permissões granulares por ação, edição de todas as entidades no frontend, mesas e comandas com fluxo completo, pagamento/caixa, estoque, adicionais e combos, comissões e taxa de serviço, KDS com transições por item, impressão local, fiscal, integrações externas, testes automatizados, RLS e documentação OpenAPI. Não publicar como sistema de produção antes de implementar e validar essas proteções e processos.
+A primeira versão de estoque exige ajustes manuais; consumo automático por ficha técnica ao confirmar pedido, compras, transferências e inventário guiado ainda devem ser desenvolvidos. Caixa e relatórios são gerenciais, não conciliação contábil. Não há integração fiscal, pagamento em cartão/PIX, WhatsApp oficial, impressão de produção ou delivery de terceiros sem adaptadores e homologações reais. Não exponha em produção antes de executar a validação Prisma/TypeScript, migrações, testes de integração e revisão de segurança.
