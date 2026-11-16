@@ -1,81 +1,114 @@
-import { Router, Request, Response } from 'express';
+'use client';
 
-export const orderRoutes = Router();
+import { useEffect, useState } from 'react';
 
-const orders = [
-  {
-    id: 'ord-1',
-    code: 'A-104',
-    channel: 'POS',
-    status: 'OPEN',
-    table: 8,
-    items: [
-      { name: 'Hambúrguer Clássico', quantity: 2, price: 32.9 },
-      { name: 'Refrigerante', quantity: 2, price: 8.5 },
-    ],
-    subtotal: 82.6,
-    serviceFee: 8.26,
-    total: 90.86,
-  },
-  {
-    id: 'ord-2',
-    code: 'D-220',
-    channel: 'DELIVERY',
-    status: 'PREPARING',
-    table: null,
-    items: [
-      { name: 'Pizza Margherita', quantity: 1, price: 48.0 },
-      { name: 'Açaí 500ml', quantity: 1, price: 26.0 },
-    ],
-    subtotal: 74.0,
-    serviceFee: 7.4,
-    total: 81.4,
-  },
-  {
-    id: 'ord-3',
-    code: 'T-010',
-    channel: 'TABLE',
-    status: 'READY',
-    table: 5,
-    items: [
-      { name: 'Açaí 500ml', quantity: 2, price: 26.0 },
-    ],
-    subtotal: 52.0,
-    serviceFee: 5.2,
-    total: 57.2,
-  },
-];
+const apiBase = process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:4000/api/v1';
 
-orderRoutes.get('/', (_req: Request, res: Response) => {
-  res.json({ total: orders.length, items: orders });
-});
+type DashboardSummary = {
+  totalCompanies?: number;
+  activeCompanies?: number;
+  trialCompanies?: number;
+  suspendedCompanies?: number;
+  users?: number;
+  orders?: number;
+  products?: number;
+  note?: string;
+};
 
-orderRoutes.get('/summary', (_req: Request, res: Response) => {
-  const totalRevenue = orders.reduce((sum, order) => sum + order.total, 0);
-  const revenueByChannel = {
-    POS: orders.filter((o) => o.channel === 'POS').reduce((sum, o) => sum + o.total, 0),
-    DELIVERY: orders.filter((o) => o.channel === 'DELIVERY').reduce((sum, o) => sum + o.total, 0),
-    TABLE: orders.filter((o) => o.channel === 'TABLE').reduce((sum, o) => sum + o.total, 0),
-  };
+export default function DashboardPage() {
+  const [summary, setSummary] = useState<DashboardSummary | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState('');
 
-  res.json({
-    totalRevenue,
-    openOrders: orders.filter((order) => order.status === 'OPEN').length,
-    preparingOrders: orders.filter((order) => order.status === 'PREPARING').length,
-    readyOrders: orders.filter((order) => order.status === 'READY').length,
-    revenueByChannel,
-  });
-});
+  useEffect(() => {
+    async function load() {
+      const token = localStorage.getItem('rm_restaurant_token');
+      if (!token) {
+        window.location.href = '/login';
+        return;
+      }
 
-orderRoutes.post('/', (req: Request, res: Response) => {
-  const order = {
-    id: `ord-${Date.now()}`,
-    ...req.body,
-    status: req.body.status || 'OPEN',
-    serviceFee: Number(req.body.serviceFee || 0),
-    total: Number(req.body.total || 0),
-  };
+      try {
+        const response = await fetch(`${apiBase}/dashboard/master`, {
+          headers: {
+            Authorization: `Bearer ${token}`,
+          },
+        });
 
-  orders.push(order);
-  return res.status(201).json(order);
-});
+        if (!response.ok) {
+          throw new Error('Sessão inválida ou expirada');
+        }
+
+        const payload = await response.json();
+        setSummary(payload);
+      } catch (err) {
+        setError(err instanceof Error ? err.message : 'Erro ao carregar dashboard');
+      } finally {
+        setLoading(false);
+      }
+    }
+
+    load();
+  }, []);
+
+  if (loading) {
+    return <div className="flex min-h-screen items-center justify-center bg-slate-950 text-slate-200">Carregando dashboard...</div>;
+  }
+
+  if (error) {
+    return (
+      <div className="flex min-h-screen items-center justify-center bg-slate-950 text-red-300">
+        {error}
+      </div>
+    );
+  }
+
+  const cards = [
+    { label: 'Empresas cadastradas', value: summary?.totalCompanies ?? 0 },
+    { label: 'Empresas ativas', value: summary?.activeCompanies ?? 0 },
+    { label: 'Teste', value: summary?.trialCompanies ?? 0 },
+    { label: 'Suspensas', value: summary?.suspendedCompanies ?? 0 },
+    { label: 'Usuários', value: summary?.users ?? 0 },
+    { label: 'Pedidos', value: summary?.orders ?? 0 },
+    { label: 'Produtos', value: summary?.products ?? 0 },
+  ];
+
+  return (
+    <main className="min-h-screen bg-slate-950 p-8 text-slate-100">
+      <div className="mx-auto max-w-6xl">
+        <header className="mb-8 flex items-center justify-between border-b border-slate-800 pb-6">
+          <div>
+            <p className="text-xs uppercase tracking-[0.3em] text-blue-400">Painel Master</p>
+            <h1 className="mt-2 text-3xl font-bold">RM Restaurant SaaS</h1>
+          </div>
+          <button
+            onClick={() => {
+              localStorage.removeItem('rm_restaurant_token');
+              localStorage.removeItem('rm_restaurant_user');
+              window.location.href = '/login';
+            }}
+            className="rounded-xl border border-slate-700 bg-slate-900 px-4 py-2 text-sm text-slate-200 hover:bg-slate-800"
+          >
+            Sair
+          </button>
+        </header>
+
+        <section className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
+          {cards.map((card) => (
+            <div key={card.label} className="rounded-2xl border border-slate-800 bg-slate-900 p-5 shadow-lg">
+              <div className="text-sm text-slate-400">{card.label}</div>
+              <div className="mt-4 text-3xl font-bold text-white">{card.value}</div>
+            </div>
+          ))}
+        </section>
+
+        <section className="mt-8 rounded-2xl border border-slate-800 bg-slate-900 p-6">
+          <h2 className="text-xl font-semibold text-white">Resumo do sistema</h2>
+          <p className="mt-3 text-sm text-slate-300">
+            {summary?.note ?? 'Painel operacional com foco em multiempresa, unidades, produtos e pedidos.'}
+          </p>
+        </section>
+      </div>
+    </main>
+  );
+}

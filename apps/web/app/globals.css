@@ -1,20 +1,14 @@
-@tailwind base;
-@tailwind components;
-@tailwind utilities;
+import './globals.css';
 
-:root {
-  --background: #0f172a;
-  --foreground: #e2e8f0;
-}
+export const metadata = {
+  title: 'RM Restaurant SaaS',
+  description: 'ERP SaaS multiempresa para restaurantes',
+};
 
-body {
-  margin: 0;
-  min-height: 100vh;
-  background: linear-gradient(135deg, #0f172a 0%, #111827 40%, #1f2937 100%);
-  color: var(--foreground);
-  font-family: Arial, Helvetica, sans-serif;
-}
-
-* {
-  box-sizing: border-box;
+export default function RootLayout({ children }: { children: React.ReactNode }) {
+  return (
+    <html lang="pt-BR">
+      <body className="bg-slate-950 text-slate-100">{children}</body>
+    </html>
+  );
 }
