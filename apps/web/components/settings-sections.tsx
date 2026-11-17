@@ -142,6 +142,11 @@ export function StoreSection({ value, onChange, disabled }: SectionProps<'store'
       <label className="text-sm font-medium text-slate-700">Código da cor<input value={value.brandColor} disabled={disabled} maxLength={7} onChange={event => onChange({ brandColor: event.target.value })} className={`${inputClass} w-32 font-mono`} aria-invalid={!/^#[0-9a-fA-F]{6}$/.test(value.brandColor)} /></label>
       <span aria-hidden="true" className="mb-1 inline-block h-9 w-24 rounded-xl border border-slate-200" style={{ backgroundColor: /^#[0-9a-fA-F]{6}$/.test(value.brandColor) ? value.brandColor : '#ffffff' }} />
     </div>
+    <Subtitle>Rastreamento</Subtitle>
+    <label className="block max-w-sm text-sm font-medium text-slate-700">ID do Pixel da Meta (Facebook/Instagram)
+      <input inputMode="numeric" value={value.metaPixelId} disabled={disabled} maxLength={20} placeholder="Ex.: 123456789012345" onChange={event => onChange({ metaPixelId: event.target.value.replace(/\D/g, '') })} className={`${inputClass} font-mono`} aria-invalid={!/^(\d{8,20})?$/.test(value.metaPixelId)} />
+      <span className="mt-1 block text-xs font-normal text-slate-500">Opcional. Quando preenchido, a loja virtual registra visitas e pedidos concluídos no seu Pixel. Deixe vazio para não rastrear.</span>
+    </label>
     <Subtitle>Comportamento</Subtitle>
     <Select label="Tipo de loja" value={value.mode} disabled={disabled} onChange={event => onChange({ mode: event.target.value as typeof value.mode })}><option value="MENU">Cardápio digital</option><option value="ECOMMERCE">Loja virtual (e-commerce)</option></Select>
     <div className="mt-3"><Stack>

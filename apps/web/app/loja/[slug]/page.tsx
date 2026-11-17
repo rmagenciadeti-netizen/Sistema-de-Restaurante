@@ -1,12 +1,23 @@
 'use client';
 
 import { useParams } from 'next/navigation';
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { ApiError, formatMoney, publicApi } from '../../../lib/api';
 import { weekdayNames } from '../../../lib/settings';
 import type { StoreData, StoreOrderResult, StoreProduct } from '../../../lib/types-store';
 import { useAutoLoad } from '../../../lib/use-auto-load';
 import { ModifierPicker, ModifierSelection, modifiersPayload, modifiersUnitTotal, selectionError } from '../../../components/modifier-picker';
+
+declare global { interface Window { fbq?: ((...args: unknown[]) => void) & { queue?: unknown[]; loaded?: boolean; callMethod?: (...args: unknown[]) => void } } }
+
+// Loads the Meta Pixel for the store; the id is validated server-side and re-checked here so it can never inject script content.
+function loadMetaPixel(pixelId: string) {
+  if (!/^\d{8,20}$/.test(pixelId) || window.fbq) return;
+  const fbq = ((...args: unknown[]) => { if (fbq.callMethod) fbq.callMethod(...args); else (fbq.queue ??= []).push(args); }) as NonNullable<Window['fbq']>;
+  fbq.queue = []; fbq.loaded = true; window.fbq = fbq;
+  const script = document.createElement('script'); script.async = true; script.src = 'https://connect.facebook.net/en_US/fbevents.js'; document.head.appendChild(script);
+  fbq('init', pixelId); fbq('track', 'PageView');
+}
 
 type Line = { quantity: number; weight: string; notes: string; mods: ModifierSelection };
 type Fulfillment = 'TAKEAWAY' | 'DELIVERY';
@@ -99,6 +110,9 @@ export default function StorePage() {
   }
   useAutoLoad(load);
 
+  const pixelId = store?.metaPixelId ?? null;
+  useEffect(() => { if (pixelId) loadMetaPixel(pixelId); }, [pixelId]);
+
   const products = useMemo(() => store?.categories.flatMap(category => category.products) ?? [], [store]);
   const lines = products.filter(product => cart[product.id]);
   const accent = store?.brandColor ?? '#b89235';
@@ -166,6 +180,7 @@ export default function StorePage() {
           return { productId: product.id, quantity: line.quantity, weightKg: product.soldByWeight ? parseWeight(line.weight) : undefined, notes: line.notes.trim() || undefined, modifiers: mods.length ? mods : undefined };
         }),
       }) });
+      if (pixelId) window.fbq?.('track', 'Purchase', { value: Number(result.total), currency: 'BRL' });
       setConfirmation(result); setCart({});
     } catch (e) { setFormError(friendly(e)); } finally { setBusy(false); }
   }

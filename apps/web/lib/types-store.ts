@@ -20,6 +20,7 @@ export type StoreData = {
   allowBuyWhenClosed: boolean;
   autoAccept: boolean;
   brandColor: string;
+  metaPixelId: string | null;
   categories: StoreCategory[];
   deliveryZones: StoreZone[];
   paymentMethods: StorePaymentMethod[];

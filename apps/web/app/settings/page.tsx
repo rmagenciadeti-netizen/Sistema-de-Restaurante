@@ -35,6 +35,7 @@ export default function SettingsPage() {
     if (!draft) return null;
     if (tab === 'hours' && invalidSlots(draft.hours.weekly).length > 0) return 'Corrija as faixas de horário: o início deve ser anterior ao fim.';
     if (tab === 'store' && !/^#[0-9a-fA-F]{6}$/.test(draft.store.brandColor)) return 'Informe a cor da loja no formato #RRGGBB.';
+    if (tab === 'store' && !/^(\d{8,20})?$/.test(draft.store.metaPixelId)) return 'O ID do Pixel deve ter de 8 a 20 dígitos.';
     if (tab === 'scale') {
       if (!/^\d{1,2}$/.test(draft.scale.prefix)) return 'O prefixo da balança deve ter 1 ou 2 dígitos.';
       if (draft.scale.barcodeLength - draft.scale.prefix.length - draft.scale.codeLength - 1 < 1) return 'O formato do código de barras não deixa espaço para peso/preço.';

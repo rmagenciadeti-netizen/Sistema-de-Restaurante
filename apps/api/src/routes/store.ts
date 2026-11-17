@@ -72,7 +72,7 @@ storeRoutes.get('/:slug', async (req, res, next) => {
         deliveryFeeMode: fulfillment.deliveryFeeMode, singleFee: fulfillment.singleFee, minDelivery: fulfillment.minDelivery, freeDeliveryMin: fulfillment.freeDeliveryMin,
       },
       scheduling: { enabled: scheduling.enabled, maxDaysAhead: scheduling.maxDaysAhead, leadTime: scheduling.leadTime, blockedFrom: scheduling.blockedFrom, blockedTo: scheduling.blockedTo, slots: scheduling.slots },
-      allowBuyWhenClosed: storeSettings.allowBuyWhenClosed, autoAccept: storeSettings.autoAccept, brandColor: storeSettings.brandColor,
+      allowBuyWhenClosed: storeSettings.allowBuyWhenClosed, autoAccept: storeSettings.autoAccept, brandColor: storeSettings.brandColor, metaPixelId: storeSettings.metaPixelId || null,
       categories: [...categories.values()].sort((a, b) => a.name.localeCompare(b.name)),
       deliveryZones: zones, paymentMethods: methods,
     });

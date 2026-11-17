@@ -25,6 +25,7 @@ export const SETTINGS_SECTIONS = {
   store: z.object({
     allowBuyWhenClosed: z.boolean().default(false), autoAccept: z.boolean().default(true), brandColor: z.string().regex(/^#[0-9a-fA-F]{6}$/).default('#b89235'),
     mode: z.enum(['MENU', 'ECOMMERCE']).default('MENU'), minorControl: z.boolean().default(false),
+    metaPixelId: z.string().trim().regex(/^(\d{8,20})?$/, 'O ID do Pixel deve ter de 8 a 20 dígitos').default(''),
   }),
   pdv: z.object({
     layout: z.enum(['FOOD', 'RETAIL']).default('FOOD'), side: z.enum(['LEFT', 'RIGHT']).default('RIGHT'),

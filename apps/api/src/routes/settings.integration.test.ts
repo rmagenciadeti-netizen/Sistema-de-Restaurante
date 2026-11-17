@@ -51,6 +51,7 @@ test('settings, admin password and password releases', { skip: !enabled }, async
     assert.equal((await call('PUT', '/settings/scheduling', admin, { enabled: true, slots: [{ day: 1, start: '12:00', end: '10:00' }] })).status, 400);
     assert.equal((await call('PUT', '/settings/hours', admin, { mode: 'SCHEDULE', weekly: [{ day: 1, start: '18:00', end: '09:00' }] })).status, 400);
     assert.equal((await call('PUT', '/settings/store', admin, { brandColor: 'red' })).status, 400);
+    assert.equal((await call('PUT', '/settings/store', admin, { metaPixelId: '123<script>' })).status, 400, 'pixel id is digits only');
     const saved = await call('PUT', '/settings/hours', manager, { mode: 'CLOSED' });
     assert.equal(saved.status, 200);
     assert.equal(saved.body.section, 'hours');

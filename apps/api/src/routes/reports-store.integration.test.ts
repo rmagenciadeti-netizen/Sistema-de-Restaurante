@@ -113,6 +113,9 @@ test('tabular reports and virtual store', { skip: process.env.RUN_DB_TESTS !== '
     assert.equal(store.status, 200);
     assert.equal(store.body.restaurant.name, 'Loja a');
     assert.equal(store.body.open, true);
+    assert.equal(store.body.metaPixelId, null, 'no pixel configured by default');
+    assert.equal((await call('PUT', '/settings/store', A.admin, { metaPixelId: '123456789012345' })).status, 200);
+    assert.equal((await call<any>('GET', `/public/store/${A.tenant.slug}`)).body.metaPixelId, '123456789012345', 'configured pixel reaches the public store');
     assert.equal(store.body.scheduling.enabled, true);
     const products = store.body.categories.flatMap((category: any) => category.products);
     assert.equal(products.length, 3);
