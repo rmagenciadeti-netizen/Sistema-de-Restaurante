@@ -152,4 +152,54 @@ test('auxiliary registries', { skip: !enabled }, async t => {
     assert.equal(removed.body.deactivated, true, 'couriers with deliveries are kept');
     assert.equal((await call('POST', '/delivery', A.admin, { orderId: third.id, courierId: courier.id })).status, 400);
   });
+  await t.test('fiscal registries: natures, CST map, received invoices, contingency and reconciliation', async () => {
+    const withDigit = (base: string) => { let sum = 0; let weight = 2; for (let i = 42; i >= 0; i--) { sum += Number(base[i]) * weight; weight = weight === 9 ? 2 : weight + 1; } const r = sum % 11; return base + String(r < 2 ? 0 : 11 - r); };
+    const key = withDigit('3526111234567800019055001000000123100000123');
+    const xml = `<NFe><infNFe Id="NFe${key}"><ide><serie>1</serie><nNF>123</nNF><dhEmi>2026-11-10T10:00:00-03:00</dhEmi></ide><emit><CNPJ>12345678000190</CNPJ><xNome>Frios</xNome></emit><det nItem="1"><prod><xProd>Queijo</xProd><qCom>2</qCom><vUnCom>10</vUnCom><vProd>20</vProd></prod></det><total><ICMSTot><vNF>20.00</vNF></ICMSTot></total></infNFe></NFe>`;
+
+    const nature = await call('POST', '/fiscal-registry/natures', A.admin, { name: 'Compra para revenda', cfop: '1102', direction: 'IN' });
+    assert.equal(nature.status, 201);
+    assert.equal((await call('POST', '/fiscal-registry/natures', A.admin, { name: 'compra para revenda', cfop: '1102' })).status, 409);
+    assert.equal((await call('POST', '/fiscal-registry/natures', A.admin, { name: 'CFOP ruim', cfop: '12' })).status, 400);
+    assert.equal((await call('POST', '/fiscal-registry/natures', A.cashier, { name: 'Sem permissão', cfop: '5102' })).status, 403);
+    assert.equal((await call('GET', '/fiscal-registry/natures', B.admin)).body.total, 0, 'natures are tenant scoped');
+
+    const map = await call('POST', '/fiscal-registry/cst-map', A.admin, { outCst: '00', inCst: '90' });
+    assert.equal(map.status, 201);
+    assert.equal((await call('POST', '/fiscal-registry/cst-map', A.admin, { outCst: '00', inCst: '10' })).status, 409);
+
+    assert.equal((await call('POST', '/fiscal-registry/invoices/parse-xml', A.admin, { xml })).body.totalAmount, 20);
+    assert.equal((await call('POST', '/fiscal-registry/invoices/parse-xml', A.admin, { xml: '<foo>'.padEnd(60, 'x') })).status, 422);
+    const body = { accessKey: key, number: '123', supplierName: 'Frios', supplierDocument: '12.345.678/0001-90', issuedAt: '2026-11-10T13:00:00Z', totalAmount: 20, natureId: nature.body.id, items: [{ description: 'Queijo', quantity: 2, unitValue: 10, totalValue: 20 }], xml };
+    assert.equal((await call('POST', '/fiscal-registry/invoices', A.admin, { ...body, accessKey: key.slice(0, 43) + '0'.replace(key[43], '1') })).status, 400, 'bad check digit');
+    assert.equal((await call('POST', '/fiscal-registry/invoices', A.admin, { ...body, natureId: (await call('POST', '/fiscal-registry/natures', B.admin, { name: 'Alheia', cfop: '1102' })).body.id })).status, 400, 'foreign nature');
+    const invoice = await call('POST', '/fiscal-registry/invoices', A.admin, body);
+    assert.equal(invoice.status, 201);
+    assert.equal(invoice.body.status, 'RECEIVED');
+    assert.equal((await call('POST', '/fiscal-registry/invoices', A.admin, body)).status, 409, 'same access key twice');
+    assert.equal((await call('GET', `/fiscal-registry/invoices?q=${key.slice(0, 10)}`, A.admin)).body.total, 1);
+    assert.equal((await call('GET', '/fiscal-registry/invoices', B.admin)).body.total, 0);
+    assert.equal((await call('GET', `/fiscal-registry/invoices/${invoice.body.id}/xml`, B.admin)).status, 404);
+    assert.equal((await call('GET', '/fiscal-registry/xmls', A.admin)).body.received.length, 1);
+    assert.equal((await call('POST', `/fiscal-registry/invoices/${invoice.body.id}/enter`, A.admin)).body.status, 'ENTERED');
+    assert.equal((await call('POST', `/fiscal-registry/invoices/${invoice.body.id}/enter`, A.admin)).status, 409);
+    assert.equal((await call('POST', `/fiscal-registry/invoices/${invoice.body.id}/cancel`, A.admin)).status, 409);
+    assert.equal((await call('DELETE', `/fiscal-registry/natures/${nature.body.id}`, A.admin)).body.deactivated, true, 'used natures are kept');
+
+    assert.equal((await call('POST', '/fiscal-registry/contingency/start', A.admin, { reason: 'curto' })).status, 400);
+    assert.equal((await call('POST', '/fiscal-registry/contingency/start', A.admin, { reason: 'Provedor fiscal fora do ar desde as 10h' })).status, 201);
+    assert.equal((await call('POST', '/fiscal-registry/contingency/start', A.admin, { reason: 'Provedor fiscal fora do ar desde as 10h' })).status, 409);
+    assert.ok((await call('GET', '/fiscal-registry/contingency', A.admin)).body.active);
+    assert.equal((await call('GET', '/fiscal-registry/contingency', B.admin)).body.active, null);
+    assert.ok((await call('POST', '/fiscal-registry/contingency/end', A.admin)).body.endedAt);
+    assert.equal((await call('POST', '/fiscal-registry/contingency/end', A.admin)).status, 409);
+
+    await prisma.order.create({ data: { tenantId: A.tenant.id, code: `REC-${suffix()}`, status: 'COMPLETED', subtotal: 40, total: 40 } });
+    const report = await call('GET', '/fiscal-registry/reconciliation', A.admin);
+    assert.equal(report.status, 200);
+    assert.equal(report.body.orders.count, 1);
+    assert.equal(report.body.withoutDocument.count, 1);
+    assert.equal(report.body.withoutDocument.total, 40);
+    assert.equal((await call('GET', '/fiscal-registry/reconciliation', B.admin)).body.orders.count, 0);
+  });
 });

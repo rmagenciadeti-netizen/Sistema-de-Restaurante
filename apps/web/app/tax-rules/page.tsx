@@ -1,7 +1,8 @@
 'use client';
 
-import { useState } from 'react';
+import { Suspense, useState } from 'react';
 import Link from 'next/link';
+import { useSearchParams } from 'next/navigation';
 import { api, errorMessage, ListResponse, Product } from '../../lib/api';
 import { useAutoLoad } from '../../lib/use-auto-load';
 import { AppShell, buttonClass, Field, Notice, Select, secondaryButtonClass } from '../../components/app-shell';
@@ -19,9 +20,10 @@ const text = (value?: string | number | null) => (value === null || value === un
 const percent = (value?: string | number | null) => (value === null || value === undefined || value === '' ? '—' : `${Number(value).toLocaleString('pt-BR', { maximumFractionDigits: 3 })}%`);
 const optionalRate = (value: string) => (value.trim() === '' ? null : Number(value.replace(',', '.')));
 
-export default function TaxRulesPage() {
+function TaxRulesContent() {
+  const initialTab = useSearchParams().get('tab');
   const [items, setItems] = useState<TaxRule[]>([]);
-  const [tab, setTab] = useState<TabKey>('rules');
+  const [tab, setTab] = useState<TabKey>(initialTab === 'icms' || initialTab === 'pis' ? initialTab : 'rules');
   const [q, setQ] = useState(''); const [active, setActive] = useState('');
   const [editing, setEditing] = useState<TaxRule | 'new' | null>(null);
   const [form, setForm] = useState(emptyForm);
@@ -164,4 +166,8 @@ export default function TaxRulesPage() {
       </>}
     </div>}
   </AppShell>;
+}
+
+export default function TaxRulesPage() {
+  return <Suspense fallback={null}><TaxRulesContent /></Suspense>;
 }

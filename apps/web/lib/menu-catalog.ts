@@ -63,7 +63,12 @@ export const menuGroups: MenuGroup[] = [
     { href: '/companies', label: 'Empresas', icon: '🏢', masterOnly: true }, { href: '/provisioning', label: 'Provisionamento', icon: '⚙️', masterOnly: true },
   ] },
   { title: 'Fiscal / Tributos', icon: '📄', items: [
-    { href: '/fiscal', label: 'Documentos fiscais', icon: '📄' }, { href: '/tax-rules', label: 'Regras tributárias', icon: '％' },
+    { href: '/fiscal', label: 'Documentos fiscais', icon: '📄' }, { href: '/tax-rules', label: 'Correlação de tributos', icon: '％' },
+    { href: '/tax-rules?tab=icms', label: 'Alíquotas e redução de ICMS', icon: '➗' }, { href: '/tax-rules?tab=pis', label: 'Percentual PIS/COFINS', icon: '🧮' },
+    { href: '/fiscal-xmls', label: 'XMLs', icon: '🧩' }, { href: '/contingency', label: 'Contingências', icon: '🚨' },
+    { href: '/reconciliation', label: 'Conciliação tributária', icon: '⚖️' }, { href: '/received-invoices', label: 'Notas recebidas', icon: '📥' },
+    { href: '/received-invoices?tab=entry', label: 'Entrada de NF-e', icon: '📝' }, { href: '/natures', label: 'Naturezas de operação', icon: '📑' },
+    { href: '/cst-map', label: 'Correlação CST ICMS x Entrada', icon: '🔁' },
   ] },
   { title: 'Configurações gerais', icon: '⚙️', items: [
     { href: '/settings', label: 'Empresa e preferências', icon: '⚙️' }, { href: '/schedule-settings', label: 'Agendamento de pedidos', icon: '⏰' },
@@ -86,7 +91,7 @@ export const flows: { title: string; hrefs: string[] }[] = [
   { title: 'Fluxo de vendas', hrefs: ['/tables', '/pdv', '/monitor', '/kds', '/production', '/delivery', '/cash'] },
   { title: 'Cardápio e estoque', hrefs: ['/products', '/categories', '/promotions', '/scale-file', '/catalog', '/inventory', '/purchasing'] },
   { title: 'Equipe', hrefs: ['/employees', '/users', '/shifts'] },
-  { title: 'Resultado financeiro', hrefs: ['/cash', '/financial', '/reports', '/fiscal'] },
+  { title: 'Resultado financeiro', hrefs: ['/cash', '/financial', '/reports', '/fiscal', '/reconciliation'] },
   { title: 'Relacionamento', hrefs: ['/customers', '/coupons', '/reservations', '/whatsapp'] },
   { title: 'Plataforma', hrefs: ['/units', '/integrations', '/audit'] },
 ];

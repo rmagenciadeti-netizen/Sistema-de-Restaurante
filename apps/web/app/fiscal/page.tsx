@@ -9,14 +9,15 @@ const statusLabel: Record<string, string> = { PENDING: 'Pendente', AUTHORIZED: '
 const statusTone: Record<string, string> = { AUTHORIZED: 'text-emerald-300', PENDING: 'text-amber-300', REJECTED: 'text-red-300', CANCELLED: 'text-slate-400' };
 
 export default function FiscalPage() {
-  const [providers, setProviders] = useState<string[] | null>(null); const [documents, setDocuments] = useState<FiscalDocument[]>([]); const [orders, setOrders] = useState<Order[]>([]);
+  const [providers, setProviders] = useState<string[] | null>(null); const [documents, setDocuments] = useState<FiscalDocument[]>([]); const [orders, setOrders] = useState<Order[]>([]); const [contingency, setContingency] = useState<{ startedAt: string; reason: string } | null>(null);
   const [form, setForm] = useState({ orderId: '', provider: '', kind: 'NFCE' }); const [cancelling, setCancelling] = useState<string | null>(null); const [reason, setReason] = useState(''); const [busy, setBusy] = useState(false);
   const [notice, setNotice] = useState<{ text: string; kind: 'error' | 'success' } | null>(null);
   const fail = (e: unknown, fallback: string) => setNotice({ text: errorMessage(e, fallback), kind: 'error' });
 
   async function load() {
     try {
-      const [p, d, o] = await Promise.all([api<{ items: string[] }>('/fiscal/providers'), api<ListResponse<FiscalDocument>>('/fiscal/documents'), api<ListResponse<Order>>('/orders?pageSize=100')]);
+      const [p, d, o, c] = await Promise.all([api<{ items: string[] }>('/fiscal/providers'), api<ListResponse<FiscalDocument>>('/fiscal/documents'), api<ListResponse<Order>>('/orders?pageSize=100'), api<{ active: { startedAt: string; reason: string } | null }>('/fiscal-registry/contingency').catch(() => ({ active: null }))]);
+      setContingency(c.active);
       setProviders(p.items); setDocuments(d.items); setOrders(o.items.filter(order => order.status === 'COMPLETED'));
       setForm(current => ({ ...current, provider: current.provider || p.items[0] || '' }));
     } catch (e) { fail(e, 'Erro ao carregar documentos fiscais'); }
@@ -38,6 +39,7 @@ export default function FiscalPage() {
 
   return <AppShell title="Documentos fiscais">
     {notice && <Notice message={notice.text} kind={notice.kind} />}
+    {contingency && <p className="mb-4 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">Contingência fiscal em andamento desde {formatDateTime(contingency.startedAt)}: {contingency.reason}. Gerencie em <a className="font-semibold underline" href="/contingency">Contingências</a>.</p>}
     <section className={`${panelClass} mb-6`}><h2 className="mb-4 text-lg font-semibold">Emitir documento</h2>
       {providers && providers.length === 0 ? <p className="rounded-lg border border-amber-500/40 bg-amber-500/10 px-4 py-3 text-sm text-amber-200">Nenhum provedor fiscal configurado; a emissão não está disponível.</p>
         : <form onSubmit={emit} className="grid gap-4 md:grid-cols-4">

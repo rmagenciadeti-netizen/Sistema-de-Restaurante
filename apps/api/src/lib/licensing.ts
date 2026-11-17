@@ -25,7 +25,7 @@ const ROUTE_MODULES: Record<string, ModuleKey> = {
   financial: 'financial', cash: 'financial', employees: 'employees', shifts: 'employees', production: 'kds', printing: 'printing',
   whatsapp: 'whatsapp', coupons: 'marketing', fiscal: 'fiscal', reports: 'reports', integrations: 'integrations', payments: 'integrations',
   releases: 'pos', scale: 'pos', couriers: 'delivery', carriers: 'inventory', 'payment-methods': 'financial', 'financial-categories': 'financial',
-  promotions: 'marketing', 'cover-events': 'tables', 'tax-rules': 'fiscal',
+  promotions: 'marketing', 'cover-events': 'tables', 'tax-rules': 'fiscal', 'fiscal-registry': 'fiscal',
 };
 
 export function moduleForPath(originalUrl: string): ModuleKey | null {

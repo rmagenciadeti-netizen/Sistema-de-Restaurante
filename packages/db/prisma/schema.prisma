@@ -61,6 +61,10 @@ model Tenant {
   coverEvents      CoverEvent[]
   passwordReleases PasswordRelease[]
   taxRules         TaxRule[]
+  operationNatures OperationNature[]
+  cstCorrelations  CstCorrelation[]
+  receivedInvoices ReceivedInvoice[]
+  fiscalContingencies FiscalContingency[]
   whatsappSession  WhatsappSession?
   whatsappConversations WhatsappConversation[]
   whatsappAutoMessages  WhatsappAutoMessage[]
@@ -103,6 +107,7 @@ model Unit {
   shifts             Shift[]
   paymentCharges     PaymentCharge[]
   fiscalDocuments    FiscalDocument[]
+  receivedInvoices   ReceivedInvoice[]
 
   @@unique([tenantId, code])
   @@index([tenantId, status])
@@ -1410,4 +1415,73 @@ model WhatsappManager {
   heartbeatAt DateTime
   pid         Int?
   host        String?
+}
+
+// Fiscal registries: they store parameters and documents received by the company; nothing is transmitted to the SEFAZ from here.
+model OperationNature {
+  id          String            @id @default(uuid())
+  tenantId    String
+  name        String
+  cfop        String
+  direction   String            @default("OUT")
+  finality    String            @default("NORMAL")
+  description String?
+  active      Boolean           @default(true)
+  createdAt   DateTime          @default(now())
+  tenant      Tenant            @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  invoices    ReceivedInvoice[]
+
+  @@unique([tenantId, name])
+}
+
+model CstCorrelation {
+  id          String   @id @default(uuid())
+  tenantId    String
+  outCst      String
+  inCst       String
+  description String?
+  active      Boolean  @default(true)
+  createdAt   DateTime @default(now())
+  tenant      Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  @@unique([tenantId, outCst])
+}
+
+model ReceivedInvoice {
+  id               String           @id @default(uuid())
+  tenantId         String
+  unitId           String?
+  accessKey        String
+  number           String
+  series           String           @default("1")
+  supplierName     String
+  supplierDocument String?
+  issuedAt         DateTime
+  totalAmount      Decimal          @db.Decimal(12, 2)
+  natureId         String?
+  status           String           @default("RECEIVED")
+  xml              String?
+  items            Json             @default("[]")
+  notes            String?
+  enteredAt        DateTime?
+  createdAt        DateTime         @default(now())
+  tenant           Tenant           @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  unit             Unit?            @relation(fields: [unitId], references: [id], onDelete: SetNull)
+  nature           OperationNature? @relation(fields: [natureId], references: [id], onDelete: SetNull)
+
+  @@unique([tenantId, accessKey])
+  @@index([tenantId, status, issuedAt])
+}
+
+model FiscalContingency {
+  id          String    @id @default(uuid())
+  tenantId    String
+  reason      String
+  startedAt   DateTime  @default(now())
+  endedAt     DateTime?
+  startedById String
+  endedById   String?
+  tenant      Tenant    @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  @@index([tenantId, endedAt])
 }
