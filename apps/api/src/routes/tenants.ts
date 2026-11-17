@@ -5,7 +5,8 @@ import { z } from 'zod';
 import bcrypt from 'bcryptjs';
 import { prisma } from '../lib/prisma';
 import { requireAuth, requireMaster } from '../middleware/auth';
-import { MODULE_CATALOG, MODULE_KEYS } from '../lib/licensing';
+import { invalidateBlockedModules } from '../lib/licensing';
+import { isFeatureLinked, moduleSetProblem } from '../lib/module-catalog';
 
 export const tenantRoutes = Router();
 tenantRoutes.use(requireAuth, requireMaster);
@@ -77,7 +78,7 @@ tenantRoutes.post('/', async (req, res, next) => {
           billingPeriod: price?.period ?? null, contractedPrice: price?.amount ?? null,
           activationFee: commercialPlan.activationFee, setupFee: commercialPlan.setupFee, discountPercent: 0,
         } });
-        await tx.tenantModule.createMany({ data: commercialPlan.modules.map(item => ({ tenantId: tenant.id, moduleKey: item.moduleKey })), skipDuplicates: true });
+        await tx.tenantModule.createMany({ data: commercialPlan.modules.filter(item => !item.optional).map(item => ({ tenantId: tenant.id, moduleKey: item.moduleKey })), skipDuplicates: true });
       }
       const completedSteps = ['REQUEST_RECEIVED', 'TENANT_CREATED', 'COMPANY_CREATED', 'OWNER_CREATED', 'ADMIN_CREATED', 'PERMISSIONS_READY', ...(commercialPlan ? ['LICENSE_CREATED', 'MODULES_PREPARED'] : []), 'ENVIRONMENT_READY'];
       const provisioning = await tx.tenantProvisioning.create({ data: {
@@ -149,9 +150,17 @@ const licenseSchema = z.object({
   maxUnits: z.number().int().min(1).nullable().optional(),
   maxUsers: z.number().int().min(1).nullable().optional(),
   notes: z.string().max(500).nullable().optional(),
-  modules: z.array(z.enum(MODULE_KEYS)).max(MODULE_KEYS.length),
+  graceDays: z.number().int().min(0).max(120).optional(),
+  reason: z.string().max(300).optional(),
+  modules: z.array(z.string().min(1).max(80)).max(100),
 });
-tenantRoutes.get('/modules/catalog', (_req, res) => res.json({ items: MODULE_CATALOG }));
+// Modules that can be granted to a contract: catalogued, not archived and linked to a real feature.
+tenantRoutes.get('/modules/catalog', async (_req, res, next) => {
+  try {
+    const items = await prisma.saaSModule.findMany({ where: { status: { not: 'ARCHIVED' } }, orderBy: [{ category: 'asc' }, { name: 'asc' }] });
+    return res.json({ items: items.filter(item => isFeatureLinked(item.key)).map(item => ({ key: item.key, name: item.name, category: item.category, dependsOn: item.dependsOn, blocked: item.blocked })) });
+  } catch (error) { return next(error); }
+});
 tenantRoutes.get('/:id/license', async (req, res, next) => {
   try {
     const tenant = await prisma.tenant.findUnique({ where: { id: req.params.id }, select: { id: true, name: true, status: true, license: true, modules: { select: { moduleKey: true } }, _count: { select: { units: true, users: true } } } });
@@ -165,7 +174,7 @@ tenantRoutes.put('/:id/license', async (req, res, next) => {
     if (!parsed.success) return res.status(400).json({ message: 'Validation failed', errors: parsed.error.flatten() });
     const tenant = await prisma.tenant.findUnique({ where: { id: req.params.id }, select: { id: true, license: true, modules: { select: { moduleKey: true } } } });
     if (!tenant) return res.status(404).json({ message: 'Tenant not found' });
-    const { modules, validUntil, planId, ...fields } = parsed.data;
+    const { modules, validUntil, planId, reason, ...fields } = parsed.data;
     const plan = planId ? await prisma.saaSPlan.findFirst({ where: { id: planId, active: true }, include: { modules: true, prices: true } }) : null;
     if (planId && !plan) return res.status(400).json({ message: 'Plano comercial inexistente ou inativo' });
     const billingPeriod = fields.billingPeriod ?? tenant.license?.billingPeriod ?? (plan?.prices.find(item => item.period === BillingPeriod.MONTHLY)?.period ?? plan?.prices[0]?.period ?? null);
@@ -191,13 +200,23 @@ tenantRoutes.put('/:id/license', async (req, res, next) => {
         : fields.discountPercent === null ? null : new Prisma.Decimal(fields.discountPercent),
     };
     const wanted = [...new Set(modules)];
+    const problem = await moduleSetProblem(wanted);
+    if (problem) return res.status(400).json({ message: problem });
+    const includedByPlan = new Set(plan?.modules.filter(item => !item.optional).map(item => item.moduleKey) ?? []);
+    const previousPlanId = tenant.license?.planId ?? null;
     const result = await prisma.$transaction(async tx => {
       const license = await tx.tenantLicense.upsert({ where: { tenantId: tenant.id }, create: { tenantId: tenant.id, ...data }, update: data });
       await tx.tenantModule.deleteMany({ where: { tenantId: tenant.id, moduleKey: { notIn: wanted } } });
-      await tx.tenantModule.createMany({ data: wanted.map(moduleKey => ({ tenantId: tenant.id, moduleKey })), skipDuplicates: true });
-      await tx.auditLog.create({ data: { actorUserId: req.auth!.userId, tenantId: tenant.id, action: 'LICENSE_UPDATED', entityType: 'TenantLicense', entityId: license.id, metadata: { before: { status: tenant.license?.status ?? null, modules: tenant.modules.map(item => item.moduleKey) }, after: { status: license.status, validUntil: license.validUntil?.toISOString() ?? null, modules: wanted } } } });
+      await tx.tenantModule.createMany({ data: wanted.map(moduleKey => ({ tenantId: tenant.id, moduleKey, source: plan && !includedByPlan.has(moduleKey) ? 'ADDON' : 'PLAN' })), skipDuplicates: true });
+      if (planId !== undefined && previousPlanId !== (plan?.id ?? null)) {
+        const previousPlan = previousPlanId ? await tx.saaSPlan.findUnique({ where: { id: previousPlanId }, select: { name: true } }) : null;
+        const direction = Number(license.contractedPrice ?? 0) === Number(tenant.license?.contractedPrice ?? 0) ? 'CHANGE' : Number(license.contractedPrice ?? 0) > Number(tenant.license?.contractedPrice ?? 0) ? 'UPGRADE' : 'DOWNGRADE';
+        await tx.auditLog.create({ data: { actorUserId: req.auth!.userId, tenantId: tenant.id, action: 'SUBSCRIPTION_PLAN_CHANGED', entityType: 'TenantLicense', entityId: license.id, metadata: { direction, from: { planId: previousPlanId, name: previousPlan?.name ?? null, price: tenant.license?.contractedPrice?.toString() ?? null }, to: { planId: plan?.id ?? null, name: plan?.name ?? null, price: license.contractedPrice?.toString() ?? null }, reason: reason ?? null } } });
+      }
+      await tx.auditLog.create({ data: { actorUserId: req.auth!.userId, tenantId: tenant.id, action: 'LICENSE_UPDATED', entityType: 'TenantLicense', entityId: license.id, metadata: { reason: reason ?? null, before: { status: tenant.license?.status ?? null, modules: tenant.modules.map(item => item.moduleKey) }, after: { status: license.status, validUntil: license.validUntil?.toISOString() ?? null, modules: wanted } } } });
       return license;
     });
+    invalidateBlockedModules();
     return res.json({ license: result, modules: wanted });
   } catch (error) { return next(error); }
 });

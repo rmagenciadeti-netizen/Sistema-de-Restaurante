@@ -2,7 +2,7 @@ import type { Request, Response, NextFunction } from 'express';
 import jwt from 'jsonwebtoken';
 import { UserRole, UserStatus } from '@prisma/client';
 import { prisma } from '../lib/prisma';
-import { licenseDenial } from '../lib/licensing';
+import { effectiveModules, globallyBlockedModules, licenseDenial } from '../lib/licensing';
 
 export type AuthContext = { userId: string; tenantId: string | null; unitId: string | null; role: UserRole; authVersion?: number; mfaAuthenticated?: boolean };
 export type ScopedTokenPurpose = 'master_mfa_setup' | 'master_mfa_login';
@@ -48,7 +48,7 @@ export async function requireAuth(req: Request, res: Response, next: NextFunctio
     return next(error);
   }
   try {
-    const user = await prisma.user.findUnique({ where: { id: claims.userId }, select: { id: true, tenantId: true, unitId: true, role: true, status: true, authVersion: true, mustChangePassword: true, mfaEnabled: true, tenant: { select: { status: true, license: { select: { status: true, validUntil: true } }, modules: { select: { moduleKey: true } } } } } });
+    const user = await prisma.user.findUnique({ where: { id: claims.userId }, select: { id: true, tenantId: true, unitId: true, role: true, status: true, authVersion: true, mustChangePassword: true, mfaEnabled: true, tenant: { select: { status: true, license: { select: { status: true, validUntil: true, graceDays: true } }, modules: { select: { moduleKey: true, blocked: true, startsAt: true, endsAt: true } } } } } });
     if (!user || user.status !== UserStatus.ACTIVE) return res.status(401).json({ message: 'Invalid or inactive account' });
     if ((claims.authVersion ?? 0) !== user.authVersion) return res.status(401).json({ message: 'Session expired; sign in again' });
     if (user.role === UserRole.MASTER_ADMIN && !devMfaDisabled()) {
@@ -57,7 +57,8 @@ export async function requireAuth(req: Request, res: Response, next: NextFunctio
     }
     if (user.role !== UserRole.MASTER_ADMIN && (!user.tenantId || !user.tenant || !['ACTIVE', 'TRIAL'].includes(user.tenant.status))) return res.status(403).json({ message: 'Tenant is not active' });
     if (user.role !== UserRole.MASTER_ADMIN && user.tenant) {
-      const denial = licenseDenial(user.tenant.license, user.tenant.modules.map(item => item.moduleKey), req.originalUrl);
+      const blocked = await globallyBlockedModules(async () => (await prisma.saaSModule.findMany({ where: { blocked: true }, select: { key: true } })).map(item => item.key));
+      const denial = licenseDenial(user.tenant.license, effectiveModules(user.tenant.modules, blocked), req.originalUrl);
       if (denial) return res.status(403).json({ message: denial });
     }
     if (user.mustChangePassword && req.originalUrl.split('?')[0] !== '/api/v1/auth/change-password') return res.status(403).json({ message: 'Password change required' });

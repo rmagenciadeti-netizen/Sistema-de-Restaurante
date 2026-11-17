@@ -77,6 +77,8 @@ model Tenant {
   whatsappAutoMessages  WhatsappAutoMessage[]
   whatsappKnowledge     WhatsappKnowledge[]
   whatsappUnanswered    WhatsappUnanswered[]
+  saasInvoices          SaaSInvoice[]
+  couponRedemptions     SaaSCouponRedemption[]
 
   @@index([status, createdAt])
 }
@@ -1279,20 +1281,32 @@ model SaaSPlan {
   maxUsers      Int?
   activationFee Decimal         @default(0) @db.Decimal(12, 2)
   setupFee      Decimal         @default(0) @db.Decimal(12, 2)
+  status        CatalogStatus   @default(ACTIVE)
+  headline      String?
+  benefits      String[]        @default([])
+  highlight     String?
+  displayOrder  Int             @default(0)
+  originalPrice Decimal?        @db.Decimal(12, 2)
+  promoPrice    Decimal?        @db.Decimal(12, 2)
+  conditions    String?
   createdAt     DateTime        @default(now())
   updatedAt     DateTime        @updatedAt
   modules       PlanModule[]
   prices        PlanPrice[]
   licenses      TenantLicense[]
+  invoices      SaaSInvoice[]
 
   @@index([active, name])
+  @@index([status, displayOrder])
 }
 
 model PlanModule {
-  id        String   @id @default(uuid())
-  planId    String
-  moduleKey String
-  plan      SaaSPlan @relation(fields: [planId], references: [id], onDelete: Cascade)
+  id            String   @id @default(uuid())
+  planId        String
+  moduleKey     String
+  optional      Boolean  @default(false)
+  priceOverride Decimal? @db.Decimal(12, 2)
+  plan          SaaSPlan @relation(fields: [planId], references: [id], onDelete: Cascade)
 
   @@unique([planId, moduleKey])
 }
@@ -1321,6 +1335,7 @@ model TenantLicense {
   activationFee   Decimal?       @db.Decimal(12, 2)
   setupFee        Decimal?       @db.Decimal(12, 2)
   discountPercent Decimal?       @db.Decimal(5, 2)
+  graceDays       Int            @default(0)
   createdAt       DateTime       @default(now())
   updatedAt       DateTime       @updatedAt
   tenant          Tenant         @relation(fields: [tenantId], references: [id], onDelete: Cascade)
@@ -1328,11 +1343,19 @@ model TenantLicense {
 }
 
 model TenantModule {
-  id        String   @id @default(uuid())
-  tenantId  String
-  moduleKey String
-  createdAt DateTime @default(now())
-  tenant    Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  id              String    @id @default(uuid())
+  tenantId        String
+  moduleKey       String
+  source          String    @default("PLAN")
+  unitPrice       Decimal?  @db.Decimal(12, 2)
+  discountPercent Decimal?  @db.Decimal(5, 2)
+  free            Boolean   @default(false)
+  blocked         Boolean   @default(false)
+  startsAt        DateTime?
+  endsAt          DateTime?
+  notes           String?
+  createdAt       DateTime  @default(now())
+  tenant          Tenant    @relation(fields: [tenantId], references: [id], onDelete: Cascade)
 
   @@unique([tenantId, moduleKey])
 }
@@ -1754,4 +1777,164 @@ model StoreImage {
   tenant      Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
 
   @@id([tenantId, kind])
+}
+
+enum CatalogStatus {
+  DRAFT
+  ACTIVE
+  INACTIVE
+  ARCHIVED
+}
+
+enum ModuleBilling {
+  MONTHLY
+  ANNUAL
+  ONE_TIME
+  FREE
+}
+
+enum CampaignAudience {
+  NEW
+  EXISTING
+  BOTH
+}
+
+enum CampaignStatus {
+  DRAFT
+  ACTIVE
+  CANCELLED
+}
+
+enum SaaSInvoiceStatus {
+  OPEN
+  PAID
+  CANCELLED
+}
+
+// Commercial module catalog. `key` must match a technical feature registered in apps/api/src/lib/licensing.ts to be sellable.
+model SaaSModule {
+  id            String        @id @default(uuid())
+  key           String        @unique
+  name          String
+  description   String?
+  category      String        @default("Geral")
+  icon          String?
+  status        CatalogStatus @default(ACTIVE)
+  blocked       Boolean       @default(false)
+  billing       ModuleBilling @default(MONTHLY)
+  monthlyPrice  Decimal       @default(0) @db.Decimal(12, 2)
+  annualPrice   Decimal       @default(0) @db.Decimal(12, 2)
+  oneTimePrice  Decimal       @default(0) @db.Decimal(12, 2)
+  promoPrice    Decimal?      @db.Decimal(12, 2)
+  promoStartsAt DateTime?
+  promoEndsAt   DateTime?
+  standalone    Boolean       @default(true)
+  dependsOn     String[]      @default([])
+  createdAt     DateTime      @default(now())
+  updatedAt     DateTime      @updatedAt
+
+  @@index([status, category])
+}
+
+model SaaSCampaign {
+  id             String                 @id @default(uuid())
+  name           String
+  description    String?
+  discountType   DiscountType           @default(PERCENT)
+  discountValue  Decimal                @default(0) @db.Decimal(12, 2)
+  planIds        String[]               @default([])
+  moduleKeys     String[]               @default([])
+  startsAt       DateTime
+  endsAt         DateTime
+  maxUses        Int?
+  perTenantLimit Int?
+  audience       CampaignAudience       @default(BOTH)
+  cycles         Int                    @default(1)
+  conditions     String?
+  status         CampaignStatus         @default(DRAFT)
+  createdAt      DateTime               @default(now())
+  updatedAt      DateTime               @updatedAt
+  redemptions    SaaSCouponRedemption[]
+  invoices       SaaSInvoice[]
+
+  @@index([status, startsAt, endsAt])
+}
+
+model SaaSCoupon {
+  id             String                 @id @default(uuid())
+  code           String                 @unique
+  name           String
+  description    String?
+  discountType   DiscountType           @default(PERCENT)
+  discountValue  Decimal                @default(0) @db.Decimal(12, 2)
+  planIds        String[]               @default([])
+  moduleKeys     String[]               @default([])
+  startsAt       DateTime?
+  validUntil     DateTime?
+  maxUses        Int?
+  perTenantLimit Int?
+  audience       CampaignAudience       @default(BOTH)
+  cycles         Int                    @default(1)
+  minAmount      Decimal?               @db.Decimal(12, 2)
+  status         CatalogStatus          @default(ACTIVE)
+  createdAt      DateTime               @default(now())
+  updatedAt      DateTime               @updatedAt
+  redemptions    SaaSCouponRedemption[]
+  invoices       SaaSInvoice[]
+}
+
+model SaaSCouponRedemption {
+  id          String        @id @default(uuid())
+  couponId    String?
+  campaignId  String?
+  tenantId    String
+  invoiceId   String
+  amount      Decimal       @db.Decimal(12, 2)
+  actorUserId String?
+  createdAt   DateTime      @default(now())
+  coupon      SaaSCoupon?   @relation(fields: [couponId], references: [id], onDelete: Restrict)
+  campaign    SaaSCampaign? @relation(fields: [campaignId], references: [id], onDelete: Restrict)
+  tenant      Tenant        @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  invoice     SaaSInvoice   @relation(fields: [invoiceId], references: [id], onDelete: Cascade)
+
+  @@index([couponId, tenantId])
+  @@index([campaignId, tenantId])
+  @@index([invoiceId])
+}
+
+// Subscription charge. Payment is only ever marked by an administrator (manual reconciliation) or a validated provider webhook.
+model SaaSInvoice {
+  id               String                 @id @default(uuid())
+  seq              Int                    @unique @default(autoincrement())
+  tenantId         String
+  planId           String?
+  reference        String
+  status           SaaSInvoiceStatus      @default(OPEN)
+  period           BillingPeriod?
+  items            Json                   @default("[]")
+  subtotal         Decimal                @db.Decimal(12, 2)
+  discount         Decimal                @default(0) @db.Decimal(12, 2)
+  total            Decimal                @db.Decimal(12, 2)
+  dueDate          DateTime
+  paidAt           DateTime?
+  paymentMethod    String?
+  paymentReference String?
+  couponId         String?
+  campaignId       String?
+  notes            String?
+  createdBy        String?
+  paidBy           String?
+  cancelledAt      DateTime?
+  cancelReason     String?
+  createdAt        DateTime               @default(now())
+  updatedAt        DateTime               @updatedAt
+  tenant           Tenant                 @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  plan             SaaSPlan?              @relation(fields: [planId], references: [id], onDelete: SetNull)
+  coupon           SaaSCoupon?            @relation(fields: [couponId], references: [id], onDelete: SetNull)
+  campaign         SaaSCampaign?          @relation(fields: [campaignId], references: [id], onDelete: SetNull)
+  redemptions      SaaSCouponRedemption[]
+
+  @@index([tenantId, status, dueDate])
+  @@index([status, dueDate])
+  @@index([paidAt])
 }
