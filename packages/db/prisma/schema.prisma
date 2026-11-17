@@ -8,79 +8,100 @@ datasource db {
 }
 
 model Tenant {
-  id          String       @id @default(uuid())
-  name        String
-  slug        String       @unique
-  status      TenantStatus @default(TRIAL)
-  plan        PlanType     @default(BASIC)
-  country     String       @default("BR")
-  createdAt   DateTime     @default(now())
-  updatedAt   DateTime     @updatedAt
-  units       Unit[]
-  users       User[]
-  employees   Employee[]
-  categories  ProductCategory[]
-  sectors     ProductionSector[]
-  printers    Printer[]
-  products    Product[]
-  orders      Order[]
-  auditLogs   AuditLog[]
-  ingredients Ingredient[]
-  stockMovements StockMovement[]
-  recipes     Recipe[]
-  cashSessions CashSession[]
-  payments    Payment[]
-  deliveryJobs DeliveryJob[]
+  id               String             @id @default(uuid())
+  name             String
+  slug             String             @unique
+  status           TenantStatus       @default(TRIAL)
+  plan             PlanType           @default(BASIC)
+  country          String             @default("BR")
+  createdAt        DateTime           @default(now())
+  updatedAt        DateTime           @updatedAt
+  units            Unit[]
+  users            User[]
+  employees        Employee[]
+  categories       ProductCategory[]
+  sectors          ProductionSector[]
+  printers         Printer[]
+  products         Product[]
+  orders           Order[]
+  auditLogs        AuditLog[]
+  ingredients      Ingredient[]
+  stockMovements   StockMovement[]
+  recipes          Recipe[]
+  cashSessions     CashSession[]
+  payments         Payment[]
+  deliveryJobs     DeliveryJob[]
   whatsappMessages WhatsappMessage[]
   financialEntries FinancialEntry[]
+  customers        Customer[]
+  suppliers        Supplier[]
+  purchaseOrders   PurchaseOrder[]
+  tables           RestaurantTable[]
+  printJobs        PrintJob[]
+  printAgents      PrintAgent[]
+  coupons          Coupon[]
+  reservations     Reservation[]
+  deliveryZones    DeliveryZone[]
+  modifierGroups   ModifierGroup[]
+
   @@index([status, createdAt])
 }
 
 model Unit {
-  id        String   @id @default(uuid())
-  tenantId  String
-  name      String
-  code      String?
-  address   String?
-  status    String   @default("ACTIVE")
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
-  tenant    Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
-  users     User[]
-  employees Employee[]
-  sectors   ProductionSector[]
-  printers  Printer[]
-  products  Product[]
-  orders    Order[]
-  ingredients Ingredient[]
-  stockMovements StockMovement[]
-  cashSessions CashSession[]
-  payments Payment[]
-  deliveryJobs DeliveryJob[]
-  financialEntries FinancialEntry[]
+  id                String             @id @default(uuid())
+  tenantId          String
+  name              String
+  code              String?
+  address           String?
+  status            String             @default("ACTIVE")
+  createdAt         DateTime           @default(now())
+  updatedAt         DateTime           @updatedAt
+  tenant            Tenant             @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  users             User[]
+  employees         Employee[]
+  sectors           ProductionSector[]
+  printers          Printer[]
+  products          Product[]
+  orders            Order[]
+  ingredients       Ingredient[]
+  stockMovements    StockMovement[]
+  cashSessions      CashSession[]
+  payments          Payment[]
+  deliveryJobs      DeliveryJob[]
+  financialEntries  FinancialEntry[]
+  serviceFeePercent Decimal            @default(0) @db.Decimal(5, 2)
+  tables            RestaurantTable[]
+  printJobs         PrintJob[]
+  printAgents       PrintAgent[]
+  purchaseOrders    PurchaseOrder[]
+  reservations      Reservation[]
+  deliveryZones     DeliveryZone[]
+
   @@unique([tenantId, code])
   @@index([tenantId, status])
 }
 
 model User {
-  id           String     @id @default(uuid())
-  tenantId     String?
-  unitId       String?
-  name         String
-  email        String     @unique
-  passwordHash String
-  role         UserRole   @default(ADMIN)
-  status       UserStatus @default(ACTIVE)
-  createdAt    DateTime   @default(now())
-  updatedAt    DateTime   @updatedAt
-  tenant       Tenant?    @relation(fields: [tenantId], references: [id], onDelete: Cascade)
-  unit         Unit?      @relation(fields: [unitId], references: [id], onDelete: SetNull)
-  auditLogs    AuditLog[]
+  id            String     @id @default(uuid())
+  tenantId      String?
+  unitId        String?
+  name          String
+  email         String     @unique
+  passwordHash  String
+  role          UserRole   @default(ADMIN)
+  status        UserStatus @default(ACTIVE)
+  createdAt     DateTime   @default(now())
+  updatedAt     DateTime   @updatedAt
+  tenant        Tenant?    @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  unit          Unit?      @relation(fields: [unitId], references: [id], onDelete: SetNull)
+  auditLogs     AuditLog[]
+  createdOrders Order[]    @relation("OrderCreator")
+
   @@index([tenantId, unitId, status])
 }
 
 model Employee {
-  id            String   @id @default(uuid())
+  id            String    @id @default(uuid())
   tenantId      String
   unitId        String?
   fullName      String
@@ -88,12 +109,13 @@ model Employee {
   phone         String?
   email         String?
   position      String?
-  status        String   @default("ACTIVE")
+  status        String    @default("ACTIVE")
   admissionDate DateTime?
-  createdAt     DateTime @default(now())
-  updatedAt     DateTime @updatedAt
-  tenant        Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
-  unit          Unit?    @relation(fields: [unitId], references: [id], onDelete: SetNull)
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+  tenant        Tenant    @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  unit          Unit?     @relation(fields: [unitId], references: [id], onDelete: SetNull)
+
   @@index([tenantId, unitId, status])
   @@index([tenantId, fullName])
 }
@@ -105,31 +127,38 @@ model ProductCategory {
   createdAt DateTime  @default(now())
   tenant    Tenant    @relation(fields: [tenantId], references: [id], onDelete: Cascade)
   products  Product[]
+
   @@unique([tenantId, name])
 }
 
 model ProductionSector {
-  id        String    @id @default(uuid())
-  tenantId  String
-  unitId    String?
-  name      String
-  code      String?
-  color     String?
-  autoPrint Boolean   @default(false)
-  showOnKds Boolean   @default(true)
-  active    Boolean   @default(true)
-  createdAt DateTime  @default(now())
-  tenant    Tenant    @relation(fields: [tenantId], references: [id], onDelete: Cascade)
-  unit      Unit?     @relation(fields: [unitId], references: [id], onDelete: SetNull)
-  printers  Printer[]
-  products  Product[]
-  orderItems OrderItem[]
+  id              String           @id @default(uuid())
+  tenantId        String
+  unitId          String?
+  name            String
+  code            String?
+  color           String?
+  description     String?
+  sortOrder       Int              @default(0)
+  avgPrepMinutes  Int?
+  autoPrint       Boolean          @default(false)
+  showOnKds       Boolean          @default(true)
+  active          Boolean          @default(true)
+  createdAt       DateTime         @default(now())
+  tenant          Tenant           @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  unit            Unit?            @relation(fields: [unitId], references: [id], onDelete: SetNull)
+  printers        Printer[]
+  printJobs       PrintJob[]
+  products        Product[]
+  orderItems      OrderItem[]
+  modifierOptions ModifierOption[]
+
   @@unique([tenantId, unitId, name])
   @@index([tenantId, unitId, active])
 }
 
 model Printer {
-  id             String   @id @default(uuid())
+  id             String            @id @default(uuid())
   tenantId       String
   unitId         String?
   sectorId       String?
@@ -137,164 +166,248 @@ model Printer {
   connectionType String
   address        String?
   port           Int?
-  paperWidthMm   Int      @default(80)
-  active         Boolean  @default(true)
-  createdAt      DateTime @default(now())
-  tenant         Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
-  unit           Unit?    @relation(fields: [unitId], references: [id], onDelete: SetNull)
+  paperWidthMm   Int               @default(80)
+  kind           PrinterKind       @default(KITCHEN)
+  manufacturer   String?
+  model          String?
+  isPrimary      Boolean           @default(false)
+  autoCut        Boolean           @default(true)
+  cashDrawer     Boolean           @default(false)
+  active         Boolean           @default(true)
+  createdAt      DateTime          @default(now())
+  tenant         Tenant            @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  unit           Unit?             @relation(fields: [unitId], references: [id], onDelete: SetNull)
   sector         ProductionSector? @relation(fields: [sectorId], references: [id], onDelete: SetNull)
+  printJobs      PrintJob[]
+
   @@index([tenantId, unitId, active])
 }
 
 model Product {
-  id               String           @id @default(uuid())
-  tenantId         String
-  unitId           String?
-  categoryId       String?
-  sectorId         String?
-  name             String
-  code             String?
-  description      String?
-  price            Decimal          @db.Decimal(12, 2)
-  cost             Decimal?         @db.Decimal(12, 2)
-  stockMin         Decimal?         @db.Decimal(12, 3)
-  prepTimeMinutes  Int?
-  active           Boolean          @default(true)
-  createdAt        DateTime         @default(now())
-  updatedAt        DateTime         @updatedAt
-  tenant           Tenant           @relation(fields: [tenantId], references: [id], onDelete: Cascade)
-  unit             Unit?            @relation(fields: [unitId], references: [id], onDelete: SetNull)
-  category         ProductCategory? @relation(fields: [categoryId], references: [id], onDelete: SetNull)
-  sector           ProductionSector? @relation(fields: [sectorId], references: [id], onDelete: SetNull)
-  orderItems       OrderItem[]
-  recipe           Recipe?
+  id              String                 @id @default(uuid())
+  tenantId        String
+  unitId          String?
+  categoryId      String?
+  sectorId        String?
+  name            String
+  code            String?
+  description     String?
+  price           Decimal                @db.Decimal(12, 2)
+  cost            Decimal?               @db.Decimal(12, 2)
+  stockMin        Decimal?               @db.Decimal(12, 3)
+  prepTimeMinutes Int?
+  active          Boolean                @default(true)
+  createdAt       DateTime               @default(now())
+  updatedAt       DateTime               @updatedAt
+  tenant          Tenant                 @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  unit            Unit?                  @relation(fields: [unitId], references: [id], onDelete: SetNull)
+  category        ProductCategory?       @relation(fields: [categoryId], references: [id], onDelete: SetNull)
+  sector          ProductionSector?      @relation(fields: [sectorId], references: [id], onDelete: SetNull)
+  orderItems      OrderItem[]
+  recipe          Recipe?
+  isCombo         Boolean                @default(false)
+  modifierGroups  ProductModifierGroup[]
+  comboComponents ComboComponent[]       @relation("ComboParent")
+  usedInCombos    ComboComponent[]       @relation("ComboChild")
+
   @@unique([tenantId, code])
   @@index([tenantId, unitId, active])
   @@index([tenantId, name])
 }
 
 model Order {
-  id           String       @id @default(uuid())
-  tenantId     String
-  unitId       String?
-  code         String
-  channel      OrderChannel @default(POS)
-  status       OrderStatus  @default(OPEN)
-  customerName String?
-  tableLabel   String?
-  subtotal     Decimal      @db.Decimal(12, 2)
-  serviceFee   Decimal      @default(0) @db.Decimal(12, 2)
-  deliveryFee  Decimal      @default(0) @db.Decimal(12, 2)
-  discount     Decimal      @default(0) @db.Decimal(12, 2)
-  total        Decimal      @db.Decimal(12, 2)
-  createdAt    DateTime     @default(now())
-  updatedAt    DateTime     @updatedAt
-  tenant       Tenant       @relation(fields: [tenantId], references: [id], onDelete: Cascade)
-  unit         Unit?        @relation(fields: [unitId], references: [id], onDelete: SetNull)
-  items        OrderItem[]
-  payments     Payment[]
-  deliveryJob  DeliveryJob?
+  id               String            @id @default(uuid())
+  tenantId         String
+  unitId           String?
+  code             String
+  channel          OrderChannel      @default(POS)
+  status           OrderStatus       @default(OPEN)
+  customerName     String?
+  tableLabel       String?
+  customerId       String?
+  tableId          String?
+  couponId         String?
+  deliveryZoneId   String?
+  subtotal         Decimal           @db.Decimal(12, 2)
+  serviceFee       Decimal           @default(0) @db.Decimal(12, 2)
+  deliveryFee      Decimal           @default(0) @db.Decimal(12, 2)
+  discount         Decimal           @default(0) @db.Decimal(12, 2)
+  total            Decimal           @db.Decimal(12, 2)
+  createdAt        DateTime          @default(now())
+  updatedAt        DateTime          @updatedAt
+  tenant           Tenant            @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  unit             Unit?             @relation(fields: [unitId], references: [id], onDelete: SetNull)
+  items            OrderItem[]
+  payments         Payment[]
+  deliveryJob      DeliveryJob?
   whatsappMessages WhatsappMessage[]
+  customer         Customer?         @relation(fields: [customerId], references: [id], onDelete: SetNull)
+  table            RestaurantTable?  @relation(fields: [tableId], references: [id], onDelete: SetNull)
+  coupon           Coupon?           @relation(fields: [couponId], references: [id], onDelete: SetNull)
+  deliveryZone     DeliveryZone?     @relation(fields: [deliveryZoneId], references: [id], onDelete: SetNull)
+  printJobs        PrintJob[]
+  createdByUserId  String?
+  createdBy        User?             @relation("OrderCreator", fields: [createdByUserId], references: [id], onDelete: SetNull)
+
   @@unique([tenantId, code])
   @@index([tenantId, unitId, status, createdAt])
 }
 
 model OrderItem {
-  id        String           @id @default(uuid())
-  orderId   String
-  productId String
-  sectorId  String?
-  quantity  Int
-  unitPrice Decimal          @db.Decimal(12, 2)
-  total     Decimal          @db.Decimal(12, 2)
-  notes     String?
-  status    OrderItemStatus  @default(PENDING)
-  createdAt DateTime         @default(now())
-  updatedAt DateTime         @updatedAt
-  order     Order            @relation(fields: [orderId], references: [id], onDelete: Cascade)
-  product   Product          @relation(fields: [productId], references: [id], onDelete: Restrict)
-  sector    ProductionSector? @relation(fields: [sectorId], references: [id], onDelete: SetNull)
+  id           String              @id @default(uuid())
+  orderId      String
+  productId    String
+  sectorId     String?
+  quantity     Int
+  unitPrice    Decimal             @db.Decimal(12, 2)
+  total        Decimal             @db.Decimal(12, 2)
+  notes        String?
+  status       OrderItemStatus     @default(PENDING)
+  createdAt    DateTime            @default(now())
+  updatedAt    DateTime            @updatedAt
+  order        Order               @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  product      Product             @relation(fields: [productId], references: [id], onDelete: Restrict)
+  sector       ProductionSector?   @relation(fields: [sectorId], references: [id], onDelete: SetNull)
+  parentItemId String?
+  parentItem   OrderItem?          @relation("ComboChildren", fields: [parentItemId], references: [id], onDelete: Cascade)
+  children     OrderItem[]         @relation("ComboChildren")
+  modifiers    OrderItemModifier[]
+
   @@index([orderId, status])
   @@index([sectorId, status, createdAt])
 }
 
 model Ingredient {
-  id          String   @id @default(uuid())
-  tenantId    String
-  unitId      String?
-  name        String
+  id            String             @id @default(uuid())
+  tenantId      String
+  unitId        String?
+  name          String
   unitOfMeasure String
-  currentStock Decimal  @default(0) @db.Decimal(14, 3)
-  minimumStock Decimal? @db.Decimal(14, 3)
-  averageCost Decimal   @default(0) @db.Decimal(12, 4)
-  active      Boolean  @default(true)
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
-  tenant      Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
-  unit        Unit?    @relation(fields: [unitId], references: [id], onDelete: SetNull)
-  recipeLines RecipeIngredient[]
-  movements   StockMovement[]
+  currentStock  Decimal            @default(0) @db.Decimal(14, 3)
+  minimumStock  Decimal?           @db.Decimal(14, 3)
+  averageCost   Decimal            @default(0) @db.Decimal(12, 4)
+  active        Boolean            @default(true)
+  createdAt     DateTime           @default(now())
+  updatedAt     DateTime           @updatedAt
+  tenant        Tenant             @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  unit          Unit?              @relation(fields: [unitId], references: [id], onDelete: SetNull)
+  recipeLines   RecipeIngredient[]
+  movements     StockMovement[]
+  purchaseItems PurchaseItem[]
+
   @@index([tenantId, unitId, active])
   @@index([tenantId, name])
 }
 
+model Supplier {
+  id             String          @id @default(uuid())
+  tenantId       String
+  name           String
+  document       String?
+  phone          String?
+  email          String?
+  active         Boolean         @default(true)
+  createdAt      DateTime        @default(now())
+  tenant         Tenant          @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  purchaseOrders PurchaseOrder[]
+
+  @@unique([tenantId, name])
+}
+
+model PurchaseOrder {
+  id         String         @id @default(uuid())
+  tenantId   String
+  unitId     String?
+  supplierId String
+  code       String
+  status     PurchaseStatus @default(DRAFT)
+  total      Decimal        @db.Decimal(14, 2)
+  dueAt      DateTime?
+  notes      String?
+  receivedAt DateTime?
+  createdAt  DateTime       @default(now())
+  tenant     Tenant         @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  unit       Unit?          @relation(fields: [unitId], references: [id], onDelete: SetNull)
+  supplier   Supplier       @relation(fields: [supplierId], references: [id], onDelete: Restrict)
+  items      PurchaseItem[]
+
+  @@unique([tenantId, code])
+  @@index([tenantId, unitId, status, createdAt])
+}
+
+model PurchaseItem {
+  id           String        @id @default(uuid())
+  purchaseId   String
+  ingredientId String
+  quantity     Decimal       @db.Decimal(14, 3)
+  unitCost     Decimal       @db.Decimal(12, 4)
+  purchase     PurchaseOrder @relation(fields: [purchaseId], references: [id], onDelete: Cascade)
+  ingredient   Ingredient    @relation(fields: [ingredientId], references: [id], onDelete: Restrict)
+
+  @@index([purchaseId])
+}
+
 model Recipe {
-  id        String   @id @default(uuid())
-  tenantId  String
-  productId String   @unique
-  yield     Decimal  @default(1) @db.Decimal(12, 3)
-  notes     String?
-  updatedAt DateTime @updatedAt
-  tenant    Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
-  product   Product  @relation(fields: [productId], references: [id], onDelete: Cascade)
+  id          String             @id @default(uuid())
+  tenantId    String
+  productId   String             @unique
+  yield       Decimal            @default(1) @db.Decimal(12, 3)
+  notes       String?
+  updatedAt   DateTime           @updatedAt
+  tenant      Tenant             @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  product     Product            @relation(fields: [productId], references: [id], onDelete: Cascade)
   ingredients RecipeIngredient[]
+
   @@index([tenantId])
 }
 
 model RecipeIngredient {
-  id           String    @id @default(uuid())
+  id           String     @id @default(uuid())
   recipeId     String
   ingredientId String
-  quantity     Decimal   @db.Decimal(14, 3)
-  recipe       Recipe    @relation(fields: [recipeId], references: [id], onDelete: Cascade)
+  quantity     Decimal    @db.Decimal(14, 3)
+  recipe       Recipe     @relation(fields: [recipeId], references: [id], onDelete: Cascade)
   ingredient   Ingredient @relation(fields: [ingredientId], references: [id], onDelete: Restrict)
+
   @@unique([recipeId, ingredientId])
 }
 
 model StockMovement {
-  id           String           @id @default(uuid())
+  id           String            @id @default(uuid())
   tenantId     String
   unitId       String?
   ingredientId String
   type         StockMovementType
-  quantity     Decimal          @db.Decimal(14, 3)
-  unitCost     Decimal?         @db.Decimal(12, 4)
+  quantity     Decimal           @db.Decimal(14, 3)
+  unitCost     Decimal?          @db.Decimal(12, 4)
   reference    String?
   note         String?
   actorUserId  String?
-  createdAt    DateTime         @default(now())
-  tenant       Tenant           @relation(fields: [tenantId], references: [id], onDelete: Cascade)
-  unit         Unit?            @relation(fields: [unitId], references: [id], onDelete: SetNull)
-  ingredient   Ingredient       @relation(fields: [ingredientId], references: [id], onDelete: Restrict)
+  createdAt    DateTime          @default(now())
+  tenant       Tenant            @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  unit         Unit?             @relation(fields: [unitId], references: [id], onDelete: SetNull)
+  ingredient   Ingredient        @relation(fields: [ingredientId], references: [id], onDelete: Restrict)
+
   @@index([tenantId, unitId, createdAt])
   @@index([ingredientId, createdAt])
 }
 
 model CashSession {
-  id              String          @id @default(uuid())
-  tenantId        String
-  unitId          String?
-  openedByUserId  String
-  closedByUserId  String?
-  openingAmount   Decimal         @db.Decimal(12, 2)
-  closingAmount   Decimal?        @db.Decimal(12, 2)
-  expectedAmount  Decimal?        @db.Decimal(12, 2)
-  status          CashSessionStatus @default(OPEN)
-  openedAt        DateTime        @default(now())
-  closedAt        DateTime?
-  tenant          Tenant          @relation(fields: [tenantId], references: [id], onDelete: Cascade)
-  unit            Unit?           @relation(fields: [unitId], references: [id], onDelete: SetNull)
-  payments        Payment[]
+  id             String            @id @default(uuid())
+  tenantId       String
+  unitId         String?
+  openedByUserId String
+  closedByUserId String?
+  openingAmount  Decimal           @db.Decimal(12, 2)
+  closingAmount  Decimal?          @db.Decimal(12, 2)
+  expectedAmount Decimal?          @db.Decimal(12, 2)
+  status         CashSessionStatus @default(OPEN)
+  openedAt       DateTime          @default(now())
+  closedAt       DateTime?
+  tenant         Tenant            @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  unit           Unit?             @relation(fields: [unitId], references: [id], onDelete: SetNull)
+  payments       Payment[]
+
   @@index([tenantId, unitId, status, openedAt])
 }
 
@@ -313,65 +426,261 @@ model Payment {
   unit          Unit?         @relation(fields: [unitId], references: [id], onDelete: SetNull)
   order         Order?        @relation(fields: [orderId], references: [id], onDelete: SetNull)
   cashSession   CashSession?  @relation(fields: [cashSessionId], references: [id], onDelete: SetNull)
+
   @@index([tenantId, unitId, paidAt])
   @@index([orderId, status])
 }
 
 model DeliveryJob {
-  id             String         @id @default(uuid())
-  tenantId       String
-  unitId         String?
-  orderId        String         @unique
-  courierName    String?
-  courierPhone   String?
-  address        String?
-  status         DeliveryStatus @default(PENDING)
-  provider       String?
-  externalRef    String?
-  dispatchedAt   DateTime?
-  deliveredAt    DateTime?
-  createdAt      DateTime       @default(now())
-  updatedAt      DateTime       @updatedAt
-  tenant         Tenant         @relation(fields: [tenantId], references: [id], onDelete: Cascade)
-  unit           Unit?          @relation(fields: [unitId], references: [id], onDelete: SetNull)
-  order          Order          @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  id           String         @id @default(uuid())
+  tenantId     String
+  unitId       String?
+  orderId      String         @unique
+  courierName  String?
+  courierPhone String?
+  address      String?
+  status       DeliveryStatus @default(PENDING)
+  provider     String?
+  externalRef  String?
+  dispatchedAt DateTime?
+  deliveredAt  DateTime?
+  createdAt    DateTime       @default(now())
+  updatedAt    DateTime       @updatedAt
+  tenant       Tenant         @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  unit         Unit?          @relation(fields: [unitId], references: [id], onDelete: SetNull)
+  order        Order          @relation(fields: [orderId], references: [id], onDelete: Cascade)
+
   @@index([tenantId, unitId, status, createdAt])
 }
 
 model WhatsappMessage {
-  id          String          @id @default(uuid())
+  id          String        @id @default(uuid())
   tenantId    String
   orderId     String?
   toPhone     String
   template    String
   payload     Json?
-  status      MessageStatus   @default(QUEUED)
+  status      MessageStatus @default(QUEUED)
   providerRef String?
   error       String?
-  createdAt   DateTime        @default(now())
+  createdAt   DateTime      @default(now())
   sentAt      DateTime?
-  tenant      Tenant          @relation(fields: [tenantId], references: [id], onDelete: Cascade)
-  order       Order?          @relation(fields: [orderId], references: [id], onDelete: SetNull)
+  tenant      Tenant        @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  order       Order?        @relation(fields: [orderId], references: [id], onDelete: SetNull)
+
   @@index([tenantId, status, createdAt])
 }
 
 model FinancialEntry {
-  id          String             @id @default(uuid())
+  id          String               @id @default(uuid())
   tenantId    String
   unitId      String?
   description String
   type        FinancialEntryType
   category    String?
-  amount      Decimal            @db.Decimal(12, 2)
+  amount      Decimal              @db.Decimal(12, 2)
   dueAt       DateTime?
   settledAt   DateTime?
   status      FinancialEntryStatus @default(OPEN)
   reference   String?
-  createdAt   DateTime           @default(now())
-  tenant      Tenant             @relation(fields: [tenantId], references: [id], onDelete: Cascade)
-  unit        Unit?              @relation(fields: [unitId], references: [id], onDelete: SetNull)
+  createdAt   DateTime             @default(now())
+  tenant      Tenant               @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  unit        Unit?                @relation(fields: [unitId], references: [id], onDelete: SetNull)
+
   @@index([tenantId, unitId, status, dueAt])
   @@index([tenantId, type, settledAt])
+}
+
+model Customer {
+  id               String   @id @default(uuid())
+  tenantId         String
+  name             String
+  phone            String
+  email            String?
+  document         String?
+  address          String?
+  notes            String?
+  marketingConsent Boolean  @default(false)
+  loyaltyPoints    Int      @default(0)
+  active           Boolean  @default(true)
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+  tenant           Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  orders           Order[]
+
+  @@unique([tenantId, phone])
+  @@index([tenantId, name])
+}
+
+model RestaurantTable {
+  id           String        @id @default(uuid())
+  tenantId     String
+  unitId       String
+  label        String
+  seats        Int           @default(4)
+  qrToken      String        @unique
+  active       Boolean       @default(true)
+  createdAt    DateTime      @default(now())
+  tenant       Tenant        @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  unit         Unit          @relation(fields: [unitId], references: [id], onDelete: Cascade)
+  orders       Order[]
+  reservations Reservation[]
+
+  @@unique([tenantId, unitId, label])
+}
+
+model PrintAgent {
+  id         String    @id @default(uuid())
+  tenantId   String
+  unitId     String?
+  name       String
+  tokenHash  String    @unique
+  active     Boolean   @default(true)
+  lastSeenAt DateTime?
+  createdAt  DateTime  @default(now())
+  tenant     Tenant    @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  unit       Unit?     @relation(fields: [unitId], references: [id], onDelete: SetNull)
+
+  @@index([tenantId, active])
+}
+
+model PrintJob {
+  id        String            @id @default(uuid())
+  tenantId  String
+  unitId    String?
+  printerId String?
+  sectorId  String?
+  orderId   String?
+  kind      PrintJobKind      @default(PRODUCTION)
+  content   String
+  status    PrintJobStatus    @default(PENDING)
+  attempts  Int               @default(0)
+  error     String?
+  claimedAt DateTime?
+  printedAt DateTime?
+  createdAt DateTime          @default(now())
+  tenant    Tenant            @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  unit      Unit?             @relation(fields: [unitId], references: [id], onDelete: SetNull)
+  printer   Printer?          @relation(fields: [printerId], references: [id], onDelete: SetNull)
+  sector    ProductionSector? @relation(fields: [sectorId], references: [id], onDelete: SetNull)
+  order     Order?            @relation(fields: [orderId], references: [id], onDelete: Cascade)
+
+  @@index([tenantId, unitId, status, createdAt])
+  @@index([orderId])
+}
+
+model Coupon {
+  id         String       @id @default(uuid())
+  tenantId   String
+  code       String
+  type       DiscountType
+  value      Decimal      @db.Decimal(12, 2)
+  minOrder   Decimal?     @db.Decimal(12, 2)
+  maxUses    Int?
+  usedCount  Int          @default(0)
+  validFrom  DateTime?
+  validUntil DateTime?
+  active     Boolean      @default(true)
+  createdAt  DateTime     @default(now())
+  tenant     Tenant       @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  orders     Order[]
+
+  @@unique([tenantId, code])
+}
+
+model DeliveryZone {
+  id        String   @id @default(uuid())
+  tenantId  String
+  unitId    String?
+  name      String
+  fee       Decimal  @db.Decimal(12, 2)
+  minOrder  Decimal? @db.Decimal(12, 2)
+  active    Boolean  @default(true)
+  createdAt DateTime @default(now())
+  tenant    Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  unit      Unit?    @relation(fields: [unitId], references: [id], onDelete: SetNull)
+  orders    Order[]
+
+  @@unique([tenantId, unitId, name])
+}
+
+model Reservation {
+  id           String            @id @default(uuid())
+  tenantId     String
+  unitId       String
+  tableId      String?
+  customerName String
+  phone        String?
+  partySize    Int
+  reservedAt   DateTime
+  status       ReservationStatus @default(PENDING)
+  notes        String?
+  createdAt    DateTime          @default(now())
+  tenant       Tenant            @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  unit         Unit              @relation(fields: [unitId], references: [id], onDelete: Cascade)
+  table        RestaurantTable?  @relation(fields: [tableId], references: [id], onDelete: SetNull)
+
+  @@index([tenantId, unitId, reservedAt])
+}
+
+model ModifierGroup {
+  id        String                 @id @default(uuid())
+  tenantId  String
+  name      String
+  minSelect Int                    @default(0)
+  maxSelect Int                    @default(1)
+  active    Boolean                @default(true)
+  createdAt DateTime               @default(now())
+  tenant    Tenant                 @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  options   ModifierOption[]
+  products  ProductModifierGroup[]
+
+  @@unique([tenantId, name])
+}
+
+model ModifierOption {
+  id       String            @id @default(uuid())
+  groupId  String
+  name     String
+  price    Decimal           @default(0) @db.Decimal(12, 2)
+  sectorId String?
+  active   Boolean           @default(true)
+  group    ModifierGroup     @relation(fields: [groupId], references: [id], onDelete: Cascade)
+  sector   ProductionSector? @relation(fields: [sectorId], references: [id], onDelete: SetNull)
+
+  @@unique([groupId, name])
+}
+
+model ProductModifierGroup {
+  productId String
+  groupId   String
+  product   Product       @relation(fields: [productId], references: [id], onDelete: Cascade)
+  group     ModifierGroup @relation(fields: [groupId], references: [id], onDelete: Cascade)
+
+  @@id([productId, groupId])
+}
+
+model OrderItemModifier {
+  id          String    @id @default(uuid())
+  orderItemId String
+  optionId    String?
+  name        String
+  price       Decimal   @db.Decimal(12, 2)
+  quantity    Int       @default(1)
+  sectorId    String?
+  orderItem   OrderItem @relation(fields: [orderItemId], references: [id], onDelete: Cascade)
+
+  @@index([orderItemId])
+}
+
+model ComboComponent {
+  comboId   String
+  productId String
+  quantity  Int     @default(1)
+  combo     Product @relation("ComboParent", fields: [comboId], references: [id], onDelete: Cascade)
+  product   Product @relation("ComboChild", fields: [productId], references: [id], onDelete: Restrict)
+
+  @@id([comboId, productId])
 }
 
 model AuditLog {
@@ -385,6 +694,7 @@ model AuditLog {
   createdAt   DateTime @default(now())
   tenant      Tenant?  @relation(fields: [tenantId], references: [id], onDelete: SetNull)
   actor       User?    @relation(fields: [actorUserId], references: [id], onDelete: SetNull)
+
   @@index([tenantId, createdAt])
   @@index([actorUserId, createdAt])
 }
@@ -395,12 +705,14 @@ enum TenantStatus {
   SUSPENDED
   BLOCKED
 }
+
 enum PlanType {
   BASIC
   PRO
   PREMIUM
   ENTERPRISE
 }
+
 enum UserRole {
   MASTER_ADMIN
   ADMIN
@@ -412,11 +724,13 @@ enum UserRole {
   FINANCE
   SUPPORT
 }
+
 enum UserStatus {
   ACTIVE
   INACTIVE
   BLOCKED
 }
+
 enum OrderChannel {
   POS
   DELIVERY
@@ -424,6 +738,7 @@ enum OrderChannel {
   WHATSAPP
   TABLE
 }
+
 enum OrderStatus {
   OPEN
   PREPARING
@@ -431,12 +746,14 @@ enum OrderStatus {
   COMPLETED
   CANCELLED
 }
+
 enum OrderItemStatus {
   PENDING
   PREPARING
   READY
   CANCELLED
 }
+
 enum StockMovementType {
   PURCHASE
   ADJUSTMENT
@@ -445,10 +762,12 @@ enum StockMovementType {
   TRANSFER_IN
   TRANSFER_OUT
 }
+
 enum CashSessionStatus {
   OPEN
   CLOSED
 }
+
 enum PaymentMethod {
   CASH
   PIX
@@ -457,11 +776,13 @@ enum PaymentMethod {
   VOUCHER
   OTHER
 }
+
 enum PaymentStatus {
   CONFIRMED
   REFUNDED
   CANCELLED
 }
+
 enum DeliveryStatus {
   PENDING
   ASSIGNED
@@ -469,17 +790,59 @@ enum DeliveryStatus {
   DELIVERED
   CANCELLED
 }
+
 enum MessageStatus {
   QUEUED
   SENT
   FAILED
 }
+
 enum FinancialEntryType {
   INCOME
   EXPENSE
 }
+
 enum FinancialEntryStatus {
   OPEN
   PAID
   CANCELLED
+}
+
+enum PrinterKind {
+  KITCHEN
+  RECEIPT
+  LABEL
+}
+
+enum PrintJobKind {
+  PRODUCTION
+  RECEIPT
+  TEST
+}
+
+enum PrintJobStatus {
+  PENDING
+  PRINTING
+  PRINTED
+  FAILED
+  CANCELLED
+}
+
+enum PurchaseStatus {
+  DRAFT
+  RECEIVED
+  CANCELLED
+}
+
+enum DiscountType {
+  PERCENT
+  FIXED
+}
+
+enum ReservationStatus {
+  PENDING
+  CONFIRMED
+  SEATED
+  CANCELLED
+  NO_SHOW
 }

@@ -2,9 +2,10 @@ import { Router } from 'express';
 import { z } from 'zod';
 import { prisma } from '../lib/prisma';
 import { requireAuth, requireTenant } from '../middleware/auth';
+import { ALL_TENANT_ROLES, MANAGEMENT_ROLES, allowRead } from '../lib/permissions';
 
 export const unitRoutes = Router();
-unitRoutes.use(requireAuth, requireTenant);
+unitRoutes.use(requireAuth, requireTenant, allowRead(ALL_TENANT_ROLES, MANAGEMENT_ROLES));
 const schema = z.object({ name: z.string().min(2).max(100), code: z.string().max(30).optional(), address: z.string().max(500).optional() });
 unitRoutes.get('/', async (req, res, next) => {
   try { const items = await prisma.unit.findMany({ where: { tenantId: req.auth!.tenantId!, ...(req.auth!.unitId ? { id: req.auth!.unitId } : {}) }, orderBy: { name: 'asc' } }); return res.json({ items, total: items.length }); }

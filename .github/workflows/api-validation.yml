@@ -38,7 +38,11 @@ jobs:
       - run: npm run db:generate
       - run: npm run db:deploy
       - run: npm exec --workspace packages/db prisma -- migrate status
+      - run: npm exec --workspace packages/db prisma -- migrate diff --from-url "$DATABASE_URL" --to-schema-datamodel prisma/schema.prisma --exit-code
       - run: npm run build --workspace apps/api
       - run: npm run test --workspace apps/api
+        env:
+          RUN_DB_TESTS: '1'
+      - run: npm run test --workspace apps/print-agent
       - run: npm run lint --workspace apps/web
       - run: npm run build --workspace apps/web

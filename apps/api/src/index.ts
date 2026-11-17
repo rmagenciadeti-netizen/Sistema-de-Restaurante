@@ -17,6 +17,15 @@ import { deliveryRoutes } from './routes/delivery';
 import { whatsappRoutes } from './routes/whatsapp';
 import { financialRoutes } from './routes/financial';
 import { reportsRoutes } from './routes/reports';
+import { printingRoutes } from './routes/printing';
+import { printAgentRoutes } from './routes/print-agent';
+import { tableRoutes } from './routes/tables';
+import { publicRoutes } from './routes/public';
+import { customerRoutes } from './routes/customers';
+import { purchasingRoutes } from './routes/purchasing';
+import { couponRoutes } from './routes/coupons';
+import { reservationRoutes } from './routes/reservations';
+import { catalogRoutes } from './routes/catalog';
 
 export const app = express();
 app.disable('x-powered-by');
@@ -32,7 +41,12 @@ export function parseAllowedOrigins(config: string | undefined): string[] {
 }
 const allowedOrigins = parseAllowedOrigins(process.env.CORS_ORIGIN);
 app.use(cors({ origin: (origin, callback) => { if (!origin || allowedOrigins.includes(origin)) return callback(null, true); return callback(new OriginNotAllowedError()); } }));
-app.use('/api/v1', rateLimit({ windowMs: 15 * 60 * 1000, limit: 300, standardHeaders: 'draft-7', legacyHeaders: false, message: { message: 'Too many requests. Try again later.' } }));
+const limiterMessage = { message: 'Too many requests. Try again later.' };
+const printAgentPaths = '/print-agent';
+// The print agent polls continuously from the restaurant network, so it has its own budget instead of the shared API one.
+app.use('/api/v1', rateLimit({ windowMs: 15 * 60 * 1000, limit: 300, standardHeaders: 'draft-7', legacyHeaders: false, message: limiterMessage, skip: req => req.path.startsWith(printAgentPaths) || req.path.startsWith('/public') }));
+app.use(`/api/v1${printAgentPaths}`, rateLimit({ windowMs: 15 * 60 * 1000, limit: 1500, standardHeaders: 'draft-7', legacyHeaders: false, message: limiterMessage }));
+app.use('/api/v1/public', rateLimit({ windowMs: 15 * 60 * 1000, limit: 100, standardHeaders: 'draft-7', legacyHeaders: false, message: limiterMessage }));
 app.use(express.json({ limit: '1mb' }));
 app.get('/api/v1/health', (_req, res) => res.json({ status: 'ok', service: 'rm-restaurant-api', version: '1.0.0' }));
 app.use('/api/v1/auth', authRoutes);
@@ -49,6 +63,15 @@ app.use('/api/v1/delivery', deliveryRoutes);
 app.use('/api/v1/whatsapp', whatsappRoutes);
 app.use('/api/v1/financial', financialRoutes);
 app.use('/api/v1/reports', reportsRoutes);
+app.use('/api/v1/printing', printingRoutes);
+app.use('/api/v1/print-agent', printAgentRoutes);
+app.use('/api/v1/tables', tableRoutes);
+app.use('/api/v1/public', publicRoutes);
+app.use('/api/v1/customers', customerRoutes);
+app.use('/api/v1/purchasing', purchasingRoutes);
+app.use('/api/v1/coupons', couponRoutes);
+app.use('/api/v1/reservations', reservationRoutes);
+app.use('/api/v1/catalog', catalogRoutes);
 app.use((_req, res) => res.status(404).json({ message: 'Not found' }));
 app.use((error: unknown, _req: express.Request, res: express.Response, _next: express.NextFunction) => {
   if (error instanceof OriginNotAllowedError) return res.status(403).json({ message: 'Origin not allowed' });

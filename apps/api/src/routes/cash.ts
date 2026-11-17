@@ -5,9 +5,10 @@ import { prisma } from '../lib/prisma';
 import { MAX_MONEY, moneySchema, positiveMoneySchema } from '../lib/money';
 import { serializable } from '../lib/serializable';
 import { requireAuth, requireTenant } from '../middleware/auth';
+import { CASH_ROLES, requireRoles } from '../lib/permissions';
 
 export const cashRoutes = Router();
-cashRoutes.use(requireAuth, requireTenant);
+cashRoutes.use(requireAuth, requireTenant, requireRoles(...CASH_ROLES));
 
 cashRoutes.post('/sessions', async (req, res, next) => {
   try {

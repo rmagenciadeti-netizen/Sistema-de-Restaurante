@@ -2,9 +2,10 @@ import { Router } from 'express';
 import { z } from 'zod';
 import { prisma } from '../lib/prisma';
 import { requireAuth, requireTenant } from '../middleware/auth';
+import { MANAGEMENT_ROLES, requireRoles } from '../lib/permissions';
 
 export const employeeRoutes = Router();
-employeeRoutes.use(requireAuth, requireTenant);
+employeeRoutes.use(requireAuth, requireTenant, requireRoles(...MANAGEMENT_ROLES));
 const schema = z.object({ fullName: z.string().min(2).max(160), cpf: z.string().max(20).optional(), phone: z.string().max(30).optional(), email: z.string().email().optional(), position: z.string().max(100).optional(), unitId: z.string().uuid().optional() });
 const scope = (req: Parameters<typeof employeeRoutes.get>[1] extends never ? never : any) => ({ tenantId: req.auth!.tenantId!, ...(req.auth!.unitId ? { unitId: req.auth!.unitId } : {}) });
 employeeRoutes.get('/', async (req, res, next) => {

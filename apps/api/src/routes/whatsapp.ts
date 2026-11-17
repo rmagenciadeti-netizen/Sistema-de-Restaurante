@@ -3,9 +3,10 @@ import type { Prisma } from '@prisma/client';
 import { z } from 'zod';
 import { prisma } from '../lib/prisma';
 import { requireAuth, requireTenant } from '../middleware/auth';
+import { CASH_ROLES, requireRoles } from '../lib/permissions';
 
 export const whatsappRoutes = Router();
-whatsappRoutes.use(requireAuth, requireTenant);
+whatsappRoutes.use(requireAuth, requireTenant, requireRoles(...CASH_ROLES));
 // This endpoint creates an auditable outbox item. A configured official provider and worker are required to send messages.
 whatsappRoutes.post('/outbox', async (req, res, next) => {
   try { const input = z.object({ toPhone: z.string().min(8).max(30), template: z.string().min(1).max(100), orderId: z.string().uuid().optional(), payload: z.record(z.string(), z.unknown()).optional() }).safeParse(req.body); if (!input.success) return res.status(400).json({ message: 'Validation failed', errors: input.error.flatten() }); const tenantId = req.auth!.tenantId!; if (input.data.orderId && !await prisma.order.findFirst({ where: { id: input.data.orderId, tenantId, ...(req.auth!.unitId ? { unitId: req.auth!.unitId } : {}) } })) return res.status(404).json({ message: 'Order not found' });
