@@ -71,6 +71,18 @@ fiscalRoutes.post('/settings/certificate', manage, async (req, res, next) => {
     return res.status(201).json({ ...publicSettings(saved, fiscalProviders.names()), certificateWarnings: info.warnings });
   } catch (error) { return error instanceof FiscalConfigError ? res.status(error.status).json({ message: error.message }) : next(error); }
 });
+// Removes the company A1 certificate (file and password). Emission is blocked until a new one is imported; history is kept.
+fiscalRoutes.delete('/settings/certificate', manage, async (req, res, next) => {
+  try {
+    const tenantId = req.auth!.tenantId!;
+    const current = await loadFiscalSettings(prisma, tenantId);
+    if (!current?.certPfxEnc) return res.status(404).json({ message: 'Nenhum certificado cadastrado.' });
+    const saved = await prisma.fiscalSettings.update({ where: { tenantId }, data: { certPfxEnc: null, certPasswordEnc: null, certSubject: null, certCnpj: null, certIssuer: null, certSerial: null, certValidFrom: null, certValidTo: null, certUploadedAt: null } });
+    await recordEvent({ tenantId, environment: saved.environment, type: 'CERTIFICATE', status: 'REMOVED', message: current.certSubject ?? 'Certificado removido', actorUserId: req.auth!.userId });
+    await audit(req, 'FISCAL_CERTIFICATE_REMOVED', 'FiscalSettings', saved.id, { cnpj: current.certCnpj });
+    return res.json(publicSettings(saved, fiscalProviders.names()));
+  } catch (error) { return next(error); }
+});
 fiscalRoutes.post('/settings/certificate/test', manage, async (req, res, next) => {
   try {
     const settings = await loadFiscalSettings(prisma, req.auth!.tenantId!);
@@ -143,6 +155,18 @@ fiscalRoutes.post('/settings/units/:unitId/certificate', manage, async (req, res
     await audit(req, 'FISCAL_UNIT_CERTIFICATE_IMPORTED', 'FiscalUnitConfig', saved.id, { unitId, cnpj: info.cnpj, validTo: info.validTo.toISOString() });
     return res.status(201).json({ configured: true, issuer: issuerSchema.parse(saved.issuer), ownCertificate: true, certificate: { subject: saved.certSubject, cnpj: saved.certCnpj, validFrom: saved.certValidFrom, validTo: saved.certValidTo, uploadedAt: saved.certUploadedAt, ...certificateStatus(saved) }, certificateWarnings: info.warnings });
   } catch (error) { return error instanceof FiscalConfigError ? res.status(error.status).json({ message: error.message }) : next(error); }
+});
+fiscalRoutes.delete('/settings/units/:unitId/certificate', manage, async (req, res, next) => {
+  try {
+    const params = fiscalUnitParams.safeParse(req.params); if (!params.success) return res.status(400).json(invalid(params.error));
+    const tenantId = req.auth!.tenantId!; const { unitId } = params.data;
+    const current = await prisma.fiscalUnitConfig.findFirst({ where: { tenantId, unitId } });
+    if (!current?.certPfxEnc) return res.status(404).json({ message: 'A unidade não possui certificado próprio.' });
+    await prisma.fiscalUnitConfig.update({ where: { id: current.id }, data: { certPfxEnc: null, certPasswordEnc: null, certSubject: null, certCnpj: null, certIssuer: null, certSerial: null, certValidFrom: null, certValidTo: null, certUploadedAt: null } });
+    await recordEvent({ tenantId, unitId, environment: await currentEnvironment(tenantId), type: 'CERTIFICATE', status: 'REMOVED', message: current.certSubject ?? 'Certificado da unidade removido', actorUserId: req.auth!.userId });
+    await audit(req, 'FISCAL_UNIT_CERTIFICATE_REMOVED', 'FiscalUnitConfig', current.id, { unitId });
+    return res.json({ removed: true });
+  } catch (error) { return next(error); }
 });
 fiscalRoutes.post('/settings/test-connection', manage, async (req, res, next) => {
   try {

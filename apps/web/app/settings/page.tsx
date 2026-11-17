@@ -106,6 +106,11 @@ function SettingsContent() {
   </AppShell>;
 }
 
+// Re-mounts when ?tab= changes so menu links (e.g. Configurações fiscais) open the right tab even from within this page.
+function SettingsRoute() {
+  return <SettingsContent key={useSearchParams().get('tab') ?? ''} />;
+}
+
 export default function SettingsPage() {
-  return <Suspense fallback={null}><SettingsContent /></Suspense>;
+  return <Suspense fallback={null}><SettingsRoute /></Suspense>;
 }

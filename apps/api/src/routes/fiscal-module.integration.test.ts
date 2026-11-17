@@ -79,6 +79,13 @@ test('fiscal module: settings, certificate, lost protocol, contingency, inutiliz
     assert.equal(cert.status, 201); assert.equal(cert.body.certificate.cnpj, '12345678000195'); assert.equal(cert.body.certificate.state, 'VALID');
     assert.equal(JSON.stringify(cert.body).includes(pfxBase64.slice(0, 40)), false);
     assert.equal((await call('POST', '/fiscal/settings/certificate/test', admin)).body.ok, true);
+    assert.equal((await call('DELETE', '/fiscal/settings/certificate', A.tokens.CASHIER)).status, 403);
+    assert.equal((await call('DELETE', '/fiscal/settings/certificate', B.tokens.ADMIN)).status, 404, 'another company cannot remove it');
+    const removed = await call('DELETE', '/fiscal/settings/certificate', admin);
+    assert.equal(removed.status, 200); assert.equal(removed.body.certificate.state, 'MISSING');
+    assert.equal((await call('POST', '/fiscal/settings/certificate', admin, { pfxBase64, password: 'teste123' })).status, 201, 'certificate can be imported again');
+    assert.equal((await call('PUT', '/fiscal/settings', admin, { cfop: { purchaseInternal: '5102' } })).status, 400, 'entry CFOP must start with 1');
+    assert.equal((await call('PUT', '/fiscal/settings', admin, { cfop: { saleInternal: '5102', purchaseInternal: '1102', purchaseInterstate: '2102' } })).body.cfop.purchaseInterstate, '2102');
     assert.equal((await call('GET', '/fiscal/settings', B.tokens.ADMIN)).body.configured, false, 'settings are per company');
   });
 

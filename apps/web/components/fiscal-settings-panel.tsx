@@ -3,15 +3,20 @@
 import Link from 'next/link';
 import { useEffect, useState } from 'react';
 import { buttonClass, Field, Notice, Select, secondaryButtonClass } from './app-shell';
-import { Badge, sectionTitleClass, Tabs, textareaClass } from './ui';
-import { api, ApiError, errorMessage, formatDateTime, type Unit } from '../lib/api';
+import { Badge, dangerButtonClass, sectionTitleClass, Tabs, textareaClass } from './ui';
+import { api, ApiError, errorMessage, formatDateTime, storedUser, type Unit } from '../lib/api';
+import { NaturesManager } from './natures-manager';
+import { TaxRulesManager } from './tax-rules-manager';
 import { environmentLabel, type CfopDefaults, type FiscalIssuer, type FiscalModelConfig, type FiscalSettingsView, type PdvMode } from '../lib/types-fiscal';
 
-type Section = 'environment' | 'issuer' | 'certificate' | 'provider' | 'nfce' | 'nfe' | 'tax' | 'pdv' | 'unit';
+type Section = 'environment' | 'issuer' | 'unit' | 'certificate' | 'provider' | 'nfe' | 'nfce' | 'numbering' | 'tax' | 'natures' | 'rules' | 'pdv';
 const sections: { key: Section; label: string }[] = [
-  { key: 'environment', label: 'Ambiente' }, { key: 'issuer', label: 'Emitente' }, { key: 'certificate', label: 'Certificado A1' }, { key: 'provider', label: 'Provedor' },
-  { key: 'nfce', label: 'NFC-e (65)' }, { key: 'nfe', label: 'NF-e (55)' }, { key: 'tax', label: 'Tributação padrão' }, { key: 'pdv', label: 'Comportamento no PDV' }, { key: 'unit', label: 'Unidades fiscais' },
+  { key: 'environment', label: 'Ambiente' }, { key: 'issuer', label: 'Empresa / emitente' }, { key: 'unit', label: 'Estabelecimentos' }, { key: 'certificate', label: 'Certificado digital' },
+  { key: 'provider', label: 'Conexão SEFAZ' }, { key: 'nfe', label: 'NF-e (55)' }, { key: 'nfce', label: 'NFC-e (65) e CSC' }, { key: 'numbering', label: 'Série e numeração' },
+  { key: 'tax', label: 'CFOP e tributação padrão' }, { key: 'natures', label: 'Naturezas de operação' }, { key: 'rules', label: 'Regras tributárias (NCM, CST, alíquotas)' }, { key: 'pdv', label: 'Comportamento no PDV' },
 ];
+// Sections with their own save actions (embedded managers, certificate upload, numbering).
+const selfSaving: Section[] = ['certificate', 'numbering', 'natures', 'rules'];
 type Draft = Pick<FiscalSettingsView, 'environment' | 'provider' | 'issuer' | 'nfe' | 'nfce' | 'cscId' | 'pdvMode' | 'defaultTaxRuleId' | 'cfop'> & { providerToken: string; cscToken: string };
 type Numbering = { items: { kind: string; series: string; nextNumber: number }[]; environment: string };
 type CertificateTest = { ok: boolean; message: string; subject?: string | null; cnpj?: string | null; validTo?: string | null; warnings?: string[] };
@@ -23,7 +28,7 @@ const regimeCrt: Record<FiscalIssuer['taxRegime'], number> = { SIMPLES_NACIONAL:
 const contributorLabel: Record<FiscalIssuer['contributorIndicator'], string> = { '1': '1 — Contribuinte ICMS', '2': '2 — Contribuinte isento de inscrição', '9': '9 — Não contribuinte' };
 const finalityLabel: Record<FiscalModelConfig['finality'], string> = { '1': '1 — Normal', '2': '2 — Complementar', '3': '3 — Ajuste', '4': '4 — Devolução' };
 const emissionLabel: Record<FiscalModelConfig['emissionType'], string> = { NORMAL: 'Normal', CONTINGENCY_OFFLINE: 'Contingência off-line (NFC-e)', EPEC: 'EPEC — Evento Prévio de Emissão em Contingência', FS_DA: 'FS-DA — Formulário de Segurança' };
-const providerLabel = (provider: string) => (provider === 'focusnfe' ? 'Focus NFe' : provider);
+const providerLabel = (provider: string) => (provider === 'focusnfe' ? 'Focus NFe (provedor certificado)' : provider === 'sefaz' ? 'SEFAZ direta (assinatura com o certificado A1)' : provider);
 const pdvModes: { key: PdvMode; title: string; description: string }[] = [
   { key: 'FISCAL', title: 'Todas as vendas fiscais', description: 'Cada venda concluída emite NFC-e automaticamente. A configuração fiscal (certificado, CSC, emitente, provedor) é validada antes da emissão.' },
   { key: 'NON_FISCAL', title: 'Todas as vendas não fiscais', description: 'As vendas são registradas sem emissão fiscal. Comprovantes internos impressos não são documentos fiscais.' },
@@ -47,7 +52,14 @@ function failure(error: unknown, fallback: string): Message {
   return { text: errorMessage(error, fallback), kind: 'error', problems };
 }
 
+// Fiscal data belongs to each restaurant: the Master administrator has no company and must sign in as a restaurant user.
 export function FiscalSettingsPanel({ canEdit }: { canEdit: boolean }) {
+  const [master] = useState(() => storedUser().role === 'MASTER_ADMIN');
+  if (master) return <Notice message="As configurações fiscais pertencem a cada restaurante (certificado, emitente, séries e tributação ficam isolados por empresa). O usuário Master do RM Painel Admin não tem empresa vinculada: entre com um administrador ou gerente do restaurante para configurar." />;
+  return <FiscalSettingsForm canEdit={canEdit} />;
+}
+
+function FiscalSettingsForm({ canEdit }: { canEdit: boolean }) {
   const [view, setView] = useState<FiscalSettingsView | null>(null);
   const [draft, setDraft] = useState<Draft | null>(null);
   const [rules, setRules] = useState<{ id: string; name: string; active: boolean }[]>([]);
@@ -64,6 +76,7 @@ export function FiscalSettingsPanel({ canEdit }: { canEdit: boolean }) {
   const [unitCertFile, setUnitCertFile] = useState<File | null>(null);
   const [unitCertPassword, setUnitCertPassword] = useState('');
   const [unitFileKey, setUnitFileKey] = useState(0);
+  const [numberingDraft, setNumberingDraft] = useState<Record<string, { series: string; nextNumber: string }>>({});
 
   function apply(next: FiscalSettingsView) { setView(next); setDraft(toDraft(next)); }
 
@@ -78,7 +91,7 @@ export function FiscalSettingsPanel({ canEdit }: { canEdit: boolean }) {
         api<{ items: { id: string; name: string; active: boolean }[] }>('/tax-rules').catch(() => ({ items: [] })),
         api<Numbering>('/fiscal/numbering').catch(() => null),
       ]);
-      if (alive) { setRules(ruleList.items); setNumbering(numbers); }
+      if (alive) { setRules(ruleList.items); setNumbering(numbers); if (numbers) setNumberingDraft(Object.fromEntries(numbers.items.map(item => [item.kind, { series: item.series, nextNumber: String(item.nextNumber) }]))); }
       if (canEdit) {
         try {
           const unitList = await api<{ items: Unit[] }>('/units');
@@ -157,6 +170,30 @@ export function FiscalSettingsPanel({ canEdit }: { canEdit: boolean }) {
     } catch (error) { setCertPassword(''); setMessage(failure(error, 'Erro ao importar o certificado')); }
   });
 
+  const removeCertificate = () => run('cert-remove', async () => {
+    if (!window.confirm('Remover o certificado digital da empresa? A emissão de NF-e/NFC-e ficará bloqueada até importar outro certificado.')) return;
+    try { apply(await api<FiscalSettingsView>('/fiscal/settings/certificate', { method: 'DELETE' })); setMessage({ text: 'Certificado removido. O histórico fiscal foi mantido.', kind: 'success' }); }
+    catch (error) { setMessage(failure(error, 'Erro ao remover o certificado')); }
+  });
+
+  const removeUnitCertificate = () => run('unit-cert-remove', async () => {
+    if (!unitId || !window.confirm('Remover o certificado próprio desta unidade? Ela passará a usar o certificado da empresa.')) return;
+    try {
+      await api(`/fiscal/settings/units/${unitId}/certificate`, { method: 'DELETE' });
+      setUnitView(await api<UnitFiscalView>(`/fiscal/settings/units/${unitId}`)); setMessage({ text: 'Certificado da unidade removido.', kind: 'success' });
+    } catch (error) { setMessage(failure(error, 'Erro ao remover o certificado da unidade')); }
+  });
+
+  const saveNumbering = (kind: 'NFCE' | 'NFE') => run(`num-${kind}`, async () => {
+    const value = numberingDraft[kind];
+    if (!value) return;
+    try {
+      await api('/fiscal/numbering', { method: 'PUT', body: JSON.stringify({ kind, series: value.series.trim(), nextNumber: Number(value.nextNumber) }) });
+      const next = await api<Numbering>('/fiscal/numbering'); setNumbering(next);
+      setMessage({ text: `Numeração da ${kind === 'NFE' ? 'NF-e' : 'NFC-e'} salva.`, kind: 'success' });
+    } catch (error) { setMessage(failure(error, 'Erro ao salvar a numeração')); }
+  });
+
   const testCertificate = () => run('cert-test', async () => {
     try {
       const result = await api<CertificateTest>('/fiscal/settings/certificate/test', { method: 'POST' });
@@ -180,7 +217,7 @@ export function FiscalSettingsPanel({ canEdit }: { canEdit: boolean }) {
   </div>;
   const numberingInfo = (kind: 'NFCE' | 'NFE') => {
     const current = series(kind);
-    return <p className="rounded-xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-700">Série atual: <strong>{current?.series ?? '—'}</strong> · Próximo número: <strong>{current?.nextNumber ?? '—'}</strong>{numbering ? ` (${environmentLabel[numbering.environment as keyof typeof environmentLabel] ?? numbering.environment})` : ''}. Para alterar série/numeração ou inutilizar números, use <Link href="/fiscal" className="font-semibold text-brand-700 underline">Documentos fiscais</Link>.</p>;
+    return <p className="rounded-xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-700">Série atual: <strong>{current?.series ?? '—'}</strong> · Próximo número: <strong>{current?.nextNumber ?? '—'}</strong>{numbering ? ` (${environmentLabel[numbering.environment as keyof typeof environmentLabel] ?? numbering.environment})` : ''}. Altere em <strong>Série e numeração</strong>.</p>;
   };
   const modelFields = (model: 'nfe' | 'nfce', emissionTypes: FiscalModelConfig['emissionType'][]) => {
     const config = draft[model];
@@ -248,15 +285,17 @@ export function FiscalSettingsPanel({ canEdit }: { canEdit: boolean }) {
         </div>
         <div className="flex flex-wrap gap-2">
           <button type="button" className={buttonClass} disabled={disabled || !certFile || !certPassword} onClick={() => void uploadCertificate()}>{busy === 'cert' ? 'Importando…' : cert.state === 'MISSING' ? 'Importar certificado' : 'Substituir certificado'}</button>
-          <button type="button" className={secondaryButtonClass} disabled={Boolean(busy) || cert.state === 'MISSING'} onClick={() => void testCertificate()}>{busy === 'cert-test' ? 'Testando…' : 'Testar certificado'}</button>
+          <button type="button" className={secondaryButtonClass} disabled={Boolean(busy) || cert.state === 'MISSING'} onClick={() => void testCertificate()}>{busy === 'cert-test' ? 'Testando…' : 'Validar certificado'}</button>
+          {cert.state !== 'MISSING' && <button type="button" className={dangerButtonClass} disabled={disabled} onClick={() => void removeCertificate()}>{busy === 'cert-remove' ? 'Removendo…' : 'Remover certificado'}</button>}
         </div>
+        <p className="text-xs text-slate-500">Somente certificado A1 (arquivo). Certificado A3 (token/cartão) ainda não é suportado. Um estabelecimento com CNPJ próprio pode ter certificado próprio em <strong>Estabelecimentos</strong>.</p>
       </div>;
       case 'provider': return <div className="grid gap-4">
         <div className="grid gap-4 md:grid-cols-2">
           <Select label="Provedor fiscal" value={draft.provider ?? ''} disabled={disabled} onChange={e => set({ provider: e.target.value || null })}><option value="">Nenhum</option>{view.providers.map(provider => <option key={provider} value={provider}>{providerLabel(provider)}</option>)}</Select>
           <Field label="Token da API do provedor" type="password" autoComplete="new-password" placeholder={view.hasProviderToken ? '•••• (mantido)' : 'Informe o token'} value={draft.providerToken} disabled={disabled} onChange={e => set({ providerToken: e.target.value })} />
         </div>
-        <p className="text-xs text-slate-500">Deixe o token em branco para manter o atual. Salve antes de testar a comunicação.</p>
+        <p className="text-xs text-slate-500">{draft.provider === 'sefaz' ? 'SEFAZ direta: o XML é assinado com o certificado A1 e enviado aos web services oficiais (MT). Não precisa de token.' : 'Deixe o token em branco para manter o atual.'} Salve antes de testar a comunicação; o teste consulta o status do serviço da SEFAZ no ambiente selecionado.</p>
         <div><button type="button" className={secondaryButtonClass} disabled={Boolean(busy) || !view.provider} onClick={() => void testConnection()}>{busy === 'conn' ? 'Testando…' : 'Testar comunicação'}</button></div>
       </div>;
       case 'nfce': return <div className="grid gap-4">
@@ -274,14 +313,25 @@ export function FiscalSettingsPanel({ canEdit }: { canEdit: boolean }) {
       </div>;
       case 'tax': return <div className="grid gap-3">
         <Select label="Regra tributária padrão" value={draft.defaultTaxRuleId ?? ''} disabled={disabled} onChange={e => set({ defaultTaxRuleId: e.target.value || null })}><option value="">Nenhuma</option>{rules.filter(rule => rule.active || rule.id === draft.defaultTaxRuleId).map(rule => <option key={rule.id} value={rule.id}>{rule.name}{rule.active ? '' : ' (inativa)'}</option>)}</Select>
-        <p className="text-sm text-slate-600">Aplicada aos produtos sem regra própria ou com regra fora da vigência. Gerencie as regras em <Link href="/tax-rules" className="font-semibold text-brand-700 underline">Fiscal / Tributos</Link>.</p>
+        <p className="text-sm text-slate-600">Aplicada aos produtos sem regra própria ou com regra fora da vigência. Cadastre as regras em <strong>Regras tributárias</strong>; o CFOP segue a ordem: regra do produto (estadual/interestadual) → natureza de operação compatível → padrão abaixo.</p>
         <h5 className="mt-2 text-sm font-semibold text-slate-800">CFOP padrão por operação</h5>
         <p className="text-xs text-slate-500">Usado quando a regra tributária do produto e a natureza de operação não definem o CFOP. A NFC-e é sempre dentro do estado; o CFOP interestadual vale apenas para NF-e.</p>
         <div className="grid gap-4 md:grid-cols-4">
-          {([['saleInternal', 'Venda — no estado', '5102'], ['saleInterstate', 'Venda — interestadual', '6102'], ['returnInternal', 'Devolução — no estado', '1202'], ['returnInterstate', 'Devolução — interestadual', '2202']] as [keyof CfopDefaults, string, string][]).map(([key, label, example]) =>
+          {([['saleInternal', 'Saída: venda no estado', '5102'], ['saleInterstate', 'Saída: venda interestadual', '6102'], ['returnInternal', 'Devolução no estado', '1202'], ['returnInterstate', 'Devolução interestadual', '2202'], ['purchaseInternal', 'Entrada: compra no estado', '1102'], ['purchaseInterstate', 'Entrada: compra interestadual', '2102']] as [keyof CfopDefaults, string, string][]).map(([key, label, example]) =>
             <Field key={key} label={label} inputMode="numeric" maxLength={4} placeholder={example} value={draft.cfop[key] ?? ''} disabled={disabled} onChange={e => set({ cfop: { ...draft.cfop, [key]: e.target.value.replace(/\D/g, '') } })} />)}
         </div>
       </div>;
+      case 'numbering': return <div className="grid gap-4">
+        <p className="text-sm text-slate-600">Série e próximo número de cada modelo no ambiente <strong>{numbering ? environmentLabel[numbering.environment as keyof typeof environmentLabel] ?? numbering.environment : '—'}</strong>{storedUser().unitId ? ' para o seu estabelecimento' : ''}. A numeração só avança: números já emitidos ou inutilizados não podem ser reutilizados. Para inutilizar faixas use <Link href="/contingency" className="font-semibold text-brand-700 underline">Contingências</Link> ou o PDV.</p>
+        {(['NFCE', 'NFE'] as const).map(kind => <div key={kind} className="grid items-end gap-4 rounded-xl border border-slate-200 p-4 md:grid-cols-4">
+          <p className="font-semibold text-slate-800">{kind === 'NFE' ? 'NF-e (modelo 55)' : 'NFC-e (modelo 65)'}</p>
+          <Field label="Série" inputMode="numeric" maxLength={3} value={numberingDraft[kind]?.series ?? ''} disabled={disabled} onChange={e => setNumberingDraft(current => ({ ...current, [kind]: { series: e.target.value.replace(/\D/g, ''), nextNumber: current[kind]?.nextNumber ?? '1' } }))} />
+          <Field label="Próximo número" type="number" min="1" step="1" value={numberingDraft[kind]?.nextNumber ?? ''} disabled={disabled} onChange={e => setNumberingDraft(current => ({ ...current, [kind]: { series: current[kind]?.series ?? '1', nextNumber: e.target.value } }))} />
+          <button type="button" className={buttonClass} disabled={disabled || !numberingDraft[kind]?.series || !Number(numberingDraft[kind]?.nextNumber)} onClick={() => void saveNumbering(kind)}>{busy === `num-${kind}` ? 'Salvando…' : 'Salvar numeração'}</button>
+        </div>)}
+      </div>;
+      case 'natures': return <NaturesManager embedded />;
+      case 'rules': return <TaxRulesManager embedded />;
       case 'pdv': return <fieldset disabled={disabled} className="grid gap-3"><legend className={`${sectionTitleClass} w-full`}>Comportamento fiscal do PDV</legend>
         {pdvModes.map(mode => <label key={mode.key} className={`flex cursor-pointer items-start gap-3 rounded-2xl border-2 p-4 transition ${draft.pdvMode === mode.key ? 'border-brand-500 bg-brand-50' : 'border-slate-200 hover:border-brand-300'}`}>
           <input type="radio" name="pdv-mode" className="mt-1 h-4 w-4 accent-brand-600" checked={draft.pdvMode === mode.key} onChange={() => set({ pdvMode: mode.key })} />
@@ -327,6 +377,7 @@ export function FiscalSettingsPanel({ canEdit }: { canEdit: boolean }) {
             <Field label="Senha do certificado" type="password" autoComplete="new-password" value={unitCertPassword} disabled={disabled} onChange={e => setUnitCertPassword(e.target.value)} />
           </div>
           <button type="button" className={secondaryButtonClass} disabled={disabled || !unitCertFile || !unitCertPassword} onClick={() => void uploadUnitCertificate()}>{busy === 'unit-cert' ? 'Importando…' : unitView.ownCertificate ? 'Substituir certificado da unidade' : 'Importar certificado da unidade'}</button>
+          {unitView.ownCertificate && <button type="button" className={dangerButtonClass} disabled={disabled} onClick={() => void removeUnitCertificate()}>{busy === 'unit-cert-remove' ? 'Removendo…' : 'Remover certificado da unidade'}</button>}
         </>}
       </div>;
       default: return null;
@@ -338,9 +389,9 @@ export function FiscalSettingsPanel({ canEdit }: { canEdit: boolean }) {
     <Tabs tabs={visibleSections} value={section} onChange={setSection} label="Seções fiscais" />
     <h4 className={sectionTitleClass}>{visibleSections.find(item => item.key === section)?.label}</h4>
     {body()}
-    <div className="mt-6 flex flex-wrap items-center justify-end gap-3 border-t border-slate-200 pt-4">
+    {!selfSaving.includes(section) && <div className="mt-6 flex flex-wrap items-center justify-end gap-3 border-t border-slate-200 pt-4">
       {!canEdit && <span className="text-sm text-slate-500">Somente administradores e gerentes podem alterar.</span>}
       <button type="button" className={buttonClass} disabled={disabled || (section === 'unit' && (!unitId || !unitView))} onClick={() => void save()}>{busy === 'save' ? 'Salvando…' : section === 'unit' ? 'Salvar unidade fiscal' : 'Salvar configurações fiscais'}</button>
-    </div>
+    </div>}
   </div>;
 }

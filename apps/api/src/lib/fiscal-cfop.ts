@@ -1,8 +1,13 @@
 import { z } from 'zod';
 
 // Default CFOPs by operation and destination, stored in FiscalSettings.cfop.
-const optionalCfop = z.string().trim().regex(/^(\d{4})?$/, 'CFOP deve ter 4 dígitos').optional();
-export const cfopSettingsSchema = z.object({ saleInternal: optionalCfop, saleInterstate: optionalCfop, returnInternal: optionalCfop, returnInterstate: optionalCfop });
+// The first digit encodes direction and destination: 1/2 entrada (estadual/interestadual), 5/6 saída (estadual/interestadual).
+const cfopStarting = (first: string, label: string) => z.string().trim().regex(new RegExp(`^([${first}]\\d{3})?$`), `${label}: CFOP de 4 dígitos iniciado por ${first.split('').join(' ou ')}`).optional();
+export const cfopSettingsSchema = z.object({
+  saleInternal: cfopStarting('5', 'Venda no estado'), saleInterstate: cfopStarting('6', 'Venda interestadual'),
+  returnInternal: cfopStarting('15', 'Devolução no estado'), returnInterstate: cfopStarting('26', 'Devolução interestadual'),
+  purchaseInternal: cfopStarting('1', 'Entrada no estado'), purchaseInterstate: cfopStarting('2', 'Entrada interestadual'),
+});
 export type CfopSettings = z.infer<typeof cfopSettingsSchema>;
 export const cfopSettingsOf = (value: unknown): CfopSettings => { const parsed = cfopSettingsSchema.safeParse(value ?? {}); return parsed.success ? parsed.data : {}; };
 

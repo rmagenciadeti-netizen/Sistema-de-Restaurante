@@ -69,7 +69,7 @@ export const menuGroups: MenuGroup[] = [
     { href: '/companies', label: 'Empresas', icon: '🏢', masterOnly: true }, { href: '/provisioning', label: 'Provisionamento', icon: '⚙️', masterOnly: true },
   ] },
   { title: 'Fiscal / Tributos', icon: '📄', items: [
-    { href: '/fiscal', label: 'Documentos fiscais', icon: '📄' }, { href: '/tax-rules', label: 'Correlação de tributos', icon: '％' },
+    { href: '/fiscal', label: 'Documentos fiscais', icon: '📄' }, { href: '/settings?tab=fiscal', label: 'Configurações fiscais', icon: '🛠️' }, { href: '/tax-rules', label: 'Correlação de tributos', icon: '％' },
     { href: '/tax-rules?tab=icms', label: 'Alíquotas e redução de ICMS', icon: '➗' }, { href: '/tax-rules?tab=pis', label: 'Percentual PIS/COFINS', icon: '🧮' },
     { href: '/fiscal-xmls', label: 'XMLs', icon: '🧩' }, { href: '/contingency', label: 'Contingências', icon: '🚨' },
     { href: '/reconciliation', label: 'Conciliação tributária', icon: '⚖️' }, { href: '/received-invoices', label: 'Notas recebidas', icon: '📥' },

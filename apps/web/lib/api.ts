@@ -48,6 +48,8 @@ async function request<T>(path: string, options: RequestInit, withToken: boolean
   // A 401 on an authenticated call means the session is missing, expired or revoked: drop it and send the user to the login screen.
   if (response.status === 401 && withToken) endSession();
   const payload = await response.json().catch(() => ({}));
+  // Restaurant data (fiscal, settings, orders...) is isolated per company; the Master user has none.
+  if (response.status === 403 && payload.message === 'Tenant context required') throw new ApiError('Esta tela usa dados de um restaurante e o usuário Master não tem empresa vinculada. Entre com um usuário do restaurante (administrador ou gerente).', 403, payload);
   if (!response.ok) throw new ApiError(payload.message ?? payload.error ?? 'Falha ao comunicar com a API', response.status, payload);
   return payload as T;
 }

@@ -229,7 +229,7 @@ export default function FiscalPage() {
   const columns = ['Documento', 'Pedido / cliente', 'Valor', 'Ambiente', 'Situação', 'Protocolo', 'Última tentativa', 'Mensagem', 'Ações'].map(label => ({ label }));
 
   return <AppShell title="Documentos fiscais">
-    <PageHeader title="Documentos fiscais" subtitle="Emita NFC-e e NF-e a partir dos pedidos, acompanhe a situação na SEFAZ e regularize documentos sem protocolo. A tributação de cada item vem da regra tributária do produto (Fiscal / Tributos)." actions={<><Link className={secondaryButtonClass} href="/contingency">Contingências</Link><Link className={secondaryButtonClass} href="/fiscal-xmls">XMLs</Link></>} />
+    <PageHeader title="Documentos fiscais" subtitle="Emita NFC-e e NF-e a partir dos pedidos, acompanhe autorizações e rejeições da SEFAZ, cancele e consulte o histórico. Emitente, certificado, CFOP, tributação e séries vêm de Configurações › Fiscais." actions={<><Link className={secondaryButtonClass} href="/settings?tab=fiscal">Configurações fiscais</Link><Link className={secondaryButtonClass} href="/contingency">Contingências</Link><Link className={secondaryButtonClass} href="/fiscal-xmls">XMLs</Link></>} />
     <EnvironmentBanner settings={settings} error={settingsError} />
     {notice && (notice.kind === 'info' ? <div role="status" className="mb-4 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">{notice.text}</div> : <Notice message={notice.text} kind={notice.kind} />)}
     {contingency && <p className="mb-4 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">Contingência fiscal em andamento desde {formatDateTime(contingency.startedAt)}: {contingency.reason}. Gerencie em <Link className="font-semibold underline" href="/contingency">Contingências</Link>.</p>}
@@ -237,7 +237,7 @@ export default function FiscalPage() {
 
     {tab === 'emit' && <section className={panelClass}>
       <h2 className="mb-4 text-lg font-semibold text-slate-900">Emitir documento</h2>
-      {problems.length > 0 && <div className="mb-4 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900"><p className="font-semibold">A {modelLabel[form.kind]} ainda não está pronta para emissão:</p><ul className="ml-5 mt-1 list-disc">{problems.map(problem => <li key={problem}>{problem}</li>)}</ul><Link href="/settings?tab=fiscal" className="mt-2 inline-block font-semibold underline">Ajustar em Configurações › Fiscal</Link></div>}
+      {problems.length > 0 && <div className="mb-4 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900"><p className="font-semibold">A {modelLabel[form.kind]} ainda não está pronta para emissão:</p><ul className="ml-5 mt-1 list-disc">{problems.map(problem => <li key={problem}>{problem}</li>)}</ul><Link href="/settings?tab=fiscal" className="mt-2 inline-block font-semibold underline">Ajustar em Configurações › Fiscais</Link></div>}
       <form onSubmit={event => { event.preventDefault(); void emit(); }} className="grid gap-5">
         <div className="grid gap-4 md:grid-cols-4">
           <div className="md:col-span-2"><Select label="Pedido" required value={form.orderId} onChange={e => chooseOrder(e.target.value)}><option value="">Selecione</option>{orders.map(order => <option key={order.id} value={order.id}>{order.code} — {formatMoney(order.total)}{order.customerName ? ` — ${order.customerName}` : ''}</option>)}</Select></div>
