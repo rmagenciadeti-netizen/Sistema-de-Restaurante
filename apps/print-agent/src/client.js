@@ -1,3 +1,4 @@
+import fs from 'node:fs/promises';
 import net from 'node:net';
 import { buildEscPos } from './escpos.js';
 
@@ -11,11 +12,20 @@ export function sendToNetworkPrinter({ address, port = 9100 }, data, timeoutMs =
   });
 }
 
+// USB, serial and shared printers are written as raw bytes to the OS device/share path stored in `address`
+// (Windows: \\HOST\PRINTER share, COM3 or \\.\USB001 port; Linux: /dev/usb/lp0 or /dev/ttyUSB0).
+export async function sendToDevicePath(path, data) {
+  const handle = await fs.open(path, 'w');
+  try { await handle.write(data); } finally { await handle.close(); }
+}
+
 export async function printJob(job) {
   const { printer } = job;
-  if (printer.connectionType !== 'NETWORK') throw new Error(`Unsupported connection type: ${printer.connectionType}. Only NETWORK (TCP/9100) printers are supported by this agent.`);
   if (!printer.address) throw new Error('Printer has no address');
-  await sendToNetworkPrinter({ address: printer.address, port: printer.port ?? 9100 }, buildEscPos({ content: job.content, autoCut: printer.autoCut, cashDrawer: printer.cashDrawer }));
+  const data = buildEscPos({ content: job.content, autoCut: printer.autoCut, cashDrawer: printer.cashDrawer });
+  if (printer.connectionType === 'NETWORK') return sendToNetworkPrinter({ address: printer.address, port: printer.port ?? 9100 }, data);
+  if (['USB', 'SHARED', 'SERIAL'].includes(printer.connectionType)) return sendToDevicePath(printer.address, data);
+  throw new Error(`Unsupported connection type: ${printer.connectionType}`);
 }
 
 export class ApiClient {
