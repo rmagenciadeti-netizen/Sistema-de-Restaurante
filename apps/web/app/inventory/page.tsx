@@ -65,7 +65,30 @@ export default function InventoryPage() {
     }
   }
 
-  useEffect(() => { void load(); }, []);
+  useEffect(() => {
+    let active = true;
+    async function initialLoad() {
+      try {
+        const [ingredientResult, productResult, movementResult] = await Promise.all([
+          api<ListResponse<Ingredient>>('/inventory/ingredients'),
+          api<ListResponse<Product>>('/products'),
+          api<ListResponse<Movement>>('/inventory/movements'),
+        ]);
+        if (!active) return;
+        setIngredients(ingredientResult.items);
+        setProducts(productResult.items.filter(product => product.active));
+        setMovements(movementResult.items);
+        setMovementForm(current => ({
+          ...current,
+          ingredientId: current.ingredientId || ingredientResult.items[0]?.id || '',
+        }));
+      } catch (error) {
+        if (active) setMessage({ text: error instanceof Error ? error.message : 'Erro ao carregar estoque', kind: 'error' });
+      }
+    }
+    void initialLoad();
+    return () => { active = false; };
+  }, []);
 
   async function addIngredient(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
