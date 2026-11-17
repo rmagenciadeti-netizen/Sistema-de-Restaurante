@@ -3,9 +3,10 @@ import { FinancialEntryStatus, FinancialEntryType, Prisma } from '@prisma/client
 import { z } from 'zod';
 import { prisma } from '../lib/prisma';
 import { requireAuth, requireTenant } from '../middleware/auth';
+import { FINANCE_ROLES, requireRoles } from '../lib/permissions';
 
 export const financialRoutes = Router();
-financialRoutes.use(requireAuth, requireTenant);
+financialRoutes.use(requireAuth, requireTenant, requireRoles(...FINANCE_ROLES));
 financialRoutes.get('/summary', async (req, res, next) => {
   try { const tenantId = req.auth!.tenantId!; const unitId = req.auth!.unitId; const base = { tenantId, ...(unitId ? { unitId } : {}), status: FinancialEntryStatus.PAID }; const [income, expenses, openReceivables, openPayables, payments] = await Promise.all([prisma.financialEntry.aggregate({ where: { ...base, type: FinancialEntryType.INCOME }, _sum: { amount: true } }), prisma.financialEntry.aggregate({ where: { ...base, type: FinancialEntryType.EXPENSE }, _sum: { amount: true } }), prisma.financialEntry.aggregate({ where: { tenantId, ...(unitId ? { unitId } : {}), type: FinancialEntryType.INCOME, status: FinancialEntryStatus.OPEN }, _sum: { amount: true } }), prisma.financialEntry.aggregate({ where: { tenantId, ...(unitId ? { unitId } : {}), type: FinancialEntryType.EXPENSE, status: FinancialEntryStatus.OPEN }, _sum: { amount: true } }), prisma.payment.aggregate({ where: { tenantId, ...(unitId ? { unitId } : {}), status: 'CONFIRMED' }, _sum: { amount: true }, _count: true })]); const revenue = income._sum.amount ?? new Prisma.Decimal(0); const expense = expenses._sum.amount ?? new Prisma.Decimal(0); return res.json({ revenue, expenses: expense, net: revenue.sub(expense), openReceivables: openReceivables._sum.amount ?? 0, openPayables: openPayables._sum.amount ?? 0, recordedPayments: payments._sum.amount ?? 0, paymentCount: payments._count }); }
   catch (error) { return next(error); }

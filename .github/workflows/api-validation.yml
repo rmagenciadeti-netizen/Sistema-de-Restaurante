@@ -1,0 +1,48 @@
+name: Workspace validation
+
+on:
+  push:
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    env:
+      DATABASE_URL: postgresql://postgres@localhost:5432/validation?schema=public
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_HOST_AUTH_METHOD: trust
+          POSTGRES_DB: validation
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres -d validation"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - run: npm audit --audit-level=moderate
+      - run: npm run db:validate
+      - run: npm run db:generate
+      - run: npm run db:deploy
+      - run: npm exec --workspace packages/db prisma -- migrate status
+      - run: npm exec --workspace packages/db prisma -- migrate diff --from-url "$DATABASE_URL" --to-schema-datamodel prisma/schema.prisma --exit-code
+      - run: npm run build --workspace apps/api
+      - run: npm run test --workspace apps/api
+        env:
+          RUN_DB_TESTS: '1'
+      - run: npm run test --workspace apps/print-agent
+      - run: npm run lint --workspace apps/web
+      - run: npm run build --workspace apps/web

@@ -12,5 +12,5 @@ test('rejects invalid quantities', () => {
 });
 
 test('calculates cash drawer difference without floating-point arithmetic', () => {
-  assert.equal(calculateCashDifference(new Prisma.Decimal('100'), new Prisma.Decimal('28.40'), new Prisma.Decimal('127.90')).toString(), ' -0.5'.trim());
+  assert.equal(calculateCashDifference(new Prisma.Decimal('100'), new Prisma.Decimal('28.40'), new Prisma.Decimal('127.90')).toString(), '-0.5');
 });

@@ -2,9 +2,10 @@ import { Router } from 'express';
 import { z } from 'zod';
 import { prisma } from '../lib/prisma';
 import { requireAuth, requireTenant } from '../middleware/auth';
+import { ALL_TENANT_ROLES, MANAGEMENT_ROLES, allowRead } from '../lib/permissions';
 
 export const productRoutes = Router();
-productRoutes.use(requireAuth, requireTenant);
+productRoutes.use(requireAuth, requireTenant, allowRead(ALL_TENANT_ROLES, MANAGEMENT_ROLES));
 const schema = z.object({ name: z.string().min(2).max(160), categoryId: z.string().uuid().optional().nullable(), sectorId: z.string().uuid().optional().nullable(), unitId: z.string().uuid().optional().nullable(), code: z.string().max(50).optional().nullable(), description: z.string().max(2000).optional().nullable(), price: z.number().nonnegative(), cost: z.number().nonnegative().optional().nullable(), active: z.boolean().default(true), prepTimeMinutes: z.number().int().nonnegative().optional().nullable() });
 productRoutes.get('/', async (req, res, next) => {
   try {
