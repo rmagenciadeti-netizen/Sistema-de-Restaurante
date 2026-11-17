@@ -5,7 +5,7 @@ import { prisma } from '../lib/prisma';
 import { requireAuth, requireTenant } from '../middleware/auth';
 import { allowRead, MANAGEMENT_ROLES, PRODUCTION_ROLES } from '../lib/permissions';
 import { generateAgentToken, hashAgentToken } from '../lib/agent-auth';
-import { enqueueProductionPrints, pickPrinter } from '../lib/print-queue';
+import { enqueueProductionPrints, pickPrinter, sectorMatchesUnit } from '../lib/print-queue';
 import { paperColumns } from '../lib/ticket';
 
 export const printingRoutes = Router();
@@ -31,7 +31,11 @@ const printerSchema = z.object({
 
 async function validateRefs(tenantId: string, data: { unitId?: string | null; sectorId?: string | null }) {
   if (data.unitId && !await prisma.unit.findFirst({ where: { id: data.unitId, tenantId } })) return 'Unit does not belong to this tenant';
-  if (data.sectorId && !await prisma.productionSector.findFirst({ where: { id: data.sectorId, tenantId } })) return 'Sector does not belong to this tenant';
+  if (data.sectorId) {
+    const sector = await prisma.productionSector.findFirst({ where: { id: data.sectorId, tenantId } });
+    if (!sector) return 'Sector does not belong to this tenant';
+    if (sector.unitId && data.unitId && sector.unitId !== data.unitId) return 'Sector and printer belong to different units';
+  }
   return null;
 }
 
@@ -46,7 +50,7 @@ printingRoutes.post('/printers', async (req, res, next) => {
     if (parsed.data.unitId && req.auth!.unitId && parsed.data.unitId !== req.auth!.unitId) return res.status(403).json({ message: 'Unit access denied' });
     const refError = await validateRefs(tenantId, { unitId, sectorId: parsed.data.sectorId }); if (refError) return res.status(400).json({ message: refError });
     const printer = await prisma.$transaction(async tx => {
-      if (parsed.data.isPrimary && parsed.data.sectorId) await tx.printer.updateMany({ where: { tenantId, sectorId: parsed.data.sectorId }, data: { isPrimary: false } });
+      if (parsed.data.isPrimary && parsed.data.sectorId) await tx.printer.updateMany({ where: { tenantId, sectorId: parsed.data.sectorId, unitId }, data: { isPrimary: false } });
       return tx.printer.create({ data: { ...parsed.data, tenantId, unitId } });
     });
     return res.status(201).json(printer);
@@ -57,10 +61,13 @@ printingRoutes.patch('/printers/:id', async (req, res, next) => {
     const parsed = printerSchema.partial().safeParse(req.body); if (!parsed.success) return res.status(400).json({ message: 'Validation failed', errors: parsed.error.flatten() });
     const tenantId = req.auth!.tenantId!;
     const current = await prisma.printer.findFirst({ where: { id: req.params.id, tenantId, ...unitScope(req) } }); if (!current) return res.status(404).json({ message: 'Printer not found' });
-    const refError = await validateRefs(tenantId, { unitId: parsed.data.unitId, sectorId: parsed.data.sectorId }); if (refError) return res.status(400).json({ message: refError });
+    if (parsed.data.unitId && req.auth!.unitId && parsed.data.unitId !== req.auth!.unitId) return res.status(403).json({ message: 'Unit access denied' });
+    const unitId = parsed.data.unitId ?? current.unitId;
     const sectorId = parsed.data.sectorId === undefined ? current.sectorId : parsed.data.sectorId;
+    const refError = await validateRefs(tenantId, { unitId, sectorId }); if (refError) return res.status(400).json({ message: refError });
+    if (sectorId && req.auth!.unitId && !await prisma.productionSector.findFirst({ where: { id: sectorId, tenantId, OR: [{ unitId: req.auth!.unitId }, { unitId: null }] } })) return res.status(403).json({ message: 'Sector access denied' });
     const printer = await prisma.$transaction(async tx => {
-      if (parsed.data.isPrimary && sectorId) await tx.printer.updateMany({ where: { tenantId, sectorId, id: { not: current.id } }, data: { isPrimary: false } });
+      if ((parsed.data.isPrimary ?? current.isPrimary) && sectorId) await tx.printer.updateMany({ where: { tenantId, sectorId, unitId, id: { not: current.id } }, data: { isPrimary: false } });
       return tx.printer.update({ where: { id: current.id }, data: parsed.data });
     });
     return res.json(printer);
@@ -88,9 +95,10 @@ printingRoutes.post('/jobs/:id/retry', async (req, res, next) => {
     const tenantId = req.auth!.tenantId!;
     const job = await prisma.printJob.findFirst({ where: { id: req.params.id, tenantId, ...unitScope(req), status: { in: [PrintJobStatus.FAILED, PrintJobStatus.CANCELLED] } } }); if (!job) return res.status(404).json({ message: 'Retryable print job not found' });
     const sector = job.sectorId ? await prisma.productionSector.findFirst({ where: { id: job.sectorId, tenantId }, include: { printers: true } }) : null;
-    const printer = sector ? pickPrinter(sector) : job.printerId ? await prisma.printer.findFirst({ where: { id: job.printerId, tenantId, active: true } }) : null;
+    if (sector && !sectorMatchesUnit(sector, job.unitId)) return res.status(409).json({ message: 'Sector is not available for this unit' });
+    const printer = sector ? pickPrinter(sector, job.unitId) : job.printerId ? await prisma.printer.findFirst({ where: { id: job.printerId, tenantId, active: true, OR: [{ unitId: job.unitId }, { unitId: null }] } }) : null;
     if (!printer) return res.status(409).json({ message: 'No active printer available for this job' });
-    const updated = await prisma.printJob.update({ where: { id: job.id }, data: { printerId: printer.id, status: PrintJobStatus.PENDING, attempts: 0, error: null, claimedAt: null } });
+    const updated = await prisma.printJob.update({ where: { id: job.id }, data: { printerId: printer.id, status: PrintJobStatus.PENDING, attempts: 0, error: null, claimedAt: null, claimedByAgentId: null, claimId: null } });
     return res.json(updated);
   } catch (error) { return next(error); }
 });

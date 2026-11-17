@@ -4,6 +4,8 @@ import { z } from 'zod';
 import { prisma } from '../lib/prisma';
 import { serializable } from '../lib/serializable';
 import { createOrder, OrderEngineError } from '../lib/order-engine';
+import { hiddenCategoryIds } from '../lib/menu-visibility';
+import { effectiveUnitPrice } from '../lib/promotions';
 
 export const MAX_OPEN_ORDERS_PER_TABLE = 10;
 export const publicRoutes = Router();
@@ -18,10 +20,18 @@ async function resolveTable(qrToken: string) {
 publicRoutes.get('/tables/:qrToken/menu', async (req, res, next) => {
   try {
     const table = await resolveTable(req.params.qrToken); if (!table) return res.status(404).json({ message: 'Table not found' });
-    const products = await prisma.product.findMany({ where: { tenantId: table.tenantId, active: true, OR: [{ unitId: table.unitId }, { unitId: null }] }, select: { id: true, name: true, description: true, price: true, isCombo: true, category: { select: { id: true, name: true } }, comboComponents: { select: { quantity: true, product: { select: { name: true } } } }, modifierGroups: { select: { group: { select: { id: true, name: true, minSelect: true, maxSelect: true, active: true, options: { where: { active: true }, select: { id: true, name: true, price: true }, orderBy: { name: 'asc' } } } } } } }, orderBy: { name: 'asc' }, take: 500 });
+    const now = new Date();
+    const [hidden, promotionRows] = await Promise.all([
+      hiddenCategoryIds(prisma, table.tenantId, now),
+      prisma.promotion.findMany({ where: { tenantId: table.tenantId, active: true, startsAt: { lte: now }, OR: [{ endsAt: null }, { endsAt: { gte: now } }] }, include: { products: { select: { productId: true } } } }),
+    ]);
+    const promotions = promotionRows.map(row => ({ type: row.type, value: row.value, startsAt: row.startsAt, endsAt: row.endsAt, active: row.active, productIds: row.products.map(link => link.productId) }));
+    // Weighed products need a scale reading, which the self-service QR order cannot provide.
+    const products = await prisma.product.findMany({ where: { tenantId: table.tenantId, active: true, soldByWeight: false, ...(hidden.size ? { OR: [{ categoryId: null }, { categoryId: { notIn: [...hidden] } }] } : {}), AND: [{ OR: [{ unitId: table.unitId }, { unitId: null }] }] }, select: { id: true, name: true, description: true, price: true, isCombo: true, category: { select: { id: true, name: true } }, comboComponents: { select: { quantity: true, product: { select: { name: true } } } }, modifierGroups: { select: { group: { select: { id: true, name: true, minSelect: true, maxSelect: true, active: true, options: { where: { active: true }, select: { id: true, name: true, price: true }, orderBy: { name: 'asc' } } } } } } }, orderBy: { name: 'asc' }, take: 500 });
     const categories = new Map<string, { id: string | null; name: string; products: unknown[] }>();
     for (const { category, modifierGroups, ...rest } of products) {
-      const product = { ...rest, modifierGroups: modifierGroups.map(link => link.group).filter(group => group.active && group.options.length > 0).map(({ active: _active, ...group }) => group) };
+      const promoPrice = effectiveUnitPrice(rest.id, rest.price, promotions, now);
+      const product = { ...rest, ...(promoPrice.lt(rest.price) ? { promoPrice: promoPrice.toFixed(2) } : {}), modifierGroups: modifierGroups.map(link => link.group).filter(group => group.active && group.options.length > 0).map(({ active: _active, ...group }) => group) };
       const key = category?.id ?? 'none';
       if (!categories.has(key)) categories.set(key, { id: category?.id ?? null, name: category?.name ?? 'Outros', products: [] });
       categories.get(key)!.products.push(product);
@@ -45,7 +55,7 @@ publicRoutes.post('/tables/:qrToken/orders', async (req, res, next) => {
     if (open >= MAX_OPEN_ORDERS_PER_TABLE) return res.status(429).json({ message: 'Too many open orders for this table. Call a waiter.' });
     const { customerName, customerPhone, marketingConsent, items } = parsed.data;
     const order = await serializable(prisma, tx => createOrder(tx, {
-      tenantId: table.tenantId, unitId: table.unitId, channel: OrderChannel.TABLE, tableId: table.id, items,
+      tenantId: table.tenantId, unitId: table.unitId, channel: OrderChannel.TABLE, tableId: table.id, items, notifyCustomer: false,
       customer: customerName ? { name: customerName, phone: customerPhone, marketingConsent, untrusted: true } : undefined,
     }));
     return res.status(201).json({ id: order.id, code: order.code, status: order.status, total: order.total, serviceFee: order.serviceFee });

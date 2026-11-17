@@ -3,9 +3,12 @@ import assert from 'node:assert/strict';
 import { randomBytes } from 'node:crypto';
 import { AddressInfo } from 'node:net';
 import { UserRole } from '@prisma/client';
+import bcrypt from 'bcryptjs';
 import { prisma } from '../lib/prisma';
 import { signAccessToken } from '../middleware/auth';
-import { fiscalProviders, paymentProviders } from '../lib/providers';
+import { totpCode } from '../lib/master-mfa';
+import { emailProviders, fiscalProviders, paymentProviders } from '../lib/providers';
+import type { EmailMessage } from '../lib/providers';
 
 // These tests need a migrated PostgreSQL database; CI sets RUN_DB_TESTS=1 after `prisma migrate deploy`.
 const enabled = process.env.RUN_DB_TESTS === '1';
@@ -27,19 +30,24 @@ async function createTenant(role: UserRole = UserRole.ADMIN) {
 
 test('database-backed API behaviour', { skip: !enabled }, async t => {
   process.env.JWT_SECRET = 'b'.repeat(32);
+  process.env.MFA_ENCRYPTION_KEY = Buffer.alloc(32, 9).toString('base64');
+  process.env.RM_RESTAURANT_URL = 'https://restaurant.example';
+  process.env.RM_ADMIN_URL = 'https://admin.example';
   const { app } = await import('../index');
   const server = app.listen(0, '127.0.0.1');
   await new Promise<void>(resolve => server.once('listening', resolve));
   const base = `http://127.0.0.1:${(server.address() as AddressInfo).port}/api/v1`;
-  const call = async (method: string, path: string, token?: string, body?: unknown) => {
-    const response = await fetch(base + path, { method, headers: { ...(token ? { authorization: `Bearer ${token}` } : {}), ...(body ? { 'content-type': 'application/json' } : {}) }, body: body ? JSON.stringify(body) : undefined });
+  const call = async (method: string, path: string, token?: string, body?: unknown, extraHeaders: Record<string, string> = {}) => {
+    const response = await fetch(base + path, { method, headers: { ...(token ? { authorization: `Bearer ${token}` } : {}), ...(body ? { 'content-type': 'application/json' } : {}), ...extraHeaders }, body: body ? JSON.stringify(body) : undefined });
     return { status: response.status, body: (response.status === 204 ? null : await response.json().catch(() => null)) as any };
   };
   const A = await createTenant();
   const B = await createTenant();
+  const cleanupTenantIds = [A.tenant.id, B.tenant.id];
+  const cleanupPlanIds: string[] = [];
   t.after(async () => {
     await new Promise<void>(resolve => server.close(() => resolve()));
-    const tenantIds = [A.tenant.id, B.tenant.id];
+    const tenantIds = cleanupTenantIds;
     // Restrictive foreign keys (items->products, movements/purchases->ingredients) require deleting history first.
     await prisma.order.deleteMany({ where: { tenantId: { in: tenantIds } } });
     await prisma.recipeIngredient.deleteMany({ where: { recipe: { tenantId: { in: tenantIds } } } });
@@ -47,9 +55,109 @@ test('database-backed API behaviour', { skip: !enabled }, async t => {
     await prisma.purchaseOrder.deleteMany({ where: { tenantId: { in: tenantIds } } });
     await prisma.stockMovement.deleteMany({ where: { tenantId: { in: tenantIds } } });
     await prisma.tenant.deleteMany({ where: { id: { in: tenantIds } } });
+    await prisma.saaSPlan.deleteMany({ where: { id: { in: cleanupPlanIds } } });
     await prisma.$disconnect();
   });
   const a = A.admin.token; const b = B.admin.token;
+
+  await t.test('commercial plans and tenant provisioning are master-only, atomic and idempotent', async () => {
+    const masterPassword = 'master-login-password-1';
+    const masterUser = await prisma.user.create({ data: { name: 'SaaS owner', email: `owner-${suffix()}@test.local`, passwordHash: await bcrypt.hash(masterPassword, 4), role: UserRole.MASTER_ADMIN } });
+    const legacyMaster = signAccessToken({ userId: masterUser.id, tenantId: null, unitId: null, role: UserRole.MASTER_ADMIN });
+    const restaurantUser = await prisma.user.findFirstOrThrow({ where: { tenantId: A.tenant.id, role: UserRole.ADMIN }, select: { email: true } });
+    assert.equal((await call('POST', '/auth/master-login', undefined, { identifier: restaurantUser.email, password: 'x' })).status, 401);
+    const masterLogin = await call('POST', '/auth/master-login', undefined, { identifier: masterUser.email, password: masterPassword });
+    assert.equal(masterLogin.status, 200);
+    assert.equal(masterLogin.body.mfaSetupRequired, true);
+    assert.equal(masterLogin.body.user.role, 'MASTER_ADMIN');
+    assert.equal('accessToken' in masterLogin.body, false);
+    assert.equal((await call('GET', '/plans', legacyMaster)).status, 403);
+    assert.equal((await call('GET', '/plans', masterLogin.body.mfaSetupToken)).status, 401, 'setup-scoped tokens cannot access normal routes');
+    const enrollment = await call('POST', '/auth/master/mfa/setup', masterLogin.body.mfaSetupToken);
+    assert.equal(enrollment.status, 200);
+    assert.equal((await call('POST', '/auth/master/mfa/confirm', masterLogin.body.mfaSetupToken, { code: '000000' })).status, 400);
+    const enabledMfa = await call('POST', '/auth/master/mfa/confirm', masterLogin.body.mfaSetupToken, { code: totpCode(enrollment.body.secret) });
+    assert.equal(enabledMfa.status, 200);
+    assert.equal(enabledMfa.body.recoveryCodes.length, 10);
+    let master = enabledMfa.body.accessToken as string;
+    assert.equal((await call('GET', '/plans', legacyMaster)).status, 403, 'sessions created before MFA cannot access Master routes');
+    assert.equal((await call('GET', '/plans', master)).status, 200);
+    const mfaLogin = await call('POST', '/auth/master-login', undefined, { identifier: masterUser.email, password: masterPassword });
+    assert.equal(mfaLogin.body.mfaRequired, true);
+    assert.equal('accessToken' in mfaLogin.body, false);
+    assert.equal((await call('GET', '/plans', mfaLogin.body.mfaChallenge)).status, 401, 'login challenges cannot access normal routes');
+    const loginCode = totpCode(enrollment.body.secret, Date.now() + 30000);
+    const verifiedLogin = await call('POST', '/auth/master/mfa/verify', mfaLogin.body.mfaChallenge, { code: loginCode });
+    assert.equal(verifiedLogin.status, 200);
+    master = verifiedLogin.body.accessToken;
+    assert.equal((await call('POST', '/auth/master/mfa/verify', mfaLogin.body.mfaChallenge, { code: loginCode })).status, 401, 'TOTP steps cannot be replayed');
+    const recoveryLogin = await call('POST', '/auth/master-login', undefined, { identifier: masterUser.email, password: masterPassword });
+    const recovery = enabledMfa.body.recoveryCodes[0] as string;
+    assert.equal((await call('POST', '/auth/master/mfa/verify', recoveryLogin.body.mfaChallenge, { code: recovery })).status, 200);
+    assert.equal((await call('POST', '/auth/master/mfa/verify', recoveryLogin.body.mfaChallenge, { code: recovery })).status, 401, 'recovery codes are single use');
+    assert.equal((await call('GET', '/plans', a)).status, 403);
+    const planData = { key: `pro-${suffix()}`, name: 'Plano Profissional', description: 'Plano de teste', active: true, trialDays: 14, maxUnits: 3, maxUsers: 20, activationFee: 25, setupFee: 50, modules: ['pos', 'financial'], prices: [{ period: 'MONTHLY', amount: 199.9 }, { period: 'ANNUAL', amount: 1999 }] };
+    const createdPlan = await call('POST', '/plans', master, planData);
+    assert.equal(createdPlan.status, 201);
+    cleanupPlanIds.push(createdPlan.body.id);
+    assert.deepEqual(createdPlan.body.modules.sort(), ['financial', 'pos']);
+    const duplicate = await call('POST', `/plans/${createdPlan.body.id}/duplicate`, master, { key: `${planData.key}-copy`, name: 'Plano cópia' });
+    assert.equal(duplicate.status, 201);
+    cleanupPlanIds.push(duplicate.body.id);
+    assert.equal(duplicate.body.active, false);
+    assert.equal((await call('POST', `/plans/${createdPlan.body.id}/duplicate`, a, { key: `copy-${suffix()}`, name: 'Sem permissão' })).status, 403);
+    const createBody = { name: 'Provisionada', slug: `provisionada-${suffix()}`, commercialPlanId: createdPlan.body.id, adminName: 'Responsável', adminEmail: `responsavel-${suffix()}@test.local`, adminPassword: 'strong-provisioning-password', unitName: 'Matriz' };
+    const idempotencyKey = `create-${suffix()}-${suffix()}`;
+    const provisioned = await call('POST', '/tenants', master, createBody, { 'idempotency-key': idempotencyKey });
+    assert.equal(provisioned.status, 201);
+    cleanupTenantIds.push(provisioned.body.tenant.id);
+    assert.equal(provisioned.body.provisioning.status, 'COMPLETED');
+    assert.ok(provisioned.body.provisioning.completedSteps.includes('ENVIRONMENT_READY'));
+    assert.equal('idempotencyKey' in provisioned.body.provisioning, false);
+    assert.equal('requestHash' in provisioned.body.provisioning, false);
+    const newLicense = await prisma.tenantLicense.findUniqueOrThrow({ where: { tenantId: provisioned.body.tenant.id } });
+    assert.equal(newLicense.status, 'PENDING');
+    assert.equal(newLicense.billingPeriod, 'MONTHLY');
+    assert.equal(Number(newLicense.contractedPrice), 199.9);
+    assert.equal(Number(newLicense.activationFee), 25);
+    assert.equal(Number(newLicense.setupFee), 50);
+    assert.deepEqual((await prisma.tenantModule.findMany({ where: { tenantId: provisioned.body.tenant.id }, select: { moduleKey: true }, orderBy: { moduleKey: 'asc' } })).map(item => item.moduleKey), ['financial', 'pos']);
+    const updatedPlan = await call('PUT', `/plans/${createdPlan.body.id}`, master, { ...planData, name: 'Plano atualizado', modules: ['pos'], prices: [{ period: 'MONTHLY', amount: 249 }] });
+    assert.equal(updatedPlan.status, 200);
+    assert.equal((await prisma.tenantModule.count({ where: { tenantId: provisioned.body.tenant.id } })), 2, 'plan edits must not rewrite a customer contract');
+    assert.equal(Number((await prisma.tenantLicense.findUniqueOrThrow({ where: { tenantId: provisioned.body.tenant.id } })).contractedPrice), 199.9, 'plan price changes must not rewrite a customer contract');
+    const negotiated = await call('PUT', `/tenants/${provisioned.body.tenant.id}/license`, master, {
+      status: 'ACTIVE', planId: createdPlan.body.id, billingPeriod: 'MONTHLY', contractedPrice: 225, activationFee: 20,
+      setupFee: 30, discountPercent: 10, maxUnits: 2, maxUsers: 12, modules: ['pos', 'financial'],
+    });
+    assert.equal(negotiated.status, 200);
+    assert.equal(Number(negotiated.body.license.contractedPrice), 225);
+    assert.equal(Number(negotiated.body.license.discountPercent), 10);
+    assert.equal(negotiated.body.license.billingPeriod, 'MONTHLY');
+    const replay = await call('POST', '/tenants', master, createBody, { 'idempotency-key': idempotencyKey });
+    assert.equal(replay.status, 200);
+    assert.equal(replay.body.tenant.id, provisioned.body.tenant.id);
+    assert.equal((await call('POST', '/tenants', master, { ...createBody, name: 'Conteúdo diferente' }, { 'idempotency-key': idempotencyKey })).status, 409);
+    assert.equal((await call('POST', '/tenants', master, createBody, { 'idempotency-key': 'short' })).status, 400);
+    const before = await prisma.tenant.findUniqueOrThrow({ where: { id: provisioned.body.tenant.id }, include: { _count: { select: { units: true, users: true } } } });
+    const retried = await call('POST', `/tenants/${before.id}/provision/retry`, master);
+    assert.equal(retried.status, 200);
+    const after = await prisma.tenant.findUniqueOrThrow({ where: { id: before.id }, include: { _count: { select: { units: true, users: true } } } });
+    assert.deepEqual(after._count, before._count);
+    const monitor = await call('GET', '/tenants/provisioning', master);
+    assert.equal(monitor.status, 200);
+    assert.equal(monitor.body.items.some((item: { tenantId: string }) => item.tenantId === before.id), true);
+    assert.equal('requestHash' in monitor.body.items.find((item: { tenantId: string }) => item.tenantId === before.id), false);
+    assert.equal((await prisma.auditLog.count({ where: { tenantId: before.id, action: 'TENANT_PROVISIONING_RETRIED' } })), 1);
+    const incomplete = await prisma.tenant.create({ data: { name: 'Provisionamento incompleto', slug: `incompleto-${suffix()}`, status: 'ACTIVE' } });
+    cleanupTenantIds.push(incomplete.id);
+    const intervention = await call('POST', `/tenants/${incomplete.id}/provision/retry`, master);
+    assert.equal(intervention.status, 409);
+    assert.equal(intervention.body.provisioning.status, 'NEEDS_INTERVENTION');
+    assert.equal(await prisma.unit.count({ where: { tenantId: incomplete.id } }), 1, 'retry creates the missing unit only once');
+    assert.equal((await call('POST', `/tenants/${incomplete.id}/provision/retry`, master)).status, 409);
+    assert.equal(await prisma.unit.count({ where: { tenantId: incomplete.id } }), 1);
+  });
 
   // ---------- Production setup ----------
   const sector = (await call('POST', '/production/sectors', a, { name: 'Cozinha', autoPrint: true, unitId: A.unit.id })).body;
@@ -105,18 +213,42 @@ test('database-backed API behaviour', { skip: !enabled }, async t => {
     assert.equal(claimed.length, 1);
     assert.equal(claimed[0].printer.address, '192.168.0.50');
     assert.equal((await call('GET', '/print-agent/jobs/next', agent.token)).body.items.length, 0, 'claimed job is not handed out twice');
-    assert.equal((await call('POST', `/print-agent/jobs/${claimed[0].id}/result`, other.token, { ok: true })).status, 404);
-    assert.equal((await call('POST', `/print-agent/jobs/${claimed[0].id}/result`, agent.token, { ok: true })).body.status, 'PRINTED');
+    assert.equal((await call('POST', `/print-agent/jobs/${claimed[0].id}/result`, other.token, { claimId: claimed[0].claimId, attempt: claimed[0].attempts, ok: true })).status, 404);
+    assert.equal((await call('POST', `/print-agent/jobs/${claimed[0].id}/result`, agent.token, { claimId: claimed[0].claimId, attempt: claimed[0].attempts, ok: true })).body.status, 'PRINTED');
 
     // ----- failure/retry policy -----
     const test1 = (await call('POST', `/printing/printers/${printer.body.id}/test`, a)).body;
     for (let attempt = 1; attempt <= 3; attempt++) {
       const next = (await call('GET', '/print-agent/jobs/next', agent.token)).body.items;
       assert.equal(next[0].id, test1.id);
-      const result = await call('POST', `/print-agent/jobs/${test1.id}/result`, agent.token, { ok: false, error: 'offline' });
+      const result = await call('POST', `/print-agent/jobs/${test1.id}/result`, agent.token, { claimId: next[0].claimId, attempt: next[0].attempts, ok: false, error: 'offline' });
       assert.equal(result.body.status, attempt < 3 ? 'PENDING' : 'FAILED');
     }
     assert.equal((await call('POST', `/printing/jobs/${test1.id}/retry`, a)).body.status, 'PENDING');
+
+    // A reclaimed job cannot be acknowledged by its previous attempt or another agent.
+    const peer = (await call('POST', '/printing/agents', a, { name: 'Outro agente' })).body;
+    const initialClaim = (await call('GET', '/print-agent/jobs/next?limit=1', agent.token)).body.items[0];
+    assert.equal(initialClaim.id, test1.id); assert.equal(initialClaim.attempts, 1);
+    const expire = () => prisma.printJob.update({ where: { id: test1.id }, data: { claimedAt: new Date(Date.now() - 180000) } });
+    await expire();
+    const secondClaim = (await call('GET', '/print-agent/jobs/next?limit=1', agent.token)).body.items[0];
+    assert.equal(secondClaim.attempts, 2);
+    assert.equal((await call('POST', `/print-agent/jobs/${test1.id}/result`, agent.token, { claimId: initialClaim.claimId, attempt: 1, ok: true })).status, 404);
+    assert.equal((await call('POST', `/print-agent/jobs/${test1.id}/result`, peer.token, { claimId: secondClaim.claimId, attempt: 2, ok: true })).status, 404);
+    await expire();
+    const thirdClaim = (await call('GET', '/print-agent/jobs/next?limit=1', peer.token)).body.items[0];
+    assert.equal(thirdClaim.attempts, 3);
+    assert.equal((await call('POST', `/print-agent/jobs/${test1.id}/result`, agent.token, { claimId: secondClaim.claimId, attempt: 2, ok: true })).status, 404);
+    await expire();
+    assert.equal((await call('GET', '/print-agent/jobs/next?limit=1', peer.token)).body.items.length, 0);
+    const timedOut = await prisma.printJob.findUniqueOrThrow({ where: { id: test1.id } });
+    assert.equal(timedOut.status, 'FAILED'); assert.equal(timedOut.error, 'CLAIM_TIMED_OUT'); assert.equal(timedOut.attempts, 3);
+    assert.equal((await call('POST', `/printing/jobs/${test1.id}/retry`, a)).status, 200);
+    const retried = (await call('GET', '/print-agent/jobs/next?limit=1', agent.token)).body.items[0];
+    assert.equal(retried.attempts, 1);
+    assert.equal((await call('POST', `/print-agent/jobs/${test1.id}/result`, agent.token, { claimId: initialClaim.claimId, attempt: 1, ok: true })).status, 404);
+    assert.equal((await call('POST', `/print-agent/jobs/${test1.id}/result`, agent.token, { claimId: retried.claimId, attempt: retried.attempts, ok: true })).status, 200);
 
     // ----- status flow, WhatsApp outbox and loyalty -----
     const id = created.body.id;
@@ -141,6 +273,43 @@ test('database-backed API behaviour', { skip: !enabled }, async t => {
     assert.equal((await make()).status, 400, 'exhausted coupon must be rejected');
     assert.equal((await call('POST', '/coupons', a, { code: 'BAD', type: 'PERCENT', value: 150 })).status, 400);
     assert.equal((await call('POST', '/orders', a, { couponCode: 'NOPE', items: [{ productId: soda.id, quantity: 1 }] })).status, 400);
+  });
+
+  await t.test('production prints stay within their unit and use shared printers only as fallback', async () => {
+    const branch = await prisma.unit.create({ data: { tenantId: A.tenant.id, name: 'Unidade impressão' } });
+    const sharedSector = await call('POST', '/production/sectors', a, { name: 'Setor compartilhado', autoPrint: true });
+    assert.equal(sharedSector.status, 201);
+    const makePrinter = (name: string, unitId?: string) => call('POST', '/printing/printers', a, { name, connectionType: 'NETWORK', address: '127.0.0.1', sectorId: sharedSector.body.id, isPrimary: true, ...(unitId ? { unitId } : {}) });
+    const shared = await makePrinter('Compartilhada');
+    const localA = await makePrinter('Impressora A', A.unit.id);
+    const localB = await makePrinter('Impressora B', branch.id);
+    assert.equal(shared.status, 201); assert.equal(localA.status, 201); assert.equal(localB.status, 201);
+    assert.equal(await prisma.printer.count({ where: { sectorId: sharedSector.body.id, isPrimary: true } }), 3);
+    const product = await prisma.product.create({ data: { tenantId: A.tenant.id, name: 'Produto compartilhado', price: 10, sectorId: sharedSector.body.id } });
+    const order = async (unitId: string, productId = product.id) => {
+      const created = await call('POST', '/orders', a, { unitId, items: [{ productId, quantity: 1 }] });
+      assert.equal(created.status, 201, JSON.stringify(created.body));
+      return prisma.printJob.findFirstOrThrow({ where: { orderId: created.body.id } });
+    };
+    assert.equal((await order(A.unit.id)).printerId, localA.body.id);
+    assert.equal((await order(branch.id)).printerId, localB.body.id);
+    assert.equal((await call('PATCH', `/printing/printers/${localB.body.id}`, a, { active: false })).status, 200);
+    assert.equal((await order(branch.id)).printerId, shared.body.id);
+    assert.equal((await call('PATCH', `/printing/printers/${shared.body.id}`, a, { active: false })).status, 200);
+    const failed = await order(branch.id);
+    assert.equal(failed.status, 'FAILED'); assert.equal(failed.printerId, null);
+    assert.equal((await call('POST', `/printing/jobs/${failed.id}/retry`, a)).status, 409);
+    assert.equal((await call('PATCH', `/printing/printers/${shared.body.id}`, a, { active: true })).status, 200);
+    assert.equal((await call('POST', `/printing/jobs/${failed.id}/retry`, a)).body.printerId, shared.body.id);
+    const wrongSector = await order(branch.id, burger.id);
+    assert.equal(wrongSector.status, 'FAILED'); assert.equal(wrongSector.error, 'SECTOR_NOT_AVAILABLE_FOR_UNIT');
+    assert.equal((await call('POST', `/printing/jobs/${wrongSector.id}/retry`, a)).status, 409);
+    assert.equal((await call('POST', '/printing/printers', a, { name: 'Setor errado', unitId: branch.id, sectorId: sector.id, connectionType: 'NETWORK' })).status, 400);
+    const manager = await prisma.user.create({ data: { tenantId: A.tenant.id, unitId: A.unit.id, name: 'Gerente produção', email: `${suffix()}@test.local`, passwordHash: 'x', role: 'MANAGER' } });
+    const scoped = signAccessToken({ userId: manager.id, tenantId: A.tenant.id, unitId: A.unit.id, role: 'MANAGER' });
+    assert.equal((await call('POST', '/production/sectors', scoped, { name: 'Fora unidade', unitId: branch.id })).status, 403);
+    assert.equal((await call('PATCH', `/printing/printers/${localA.body.id}`, scoped, { unitId: branch.id })).status, 403);
+    await prisma.product.update({ where: { id: product.id }, data: { active: false } });
   });
 
   await t.test('role permissions', async () => {
@@ -195,6 +364,42 @@ test('database-backed API behaviour', { skip: !enabled }, async t => {
     assert.equal(count.status, 201); assert.equal(count.body.adjusted, 1);
     assert.equal((await prisma.ingredient.findUniqueOrThrow({ where: { id: flour.id } })).currentStock.toString(), '18.5');
     assert.equal((await call('POST', '/inventory/counts', b, { lines: [{ ingredientId: flour.id, countedQuantity: 1 }] })).status, 400);
+  });
+
+  await t.test('financial entries can be listed and settled once within their tenant and unit', async () => {
+    const user = await prisma.user.create({ data: { tenantId: A.tenant.id, unitId: A.unit.id, name: 'Financeiro unidade', email: `${suffix()}@test.local`, passwordHash: 'x', role: 'FINANCE' } });
+    const unitToken = signAccessToken({ userId: user.id, tenantId: A.tenant.id, unitId: A.unit.id, role: 'FINANCE' });
+    const otherUnit = await prisma.unit.create({ data: { tenantId: A.tenant.id, name: 'Filial' } });
+    const create = (unitId: string) => call('POST', '/financial/entries', a, { description: 'Conta teste', type: 'EXPENSE', amount: 12.34, unitId });
+    const entry = await create(A.unit.id); assert.equal(entry.status, 201);
+    const foreignUnit = await create(otherUnit.id); assert.equal(foreignUnit.status, 201);
+    assert.equal((await call('POST', '/financial/entries', unitToken, { description: 'Conta', type: 'EXPENSE', amount: 1, unitId: otherUnit.id })).status, 403);
+    assert.equal((await call('POST', '/financial/entries', a, { description: 'Conta', type: 'EXPENSE', amount: 0.001 })).status, 400);
+    assert.equal((await call('POST', `/financial/entries/${entry.body.id}/settle`, b)).status, 404);
+    assert.equal((await call('POST', `/financial/entries/${foreignUnit.body.id}/settle`, unitToken)).status, 404);
+    assert.equal((await call('POST', `/financial/entries/${entry.body.id}/settle`, A.actors.WAITER!.token)).status, 403);
+    const list = await call('GET', '/financial/entries?type=EXPENSE&status=OPEN&page=1&pageSize=1', unitToken);
+    assert.equal(list.status, 200); assert.equal(list.body.items.length, 1); assert.ok(list.body.total >= 1);
+    assert.equal((await call('GET', '/financial/entries?pageSize=0', a)).status, 400);
+    const before = (await call('GET', '/financial/summary', unitToken)).body;
+    const [first, second] = await Promise.all([call('POST', `/financial/entries/${entry.body.id}/settle`, unitToken), call('POST', `/financial/entries/${entry.body.id}/settle`, unitToken)]);
+    assert.deepEqual([first.status, second.status].sort(), [200, 409]);
+    const saved = await prisma.financialEntry.findUniqueOrThrow({ where: { id: entry.body.id } });
+    assert.equal(saved.status, 'PAID'); assert.ok(saved.settledAt);
+    assert.equal(await prisma.auditLog.count({ where: { tenantId: A.tenant.id, action: 'FINANCIAL_ENTRY_SETTLED', entityId: entry.body.id, actorUserId: user.id } }), 1);
+    const paid = await call('GET', '/financial/entries?type=EXPENSE&status=PAID', unitToken);
+    assert.ok(paid.body.items.some((item: { id: string }) => item.id === entry.body.id));
+    assert.ok(!paid.body.items.some((item: { id: string }) => item.id === foreignUnit.body.id));
+    const after = (await call('GET', '/financial/summary', unitToken)).body;
+    assert.equal(Math.round((Number(before.openPayables) - Number(after.openPayables)) * 100), 1234);
+    assert.equal(Math.round((Number(after.expenses) - Number(before.expenses)) * 100), 1234);
+    const receivable = await call('POST', '/financial/entries', unitToken, { description: 'Recebimento', type: 'INCOME', amount: 25 });
+    assert.equal(receivable.status, 201);
+    assert.equal((await call('POST', `/financial/entries/${receivable.body.id}/settle`, unitToken)).status, 200);
+    const totals = (await call('GET', '/financial/summary', unitToken)).body;
+    assert.equal(Math.round((Number(totals.revenue) - Number(after.revenue)) * 100), 2500);
+    const purchaseEntry = await prisma.financialEntry.findFirstOrThrow({ where: { tenantId: A.tenant.id, unitId: A.unit.id, category: 'Compras', status: 'OPEN' } });
+    assert.equal((await call('POST', `/financial/entries/${purchaseEntry.id}/settle`, unitToken)).status, 200);
   });
 
   await t.test('reservations prevent double booking a table', async () => {
@@ -362,6 +567,38 @@ test('database-backed API behaviour', { skip: !enabled }, async t => {
     assert.equal((await call('GET', '/users', b)).body.items.some((u: any) => u.id === waiter.body.id), false);
   });
 
+  await t.test('employee links are optional, unique, audited and scoped', async () => {
+    const employee = await prisma.employee.create({ data: { tenantId: A.tenant.id, unitId: A.unit.id, fullName: 'Funcionário vinculado' } });
+    const foreign = await prisma.employee.create({ data: { tenantId: B.tenant.id, unitId: B.unit.id, fullName: 'Outra empresa' } });
+    const otherUnit = await prisma.unit.create({ data: { tenantId: A.tenant.id, name: 'Outra unidade' } });
+    const otherEmployee = await prisma.employee.create({ data: { tenantId: A.tenant.id, unitId: otherUnit.id, fullName: 'Outra unidade' } });
+    const manager = await prisma.user.create({ data: { tenantId: A.tenant.id, unitId: A.unit.id, name: 'Gerente local', email: `${suffix()}@test.local`, passwordHash: 'x', role: 'MANAGER' } });
+    const token = signAccessToken({ userId: manager.id, tenantId: A.tenant.id, unitId: A.unit.id, role: 'MANAGER' });
+    const create = (employeeId?: string) => call('POST', '/users', token, { name: 'Atendente', email: `${suffix()}@test.local`, password: 'long-enough-pass', role: 'WAITER', ...(employeeId ? { employeeId } : {}) });
+    assert.equal((await create(foreign.id)).status, 400);
+    assert.equal((await create(otherEmployee.id)).status, 400);
+    assert.equal((await call('POST', '/employees', token, { fullName: 'Fora unidade', unitId: otherUnit.id })).status, 403);
+    const one = await create(employee.id); assert.equal(one.status, 201); assert.equal(one.body.employeeId, employee.id);
+    const two = await create(); assert.equal(two.status, 201); assert.equal(two.body.employeeId, null);
+    assert.equal((await call('PATCH', `/users/${two.body.id}`, token, { employeeId: employee.id })).status, 409);
+    assert.equal((await call('PATCH', `/users/${one.body.id}`, token, { unitId: null })).status, 403);
+    assert.equal((await call('PATCH', `/employees/${employee.id}`, token, { unitId: otherUnit.id })).status, 403);
+    assert.equal((await call('PATCH', `/users/${one.body.id}`, token, { employeeId: null })).status, 200);
+    assert.equal((await call('PATCH', `/users/${two.body.id}`, token, { employeeId: employee.id })).status, 200);
+    const audit = await prisma.auditLog.findFirst({ where: { tenantId: A.tenant.id, entityId: two.body.id, action: 'USER_UPDATED' } });
+    assert.ok(audit); assert.equal(audit.actorUserId, manager.id);
+    assert.equal((await call('GET', '/users', b)).body.items.some((item: { employeeId: string | null }) => item.employeeId === employee.id), false);
+    await prisma.employee.update({ where: { id: otherEmployee.id }, data: { status: 'INACTIVE' } });
+    assert.equal((await call('PATCH', `/users/${two.body.id}`, a, { employeeId: otherEmployee.id })).status, 400);
+    assert.equal((await call('PATCH', `/users/${two.body.id}`, token, { employeeId: null })).status, 200);
+    const race = await Promise.all([
+      call('PATCH', `/users/${one.body.id}`, token, { employeeId: employee.id }),
+      call('PATCH', `/users/${two.body.id}`, token, { employeeId: employee.id }),
+    ]);
+    assert.deepEqual(race.map(result => result.status).sort(), [200, 409]);
+    assert.equal(await prisma.user.count({ where: { employeeId: employee.id } }), 1);
+  });
+
   await t.test('service fee distribution uses the waiter share and commission rates', async () => {
     await prisma.unit.update({ where: { id: A.unit.id }, data: { waiterSharePercent: 70 } });
     const waiter = A.actors.WAITER!;
@@ -448,6 +685,176 @@ test('database-backed API behaviour', { skip: !enabled }, async t => {
     assert.equal(job.provider, 'ifood'); assert.equal(job.address, 'Rua A, 10');
     assert.equal((await call('PATCH', `/integrations/${integration.body.id}`, a, { active: false })).status, 200);
     assert.equal((await send(integration.body.key, { ...payload, externalId: 'IF-2' })).status, 401, 'revoked key');
+  });
+
+  await t.test('table order total respects the selected unit and optional service fee', async () => {
+    const unit = await prisma.unit.create({ data: { tenantId: A.tenant.id, name: 'Unidade de taxa', serviceFeePercent: 10 } });
+    const table = await prisma.restaurantTable.create({ data: { tenantId: A.tenant.id, unitId: unit.id, label: 'T1', qrToken: `test-${suffix()}` } });
+    const make = (applyServiceFee: boolean) => call('POST', '/orders', a, {
+      channel: 'TABLE', unitId: unit.id, tableId: table.id, applyServiceFee, items: [{ productId: soda.id, quantity: 2 }],
+    });
+    const withFee = await make(true);
+    const withoutFee = await make(false);
+    assert.equal(withFee.status, 201);
+    assert.equal(withoutFee.status, 201);
+    assert.equal(Number(withFee.body.serviceFee), 1.3);
+    assert.equal(Number(withFee.body.total), 14.3);
+    assert.equal(Number(withoutFee.body.serviceFee), 0);
+    assert.equal(Number(withoutFee.body.total), 13);
+    assert.equal((await call('POST', '/orders', a, { channel: 'TABLE', unitId: A.unit.id, tableId: table.id, items: [{ productId: soda.id, quantity: 1 }] })).status, 400);
+  });
+
+  await t.test('audit history is paginated, tenant scoped and restricted to tenant-wide management', async () => {
+    const marker = `AUDIT_TEST_${suffix()}`;
+    const actor = await prisma.user.findFirstOrThrow({ where: { tenantId: A.tenant.id, role: UserRole.ADMIN } });
+    await prisma.auditLog.create({ data: { tenantId: A.tenant.id, actorUserId: actor.id, action: marker, entityType: 'AuditTest', entityId: A.tenant.id, metadata: { changed: true } } });
+    await prisma.auditLog.create({ data: { tenantId: B.tenant.id, action: marker, entityType: 'AuditTest', entityId: B.tenant.id } });
+    const result = await call('GET', `/audit?action=${marker}&pageSize=1`, a);
+    assert.equal(result.status, 200);
+    assert.equal(result.body.total, 1);
+    assert.equal(result.body.items.length, 1);
+    assert.equal(result.body.items[0].tenantId, undefined);
+    assert.equal(result.body.items[0].entityId, A.tenant.id);
+    assert.equal(result.body.items[0].actor.name, actor.name);
+    assert.deepEqual(result.body.items[0].metadata, { changed: true });
+    const otherTenant = await call('GET', `/audit?action=${marker}`, b);
+    assert.equal(otherTenant.status, 200);
+    assert.equal(otherTenant.body.total, 1);
+    assert.equal(otherTenant.body.items[0].entityId, B.tenant.id);
+    assert.notEqual(otherTenant.body.items[0].entityId, A.tenant.id);
+    assert.equal((await call('GET', '/audit', A.actors.WAITER!.token)).status, 403);
+    const scopedManager = await prisma.user.create({ data: { tenantId: A.tenant.id, unitId: A.unit.id, name: 'Gerente unidade', email: `scoped-${suffix()}@test.local`, passwordHash: 'x', role: UserRole.MANAGER } });
+    const scopedToken = signAccessToken({ userId: scopedManager.id, tenantId: A.tenant.id, unitId: A.unit.id, role: UserRole.MANAGER });
+    assert.equal((await call('GET', '/audit', scopedToken)).status, 403);
+    assert.equal((await call('GET', '/audit?pageSize=101', a)).status, 400);
+    assert.equal((await call('GET', '/audit?from=2026-01-02T00:00:00.000Z&to=2026-01-01T00:00:00.000Z', a)).status, 400);
+  });
+
+  await t.test('restaurant dashboard aggregates real data per tenant and hides finance from operational roles', async () => {
+    const D = await createTenant();
+    const E = await createTenant();
+    const order = (status: 'COMPLETED' | 'OPEN' | 'CANCELLED', total: number, tableId?: string) => prisma.order.create({ data: {
+      tenantId: D.tenant.id, unitId: D.unit.id, code: `D-${suffix()}`, status, subtotal: total, total, tableId,
+    } });
+    const table = await prisma.restaurantTable.create({ data: { tenantId: D.tenant.id, unitId: D.unit.id, label: 'D1', qrToken: `qr-${suffix()}` } });
+    await prisma.restaurantTable.create({ data: { tenantId: D.tenant.id, unitId: D.unit.id, label: 'D2', qrToken: `qr-${suffix()}` } });
+    await order('COMPLETED', 100); await order('COMPLETED', 50); await order('CANCELLED', 999); await order('OPEN', 30, table.id);
+    await prisma.financialEntry.create({ data: { tenantId: D.tenant.id, description: 'Receber', type: 'INCOME', amount: 70, status: 'OPEN' } });
+    await prisma.financialEntry.create({ data: { tenantId: D.tenant.id, description: 'Pagar', type: 'EXPENSE', amount: 20, status: 'PAID', settledAt: new Date() } });
+    const result = await call('GET', '/dashboard/restaurant', D.admin.token);
+    assert.equal(result.status, 200);
+    assert.equal(Number(result.body.daily.sales), 150);
+    assert.equal(result.body.daily.completedOrders, 2);
+    assert.equal(result.body.daily.orders, 3);
+    assert.equal(Number(result.body.daily.averageTicket), 75);
+    assert.deepEqual(result.body.tables, { active: 2, occupied: 1, available: 1 });
+    assert.equal(Number(result.body.financial.openReceivables), 70);
+    assert.equal(Number(result.body.financial.estimatedOperatingBalance), 130);
+    assert.equal(result.body.salesTrend.length, 7);
+    assert.equal(Number(result.body.salesTrend.at(-1).total), 150);
+    const waiter = await call('GET', '/dashboard/restaurant', D.actors.WAITER!.token);
+    assert.equal(waiter.status, 200);
+    assert.equal(waiter.body.financial, null);
+    const other = await call('GET', '/dashboard/restaurant', E.admin.token);
+    assert.equal(Number(other.body.daily.sales), 0);
+    assert.equal(other.body.tables.active, 0);
+  });
+
+  await t.test('licenses gate modules, status and limits on the backend and are master-only', async () => {
+    const L = await createTenant();
+    const master = await prisma.user.create({ data: { name: 'Master', email: `master-${suffix()}@test.local`, passwordHash: 'x', role: UserRole.MASTER_ADMIN, mfaEnabled: true } });
+    const masterToken = signAccessToken({ userId: master.id, tenantId: null, unitId: null, role: UserRole.MASTER_ADMIN, mfaAuthenticated: true });
+    assert.equal((await call('GET', `/financial/entries`, L.admin.token)).status, 200);
+    assert.equal((await call('PUT', `/tenants/${L.tenant.id}/license`, L.admin.token, { status: 'ACTIVE', modules: [] })).status, 403);
+    assert.equal((await call('PUT', `/tenants/${L.tenant.id}/license`, masterToken, { status: 'ACTIVE', modules: ['bogus'] })).status, 400);
+    const saved = await call('PUT', `/tenants/${L.tenant.id}/license`, masterToken, { status: 'ACTIVE', maxUnits: 1, maxUsers: 100, modules: ['pos', 'pos'] });
+    assert.equal(saved.status, 200);
+    assert.deepEqual(saved.body.modules, ['pos']);
+    assert.equal((await call('GET', `/financial/entries`, L.admin.token)).status, 403);
+    assert.equal((await call('GET', `/dashboard/restaurant`, L.admin.token)).status, 200);
+    assert.equal((await call('POST', '/units', L.admin.token, { name: 'Filial' })).status, 403);
+    await call('PUT', `/tenants/${L.tenant.id}/license`, masterToken, { status: 'ACTIVE', modules: ['pos', 'financial'] });
+    assert.equal((await call('GET', `/financial/entries`, L.admin.token)).status, 200);
+    await call('PUT', `/tenants/${L.tenant.id}/license`, masterToken, { status: 'SUSPENDED', modules: ['pos', 'financial'] });
+    assert.equal((await call('GET', `/dashboard/restaurant`, L.admin.token)).status, 403);
+    const suspendedLogin = await prisma.user.create({ data: { tenantId: L.tenant.id, name: 'Dono', email: `dono-${suffix()}@test.local`, passwordHash: await bcrypt.hash('license-password-1', 4), role: UserRole.ADMIN } });
+    assert.equal((await call('POST', '/auth/login', undefined, { identifier: suspendedLogin.email, password: 'license-password-1' })).status, 403);
+    await call('PUT', `/tenants/${L.tenant.id}/license`, masterToken, { status: 'ACTIVE', validUntil: new Date(Date.now() - 86400000).toISOString(), modules: ['pos'] });
+    assert.equal((await call('GET', `/dashboard/restaurant`, L.admin.token)).status, 403);
+    assert.equal(await prisma.unit.count({ where: { tenantId: L.tenant.id } }), 1);
+    assert.equal(await prisma.auditLog.count({ where: { tenantId: L.tenant.id, action: 'LICENSE_UPDATED' } }), 4);
+    const view = await call('GET', `/tenants/${L.tenant.id}/license`, masterToken);
+    assert.equal(view.body.restricted, true);
+  });
+
+  await t.test('password recovery is private, single-use, expires and revokes existing sessions', async () => {
+    const previousProvider = emailProviders.get('smtp');
+    const sentMessages: EmailMessage[] = [];
+    emailProviders.clear();
+    try {
+      assert.equal((await call('POST', '/auth/forgot-password', undefined, { email: 'unconfigured@test.local' })).status, 503);
+      emailProviders.register({ name: 'smtp', async send(message) { sentMessages.push(message); } });
+      const email = `reset-${suffix()}@test.local`;
+      const password = 'Original-password-1!';
+      const user = await prisma.user.create({ data: { tenantId: A.tenant.id, name: 'Reset account', email, passwordHash: await bcrypt.hash(password, 4), role: UserRole.ADMIN } });
+      const oldSession = signAccessToken({ userId: user.id, tenantId: A.tenant.id, unitId: null, role: UserRole.ADMIN });
+      const requested = await call('POST', '/auth/forgot-password', undefined, { email });
+      assert.equal(requested.status, 202);
+      assert.equal(requested.body.message, 'Se a conta estiver ativa, enviaremos instruções para o e-mail informado.');
+      assert.equal(sentMessages[0]?.to, email);
+      assert.equal((await call('POST', '/auth/forgot-password', undefined, { email: `missing-${suffix()}@test.local` })).body.message, requested.body.message);
+      const resetUrl = new URL(sentMessages[0].text.slice(sentMessages[0].text.lastIndexOf('\n') + 1));
+      const token = resetUrl.searchParams.get('token')!;
+      const stored = await prisma.user.findUniqueOrThrow({ where: { id: user.id }, select: { passwordResetTokenHash: true, passwordResetExpiresAt: true } });
+      assert.notEqual(stored.passwordResetTokenHash, token);
+      assert.ok(stored.passwordResetExpiresAt && stored.passwordResetExpiresAt.getTime() > Date.now());
+      assert.equal((await call('POST', '/auth/reset-password', undefined, { token, newPassword: 'weak' })).status, 400);
+      const reset = await call('POST', '/auth/reset-password', undefined, { token, newPassword: 'New-password-secure-23!' });
+      assert.equal(reset.status, 204);
+      assert.equal((await call('POST', '/auth/reset-password', undefined, { token, newPassword: 'Another-secure-password-23!' })).status, 400);
+      assert.equal((await call('GET', '/auth/me', oldSession)).status, 401);
+      assert.equal((await call('POST', '/auth/login', undefined, { identifier: email, password: 'New-password-secure-23!' })).status, 200);
+      const savedPassword = await prisma.user.findUniqueOrThrow({ where: { id: user.id }, select: { passwordHash: true } });
+      assert.equal(await bcrypt.compare(password, savedPassword.passwordHash), false);
+      assert.equal(await prisma.auditLog.count({ where: { tenantId: A.tenant.id, actorUserId: user.id, action: 'PASSWORD_RESET' } }), 1);
+      const failedUser = await prisma.user.create({ data: { tenantId: A.tenant.id, name: 'Delivery failure', email: `delivery-${suffix()}@test.local`, passwordHash: 'x', role: UserRole.ADMIN } });
+      emailProviders.register({ name: 'smtp', async send() { throw new Error('SMTP failure'); } });
+      assert.equal((await call('POST', '/auth/forgot-password', undefined, { email: failedUser.email })).status, 503);
+      const failedReset = await prisma.user.findUniqueOrThrow({ where: { id: failedUser.id }, select: { passwordResetTokenHash: true, passwordResetExpiresAt: true } });
+      assert.equal(failedReset.passwordResetTokenHash, null);
+      assert.equal(failedReset.passwordResetExpiresAt, null);
+    } finally {
+      emailProviders.clear();
+      if (previousProvider) emailProviders.register(previousProvider);
+    }
+  });
+
+  await t.test('username login is case-insensitive and temporary passwords require a strong change', async () => {
+    const temporaryPassword = 'temporary-password';
+    const user = await prisma.user.create({ data: {
+      tenantId: A.tenant.id, name: 'Admin inicial', username: 'admin-inicial', email: `bootstrap-${suffix()}@test.local`,
+      passwordHash: await bcrypt.hash(temporaryPassword, 4), mustChangePassword: true, role: UserRole.ADMIN,
+    } });
+    const login = (identifier: string, password: string) => call('POST', '/auth/login', undefined, { identifier, password });
+    const first = await login('ADMIN-INICIAL', temporaryPassword);
+    assert.equal(first.status, 200);
+    assert.equal(first.body.mustChangePassword, true);
+    const token = first.body.accessToken as string;
+    assert.equal((await call('GET', '/units', token)).status, 403);
+    assert.equal((await call('GET', '/auth/me', token)).status, 403);
+    assert.equal((await call('POST', '/auth/change-password', token, { currentPassword: 'wrong-password', newPassword: 'strong-new-password-123' })).status, 400);
+    assert.equal((await call('POST', '/auth/change-password', token, { currentPassword: temporaryPassword, newPassword: temporaryPassword })).status, 400);
+    assert.equal((await call('POST', '/auth/change-password', token, { currentPassword: temporaryPassword, newPassword: 'short' })).status, 400);
+    assert.equal((await call('POST', '/auth/change-password', token, { currentPassword: temporaryPassword, newPassword: 'strong-new-password-123' })).status, 204);
+    assert.equal((await call('GET', '/units', token)).status, 401, 'changing the password revokes the existing session');
+    assert.equal((await login(user.email.toUpperCase(), 'strong-new-password-123')).status, 200);
+    const renamedCase = await login('Admin-Inicial', 'strong-new-password-123');
+    assert.equal(renamedCase.status, 200);
+    assert.equal(renamedCase.body.mustChangePassword, false);
+    assert.equal((await login('admin-inicial', temporaryPassword)).status, 401);
+    const audit = await prisma.auditLog.findFirstOrThrow({ where: { tenantId: A.tenant.id, action: 'PASSWORD_CHANGED', entityId: user.id } });
+    assert.equal(audit.actorUserId, user.id);
+    assert.equal(audit.metadata, null);
   });
 });
 

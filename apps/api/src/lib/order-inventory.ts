@@ -7,6 +7,7 @@ type RecipeOrder = {
   unitId: string | null;
   items: Array<{
     quantity: number;
+    weightKg?: Prisma.Decimal | null;
     modifiers?: Array<{ quantity: number; ingredientId: string | null; ingredientQuantity: Prisma.Decimal | null }>;
     product: {
       id: string;
@@ -55,7 +56,9 @@ export async function consumeOrderInventory(
         throw new OrderInventoryError('INVALID_RECIPE');
       }
 
-      const quantity = line.quantity.mul(item.quantity).div(recipe.yield).toDecimalPlaces(3, Prisma.Decimal.ROUND_UP);
+      // For weighed products the recipe describes one kilo.
+      const units = item.weightKg ? item.weightKg.mul(item.quantity) : new Prisma.Decimal(item.quantity);
+      const quantity = line.quantity.mul(units).div(recipe.yield).toDecimalPlaces(3, Prisma.Decimal.ROUND_UP);
       const existing = requiredByIngredient.get(ingredient.id);
       const total = (existing?.quantity ?? new Prisma.Decimal(0)).add(quantity);
       if (total.gt(MAX_STOCK_QUANTITY)) throw new OrderInventoryError('INVALID_RECIPE');

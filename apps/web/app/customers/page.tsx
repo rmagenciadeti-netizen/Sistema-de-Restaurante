@@ -1,6 +1,7 @@
 'use client';
 
 import { useState } from 'react';
+import Link from 'next/link';
 import { api, Customer, errorMessage, formatDateTime, formatMoney, ListResponse } from '../../lib/api';
 import { useAutoLoad } from '../../lib/use-auto-load';
 import { AppShell, buttonClass, Check, Field, Notice, panelClass, secondaryButtonClass } from '../../components/app-shell';
@@ -72,7 +73,7 @@ export default function CustomersPage() {
       <div className="flex flex-wrap items-start justify-between gap-3"><div><h2 className="text-lg font-semibold">{detail.name}</h2><p className="mt-1 text-sm text-slate-400">{detail.phone}{detail.email ? ` · ${detail.email}` : ''}</p><p className="mt-1 text-sm text-slate-300">{detail.address || 'Endereço não informado'}</p>{detail.notes && <p className="mt-1 text-sm text-slate-400">Obs.: {detail.notes}</p>}<p className="mt-2 text-sm">Pontos de fidelidade: <strong className="text-blue-300">{detail.loyaltyPoints}</strong> · Marketing: {detail.marketingConsent ? 'consentido' : 'não consentido'}</p></div>
         <div className="flex flex-wrap gap-2"><button className={secondaryButtonClass} onClick={() => startEdit(detail)}>Editar</button><button className={secondaryButtonClass} onClick={() => void exportData(detail)}>Exportar dados (LGPD)</button><button className="rounded-lg border border-red-500/50 px-3 py-1.5 text-sm text-red-200 hover:bg-red-500/10" onClick={() => void anonymize(detail)}>Anonimizar</button><button className={secondaryButtonClass} onClick={() => setDetail(null)}>Fechar</button></div></div>
       <h3 className="mb-2 mt-5 text-sm font-semibold text-slate-200">Últimos pedidos</h3>
-      <div className="grid gap-2">{(detail.orders ?? []).map(order => <div key={order.id} className="flex flex-wrap justify-between gap-2 rounded-lg border border-slate-800 px-3 py-2 text-sm"><span>{order.code} · {order.channel} · {order.status}</span><span className="text-slate-400">{formatDateTime(order.createdAt)} · {formatMoney(order.total)}</span></div>)}{(detail.orders ?? []).length === 0 && <p className="text-sm text-slate-400">Sem pedidos.</p>}</div>
+      <div className="grid gap-2">{(detail.orders ?? []).map(order => <div key={order.id} className="flex flex-wrap items-center justify-between gap-2 rounded-xl border border-slate-200 bg-white px-3 py-3 text-sm"><span className="font-medium">{order.code} · {order.channel} · {order.status}</span><span className="text-slate-500">{formatDateTime(order.createdAt)} · {formatMoney(order.total)}</span>{order.status !== 'CANCELLED' && <Link href={`/cash?orderId=${encodeURIComponent(order.id)}#pagamento`} className={secondaryButtonClass}>Pagamento</Link>}</div>)}{(detail.orders ?? []).length === 0 && <p className="text-sm text-slate-400">Sem pedidos.</p>}</div>
     </section>}
 
     <section className={panelClass}>

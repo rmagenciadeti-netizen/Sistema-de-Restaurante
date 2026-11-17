@@ -1,6 +1,7 @@
 'use client';
 
-import { FormEvent, useEffect, useState } from 'react';
+import { FormEvent, useEffect, useRef, useState } from 'react';
+import Link from 'next/link';
 import { ApiError, api, ListResponse, Product } from '../../lib/api';
 import { StockTransfer } from '../../components/stock-transfer';
 import { AppShell, buttonClass, Field, Notice, panelClass } from '../../components/app-shell';
@@ -46,6 +47,7 @@ export default function InventoryPage() {
   const [recipeNotes, setRecipeNotes] = useState('');
   const [recipeLines, setRecipeLines] = useState<RecipeLine[]>([]);
   const [busy, setBusy] = useState(false);
+  const recipeRequest = useRef(0);
 
   async function load() {
     try {
@@ -68,6 +70,7 @@ export default function InventoryPage() {
 
   useEffect(() => {
     let active = true;
+    const pendingRecipe = recipeRequest;
     async function initialLoad() {
       try {
         const [ingredientResult, productResult, movementResult] = await Promise.all([
@@ -79,6 +82,11 @@ export default function InventoryPage() {
         setIngredients(ingredientResult.items);
         setProducts(productResult.items.filter(product => product.active));
         setMovements(movementResult.items);
+        const requestedProduct = new URLSearchParams(window.location.search).get('productId');
+        if (requestedProduct) {
+          if (productResult.items.some(product => product.id === requestedProduct && product.active)) void selectProduct(requestedProduct);
+          else setMessage({ text: 'Produto indisponível ou inativo. Selecione outro produto para a ficha técnica.', kind: 'error' });
+        }
         setMovementForm(current => ({
           ...current,
           ingredientId: current.ingredientId || ingredientResult.items[0]?.id || '',
@@ -88,7 +96,7 @@ export default function InventoryPage() {
       }
     }
     void initialLoad();
-    return () => { active = false; };
+    return () => { active = false; pendingRecipe.current++; };
   }, []);
 
   async function addIngredient(event: FormEvent<HTMLFormElement>) {
@@ -139,6 +147,7 @@ export default function InventoryPage() {
   }
 
   async function selectProduct(nextProductId: string) {
+    const request = ++recipeRequest.current;
     setProductId(nextProductId);
     setRecipeYield('1');
     setRecipeNotes('');
@@ -150,10 +159,12 @@ export default function InventoryPage() {
         notes?: string | null;
         ingredients: Array<{ ingredientId: string; quantity: number | string }>;
       }>(`/inventory/recipes/${nextProductId}`);
+      if (request !== recipeRequest.current) return;
       setRecipeYield(String(recipe.yield));
       setRecipeNotes(recipe.notes ?? '');
       setRecipeLines(recipe.ingredients.map(line => ({ ingredientId: line.ingredientId, quantity: String(line.quantity) })));
     } catch (error) {
+      if (request !== recipeRequest.current) return;
       if (!(error instanceof ApiError && error.status === 404)) {
         setMessage({ text: error instanceof Error ? error.message : 'Erro ao carregar ficha técnica', kind: 'error' });
       }
@@ -222,7 +233,7 @@ export default function InventoryPage() {
 
       <StockTransfer ingredients={ingredients} onDone={load} onMessage={(text, kind) => setMessage({ text, kind })} />
 
-      <section className={`${panelClass} xl:col-span-2`}>
+      <section id="ficha-tecnica" className={`${panelClass} scroll-mt-4 xl:col-span-2`}>
         <h2 className="mb-4 text-lg font-semibold">Ficha técnica do produto</h2>
         <form onSubmit={saveRecipe} className="grid gap-4">
           <label className="text-sm text-slate-300">Produto<select className="mt-1 w-full rounded-lg border border-slate-700 bg-slate-950 px-3 py-2 md:max-w-xl" value={productId} onChange={event => void selectProduct(event.target.value)}><option value="">Selecione um produto</option>{products.map(product => <option key={product.id} value={product.id}>{product.name}</option>)}</select></label>
@@ -246,7 +257,7 @@ export default function InventoryPage() {
 
       <section className={`${panelClass} xl:col-span-2`}>
         <h2 className="mb-4 text-lg font-semibold">Saldo atual ({ingredients.length})</h2>
-        <div className="overflow-x-auto"><table className="w-full text-left text-sm"><thead className="text-slate-400"><tr><th className="p-3">Ingrediente</th><th className="p-3">Unidade</th><th className="p-3">Saldo</th><th className="p-3">Mínimo</th></tr></thead><tbody>{ingredients.map(ingredient => <tr key={ingredient.id} className="border-t border-slate-800"><td className="p-3">{ingredient.name}</td><td className="p-3">{ingredient.unitOfMeasure}</td><td className="p-3">{Number(ingredient.currentStock).toFixed(3)}</td><td className="p-3">{ingredient.minimumStock == null ? '—' : Number(ingredient.minimumStock).toFixed(3)}</td></tr>)}</tbody></table>{ingredients.length === 0 && <p className="p-4 text-slate-400">Nenhum ingrediente cadastrado.</p>}</div>
+        <div className="overflow-x-auto"><table className="w-full text-left text-sm"><thead className="text-slate-400"><tr><th className="p-3">Ingrediente</th><th className="p-3">Unidade</th><th className="p-3">Saldo</th><th className="p-3">Mínimo</th><th className="p-3">Reposição</th></tr></thead><tbody>{ingredients.map(ingredient => <tr key={ingredient.id} className="border-t border-slate-800"><td className="p-3">{ingredient.name}</td><td className="p-3">{ingredient.unitOfMeasure}</td><td className="p-3">{Number(ingredient.currentStock).toFixed(3)}</td><td className="p-3">{ingredient.minimumStock == null ? '—' : Number(ingredient.minimumStock).toFixed(3)}</td><td className="p-3"><Link className="font-medium text-brand-700 underline decoration-brand-300 underline-offset-4 hover:text-brand-600" href={`/purchasing?ingredientId=${encodeURIComponent(ingredient.id)}#nova-compra`}>Comprar</Link></td></tr>)}</tbody></table>{ingredients.length === 0 && <p className="p-4 text-slate-400">Nenhum ingrediente cadastrado.</p>}</div>
       </section>
 
       <section className={`${panelClass} xl:col-span-2`}>

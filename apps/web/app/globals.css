@@ -1,14 +1,91 @@
-import './globals.css';
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
 
-export const metadata = {
-  title: 'RM Restaurant SaaS',
-  description: 'ERP SaaS multiempresa para restaurantes',
-};
+:root {
+  color-scheme: light;
+  --rm-black: #171612;
+  --rm-gold: #b89235;
+  --rm-gold-light: #dec17e;
+  --rm-white: #ffffff;
+  --rm-workspace: #f7f6f3;
+}
 
-export default function RootLayout({ children }: { children: React.ReactNode }) {
-  return (
-    <html lang="pt-BR">
-      <body className="bg-slate-950 text-slate-100">{children}</body>
-    </html>
-  );
+body {
+  background: var(--rm-workspace);
+  color: var(--rm-black);
+}
+
+.rm-surface .text-slate-300 {
+  color: #5e5a52;
+}
+
+.rm-surface .text-slate-200 {
+  color: #45423c;
+}
+
+.rm-surface .text-slate-400 {
+  color: #77736a;
+}
+
+.rm-surface .text-blue-300 {
+  color: #72561c;
+}
+
+.rm-surface .text-blue-200 {
+  color: #5f491b;
+}
+
+.rm-surface .text-purple-300 {
+  color: #7e22ce;
+}
+
+.rm-surface .text-emerald-300 {
+  color: #047857;
+}
+
+.rm-surface .text-red-300 {
+  color: #b91c1c;
+}
+
+.rm-surface .text-amber-100,
+.rm-surface .text-amber-200 {
+  color: #92400e;
+}
+
+.rm-surface .border-slate-700,
+.rm-surface .border-slate-800 {
+  border-color: #e8e6e1;
+}
+
+.rm-surface input.bg-slate-950,
+.rm-surface select.bg-slate-950,
+.rm-surface textarea.bg-slate-950 {
+  border-color: #d2cfc8;
+  background-color: #ffffff;
+  color: var(--rm-black);
+}
+
+.rm-surface input::placeholder,
+.rm-surface textarea::placeholder {
+  color: #77736a;
+}
+
+.rm-surface :focus-visible {
+  outline: 2px solid rgb(184 146 53 / 55%);
+  outline-offset: 2px;
+}
+
+::selection {
+  color: var(--rm-black);
+  background: var(--rm-gold-light);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    scroll-behavior: auto !important;
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
 }

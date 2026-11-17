@@ -1,10 +1,12 @@
 import { OrderStatus, Prisma, PrintJobStatus } from '@prisma/client';
 import { reverseOrderInventory } from './order-inventory';
+import { brl, enqueueAutoMessage, orderLabel } from './whatsapp-auto';
 
 type OrderForEffects = {
   id: string;
   tenantId: string;
   code: string;
+  number?: number | null;
   total: Prisma.Decimal;
   customerId: string | null;
   couponId?: string | null;
@@ -13,8 +15,10 @@ type OrderForEffects = {
 
 // Cross-module reactions to order status changes, executed in the same transaction as the status update.
 export async function applyStatusSideEffects(tx: Prisma.TransactionClient, order: OrderForEffects, status: OrderStatus, actorUserId?: string) {
-  if (status === OrderStatus.READY && order.customer) {
-    await tx.whatsappMessage.create({ data: { tenantId: order.tenantId, orderId: order.id, toPhone: order.customer.phone, template: 'order_ready', payload: { orderCode: order.code, customerName: order.customer.name } } });
+  const notice = { [OrderStatus.PREPARING]: 'order_preparing', [OrderStatus.READY]: 'order_ready', [OrderStatus.COMPLETED]: 'order_completed', [OrderStatus.CANCELLED]: 'order_cancelled' }[status as string];
+  if (notice && order.customer) {
+    // Payload keeps the Cloud API template keys (orderCode, customerName) next to the variables of the editable texts.
+    await enqueueAutoMessage(tx, { tenantId: order.tenantId, key: notice, phone: order.customer.phone, orderId: order.id, vars: { orderCode: order.code, customerName: order.customer.name, nome: order.customer.name.split(' ')[0], pedido: orderLabel(order), total: brl(order.total) } });
   }
   if (status === OrderStatus.COMPLETED && order.customerId) {
     const points = order.total.floor().toNumber();

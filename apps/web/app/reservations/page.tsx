@@ -1,6 +1,7 @@
 'use client';
 
 import { useState } from 'react';
+import Link from 'next/link';
 import { api, errorMessage, formatDateTime, ListResponse, Reservation, RestaurantTable, storedUser, toIso, Unit } from '../../lib/api';
 import { useAutoLoad } from '../../lib/use-auto-load';
 import { AppShell, buttonClass, Field, Notice, panelClass, secondaryButtonClass, Select } from '../../components/app-shell';
@@ -59,7 +60,7 @@ export default function ReservationsPage() {
       </form></section>
     <section className={panelClass}>
       <div className="mb-4 flex flex-wrap items-end justify-between gap-3"><h2 className="text-lg font-semibold">{date ? `Reservas de ${date.split('-').reverse().join('/')}` : 'Próximas reservas'} ({items.length})</h2><div className="flex items-end gap-2"><Field label="Data" type="date" value={date} onChange={e => { setDate(e.target.value); void loadReservations(e.target.value); }} />{date && <button className={secondaryButtonClass} onClick={() => { setDate(''); void loadReservations(''); }}>Limpar filtro</button>}</div></div>
-      <div className="grid gap-3">{items.map(item => <article key={item.id} className="rounded-lg border border-slate-800 p-4"><div className="flex flex-wrap items-start justify-between gap-3"><div><h3 className="font-semibold">{item.customerName} · {item.partySize} pessoa(s) <span className="text-xs font-normal text-blue-300">{statusLabel[item.status]}</span></h3><p className="mt-1 text-sm text-slate-400">{formatDateTime(item.reservedAt)} · {item.table ? `Mesa ${item.table.label}` : 'Sem mesa'}{item.phone ? ` · ${item.phone}` : ''}</p>{item.notes && <p className="mt-1 text-sm text-slate-300">{item.notes}</p>}</div><div className="flex flex-wrap gap-2">{actions.filter(action => action.from.includes(item.status)).map(action => <button key={action.status} className={secondaryButtonClass} onClick={() => void changeStatus(item, action.status)}>{action.label}</button>)}</div></div></article>)}</div>
+      <div className="grid gap-3">{items.map(item => <article key={item.id} className="rounded-2xl border border-slate-200 bg-white p-4"><div className="flex flex-wrap items-start justify-between gap-3"><div><p className="text-xs font-semibold uppercase tracking-wider text-brand-700">{formatDateTime(item.reservedAt)}</p><h3 className="mt-1 text-lg font-semibold">{item.customerName} · {item.partySize} pessoa(s)</h3><p className="mt-1 text-sm text-slate-500">{item.table ? `Mesa ${item.table.label}` : 'Sem mesa'}{item.phone ? ` · ${item.phone}` : ''} · {statusLabel[item.status]}</p>{item.notes && <p className="mt-1 text-sm text-slate-300">{item.notes}</p>}</div><div className="flex flex-wrap gap-2">{item.status === 'SEATED' && item.tableId && tables.some(table => table.id === item.tableId) && <Link href={`/orders?tableId=${encodeURIComponent(item.tableId)}`} className={buttonClass}>Abrir pedido da mesa</Link>}{actions.filter(action => action.from.includes(item.status)).map(action => <button key={action.status} className={secondaryButtonClass} onClick={() => void changeStatus(item, action.status)}>{action.label}</button>)}</div></div></article>)}</div>
       {items.length === 0 && <p className="text-slate-400">Nenhuma reserva encontrada.</p>}
     </section>
   </AppShell>;

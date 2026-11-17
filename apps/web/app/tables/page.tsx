@@ -1,6 +1,7 @@
 'use client';
 
 import QRCode from 'qrcode';
+import Link from 'next/link';
 import { useState } from 'react';
 import { api, errorMessage, ListResponse, RestaurantTable, storedUser, Unit } from '../../lib/api';
 import { useAutoLoad } from '../../lib/use-auto-load';
@@ -55,7 +56,7 @@ export default function TablesPage() {
         <div className="flex items-end gap-2"><button className={buttonClass}>{editingId ? 'Salvar' : 'Adicionar mesa'}</button>{editingId && <button type="button" className={secondaryButtonClass} onClick={() => { setEditingId(null); setForm({ ...emptyForm, unitId: form.unitId }); }}>Cancelar</button>}</div>
       </form></section>
 
-    {qr && <section className={`${panelClass} mb-6 flex flex-col items-center gap-3 text-center print:m-0 print:border-0 print:bg-white print:p-0 print:text-black`}>
+    {qr && <section className={`${panelClass} mb-6 flex flex-col items-center gap-3 text-center print:m-0 print:border-0 print:bg-white print:bg-none print:p-0 print:text-black`}>
       <h2 className="text-2xl font-bold">Mesa {qr.table.label}</h2>
       {/* eslint-disable-next-line @next/next/no-img-element */}
       <img src={qr.image} alt={`QR Code da mesa ${qr.table.label}`} className="h-72 w-72 rounded-lg bg-white print:h-[12cm] print:w-[12cm]" />
@@ -64,6 +65,6 @@ export default function TablesPage() {
       <div className="flex gap-2 print:hidden"><button className={buttonClass} onClick={() => window.print()}>Imprimir QR</button><button className={secondaryButtonClass} onClick={() => setQr(null)}>Fechar</button></div>
     </section>}
 
-    <section className={`${panelClass} print:hidden`}><h2 className="mb-4 text-lg font-semibold">Mesas ({tables.length})</h2><div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">{tables.map(table => <article key={table.id} className="rounded-lg border border-slate-800 p-4"><h3 className="font-semibold">Mesa {table.label} {!table.active && <span className="text-xs text-red-300">inativa</span>}</h3><p className="mt-1 text-sm text-slate-400">{table.seats} lugares{units.length > 1 && unitName(table.unitId) ? ` · ${unitName(table.unitId)}` : ''}</p><div className="mt-3 flex flex-wrap gap-2"><button className={secondaryButtonClass} onClick={() => void showQr(table)}>Ver QR Code</button><button className={secondaryButtonClass} onClick={() => { setEditingId(table.id); setForm({ label: table.label, seats: String(table.seats), unitId: table.unitId, active: table.active }); }}>Editar</button><button className={secondaryButtonClass} onClick={() => void rotate(table)}>Girar QR</button></div></article>)}</div>{tables.length === 0 && <p className="text-slate-400">Nenhuma mesa cadastrada.</p>}</section>
+    <section className={`${panelClass} print:hidden`}><h2 className="mb-4 text-lg font-semibold">Mesas ({tables.length})</h2><div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">{tables.map(table => <article key={table.id} className="rounded-2xl border border-slate-200 bg-gradient-to-br from-white to-brand-50 p-4"><div className="flex items-start justify-between gap-2"><div><p className="text-xs font-semibold uppercase tracking-wider text-brand-700">Atendimento</p><h3 className="mt-1 text-lg font-bold">Mesa {table.label}</h3></div><span className={`rounded-full px-2.5 py-1 text-xs font-medium ${table.active ? 'bg-emerald-100 text-emerald-800' : 'bg-red-100 text-red-800'}`}>{table.active ? 'Ativa' : 'Inativa'}</span></div><p className="mt-1 text-sm text-slate-500">{table.seats} lugares{units.length > 1 && unitName(table.unitId) ? ` · ${unitName(table.unitId)}` : ''}</p><div className="mt-4 flex flex-wrap gap-2">{table.active && <Link href={`/orders?tableId=${encodeURIComponent(table.id)}`} className={buttonClass}>Abrir pedido</Link>}<button className={secondaryButtonClass} onClick={() => void showQr(table)}>Ver QR Code</button><button className={secondaryButtonClass} onClick={() => { setEditingId(table.id); setForm({ label: table.label, seats: String(table.seats), unitId: table.unitId, active: table.active }); }}>Editar</button><button className={secondaryButtonClass} onClick={() => void rotate(table)}>Girar QR</button></div></article>)}</div>{tables.length === 0 && <p className="text-slate-400">Nenhuma mesa cadastrada.</p>}</section>
   </AppShell>;
 }

@@ -15,6 +15,8 @@ unitRoutes.post('/', async (req, res, next) => {
   try {
     const parsed = schema.safeParse(req.body); if (!parsed.success) return res.status(400).json({ message: 'Validation failed', errors: parsed.error.flatten() });
     if (req.auth!.unitId) return res.status(403).json({ message: 'Only tenant-wide administrators can create units' });
+    const license = await prisma.tenantLicense.findUnique({ where: { tenantId: req.auth!.tenantId! }, select: { maxUnits: true } });
+    if (license?.maxUnits != null && await prisma.unit.count({ where: { tenantId: req.auth!.tenantId! } }) >= license.maxUnits) return res.status(403).json({ message: 'License unit limit reached' });
     const unit = await prisma.unit.create({ data: { ...parsed.data, tenantId: req.auth!.tenantId! } });
     await prisma.auditLog.create({ data: { tenantId: req.auth!.tenantId!, actorUserId: req.auth!.userId, action: 'UNIT_CREATED', entityType: 'Unit', entityId: unit.id } });
     return res.status(201).json(unit);

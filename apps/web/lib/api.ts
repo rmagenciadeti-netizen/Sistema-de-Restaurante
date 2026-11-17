@@ -1,4 +1,7 @@
-export const API_BASE = process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:4000/api/v1';
+export const API_BASE = '/api-proxy';
+export const isAdminApp = process.env.NEXT_PUBLIC_RM_APP === 'admin';
+export const userStorageKey = isAdminApp ? 'rm_admin_user' : 'rm_restaurant_user';
+export const tokenStorageKey = isAdminApp ? 'rm_admin_token' : 'rm_restaurant_token';
 
 export class ApiError extends Error {
   status: number;
@@ -7,7 +10,7 @@ export class ApiError extends Error {
 }
 
 async function request<T>(path: string, options: RequestInit, withToken: boolean): Promise<T> {
-  const token = withToken && typeof window !== 'undefined' ? localStorage.getItem('rm_restaurant_token') : null;
+  const token = withToken && typeof window !== 'undefined' ? localStorage.getItem(tokenStorageKey) : null;
   const response = await fetch(`${API_BASE}${path}`, {
     ...options,
     headers: {
@@ -32,14 +35,15 @@ export function formatMoney(value: string | number | null | undefined) { return 
 export function formatDateTime(value?: string | null) { return value ? new Date(value).toLocaleString('pt-BR') : '—'; }
 export function toIso(localValue: string) { return localValue ? new Date(localValue).toISOString() : undefined; }
 export function storedUser(): { unitId?: string | null; role?: string } {
-  try { return JSON.parse(localStorage.getItem('rm_restaurant_user') ?? '{}'); } catch { return {}; }
+  try { return JSON.parse(localStorage.getItem(userStorageKey) ?? '{}'); } catch { return {}; }
 }
 
 export type ListResponse<T> = { items: T[]; total: number; page?: number; pageSize?: number };
 export type Unit = { id: string; name: string; code?: string | null; address?: string | null; status: string; serviceFeePercent?: string | number; waiterSharePercent?: string | number };
 export type Employee = { id: string; fullName: string; cpf?: string | null; phone?: string | null; email?: string | null; position?: string | null; status: string; unitId?: string | null };
 export type Sector = { id: string; name: string };
-export type Product = { id: string; name: string; isCombo?: boolean; code?: string | null; price: string | number; cost?: string | number | null; active: boolean; category?: { name: string } | null; sector?: Sector | null; unitId?: string | null };
+export type ProductCategory = { id: string; name: string };
+export type Product = { id: string; name: string; isCombo?: boolean; code?: string | null; price: string | number; cost?: string | number | null; active: boolean; category?: ProductCategory | null; sector?: Sector | null; unitId?: string | null };
 export type Order = { id: string; code: string; channel: string; status: string; customerName?: string | null; tableLabel?: string | null; subtotal?: string | number; discount?: string | number; serviceFee?: string | number; deliveryFee?: string | number; total: string | number; createdAt: string; items: { id: string; quantity: number; product: { name: string }; modifiers?: OrderItemModifier[] }[] };
 export type Tenant = { id: string; name: string; slug: string; plan: string; status: string; _count?: { units: number; users: number } };
 
@@ -68,7 +72,7 @@ export type ModifierGroup = ModifierGroupView & { active: boolean; products?: { 
 export type ProductComposition = { id: string; name: string; isCombo: boolean; comboComponents: { quantity: number; product: { id: string; name: string } }[]; modifierGroups: { groupId: string }[] };
 export type PublicProduct = { id: string; name: string; description?: string | null; price: string | number; isCombo?: boolean; comboComponents?: { quantity: number; product: { name: string } }[]; modifierGroups?: ModifierGroupView[] };
 
-export type AppUser = { id: string; name: string; email: string; role: string; status: 'ACTIVE' | 'INACTIVE' | 'BLOCKED'; unitId?: string | null; commissionPercent?: string | number | null; createdAt: string };
+export type AppUser = { id: string; name: string; username?: string | null; email: string; role: string; status: 'ACTIVE' | 'INACTIVE' | 'BLOCKED'; unitId?: string | null; employeeId?: string | null; commissionPercent?: string | number | null; createdAt: string };
 export type Shift = { id: string; employeeId: string; unitId: string; startsAt: string; endsAt: string; position?: string | null; notes?: string | null; employee?: { id: string; fullName: string; position?: string | null } };
 export type PaymentCharge = { id: string; orderId: string; provider: string; method: string; amount: string | number; status: 'PENDING' | 'PAID' | 'FAILED' | 'EXPIRED' | 'REFUNDED'; qrPayload?: string | null; error?: string | null; createdAt: string; paidAt?: string | null };
 export type FiscalDocument = { id: string; orderId: string; provider: string; kind: 'NFCE' | 'NFE'; status: 'PENDING' | 'AUTHORIZED' | 'REJECTED' | 'CANCELLED'; number?: string | null; accessKey?: string | null; documentUrl?: string | null; error?: string | null; createdAt: string; order?: { code: string; total: string | number } };

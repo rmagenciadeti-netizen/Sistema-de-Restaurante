@@ -5,6 +5,9 @@ import { prisma } from '../lib/prisma';
 import { serializable } from '../lib/serializable';
 import { requireAuth, requireTenant } from '../middleware/auth';
 import { requireRoles, SALES_ROLES } from '../lib/permissions';
+import { enqueueAutoMessage } from '../lib/whatsapp-auto';
+import { loadSettings } from '../lib/settings';
+import { formatLocal } from '../lib/whatsapp-text';
 
 export const RESERVATION_WINDOW_MS = 90 * 60 * 1000;
 const ACTIVE_STATUSES: ReservationStatus[] = [ReservationStatus.PENDING, ReservationStatus.CONFIRMED, ReservationStatus.SEATED];
@@ -65,7 +68,12 @@ reservationRoutes.patch('/:id', async (req, res, next) => {
         if (current.partySize > table.seats) return { status: 400, message: 'Party size exceeds table capacity' } as const;
         if (await tableConflict(tx, tenantId, table.id, current.reservedAt, current.id)) return { status: 409, message: 'Table already reserved around this time' } as const;
       }
-      return { status: 200, reservation: await tx.reservation.update({ where: { id: current.id }, data: parsed.data }) } as const;
+      const updated = await tx.reservation.update({ where: { id: current.id }, data: parsed.data });
+      if (parsed.data.status === ReservationStatus.CONFIRMED && current.status !== ReservationStatus.CONFIRMED && current.phone) {
+        const settings = await loadSettings(tx, tenantId);
+        await enqueueAutoMessage(tx, { tenantId, key: 'reservation_confirmed', phone: current.phone, vars: { nome: current.customerName.split(' ')[0], data: formatLocal(current.reservedAt, settings.hours.timezone), pessoas: current.partySize } });
+      }
+      return { status: 200, reservation: updated } as const;
     });
     if (result.status !== 200) return res.status(result.status).json({ message: result.message });
     return res.json(result.reservation);

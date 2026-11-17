@@ -5,12 +5,14 @@
   "workspaces": ["apps/*", "packages/*"],
   "scripts": {
     "dev": "npm run dev --workspace apps/web",
+    "dev:admin": "npm run dev --workspace apps/admin",
     "dev:api": "npm run dev --workspace apps/api",
-    "build": "npm run build --workspace apps/web && npm run build --workspace apps/api",
+    "build": "npm run build --workspace apps/web && npm run build --workspace apps/admin && npm run build --workspace apps/api",
     "db:validate": "npm run db:validate --workspace packages/db",
     "db:generate": "npm run db:generate --workspace packages/db",
     "db:migrate": "npm run db:migrate --workspace packages/db",
     "db:deploy": "npm run db:deploy --workspace packages/db",
-    "seed:master": "npm run seed:master --workspace apps/api"
+    "seed:master": "npm run seed:master --workspace apps/api",
+    "seed:dev-operator": "npm run seed:dev-operator --workspace apps/api"
   }
 }

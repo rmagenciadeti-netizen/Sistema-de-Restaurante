@@ -1,7 +1,8 @@
-// Register real provider adapters here, for example:
-//   import { paymentProviders } from './lib/providers';
-//   paymentProviders.register(new MyPixGateway(process.env.PIX_API_KEY!));
-// The API never fakes a charge or a tax document: while a registry is empty the related endpoints answer 501.
+import { emailProviders } from './lib/providers';
+import { smtpEmailProviderFromEnv } from './lib/smtp-email';
+
+// Payment and fiscal providers require a deployment-specific certified adapter.
 export function registerProviders() {
-  // No adapter is bundled.
+  const emailProvider = smtpEmailProviderFromEnv();
+  if (emailProvider) emailProviders.register(emailProvider);
 }

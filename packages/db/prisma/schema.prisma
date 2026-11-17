@@ -48,6 +48,24 @@ model Tenant {
   fiscalDocuments  FiscalDocument[]
   integrations     Integration[]
   externalOrders   ExternalOrder[]
+  license          TenantLicense?
+  modules          TenantModule[]
+  provisioning     TenantProvisioning?
+  settings         TenantSettings?
+  couriers         Courier[]
+  carriers         Carrier[]
+  paymentMethods   PaymentMethodConfig[]
+  financialCategories FinancialCategory[]
+  promotions       Promotion[]
+  categorySchedules CategorySchedule[]
+  coverEvents      CoverEvent[]
+  passwordReleases PasswordRelease[]
+  taxRules         TaxRule[]
+  whatsappSession  WhatsappSession?
+  whatsappConversations WhatsappConversation[]
+  whatsappAutoMessages  WhatsappAutoMessage[]
+  whatsappKnowledge     WhatsappKnowledge[]
+  whatsappUnanswered    WhatsappUnanswered[]
 
   @@index([status, createdAt])
 }
@@ -94,15 +112,27 @@ model User {
   id                String     @id @default(uuid())
   tenantId          String?
   unitId            String?
+  employeeId        String?    @unique
+  username          String?    @unique
   name              String
   email             String     @unique
   passwordHash      String
+  mfaEnabled        Boolean    @default(false)
+  mfaSecretEncrypted String?
+  mfaRecoveryCodeHashes String[] @default([])
+  mfaLastUsedStep   BigInt?
+  authVersion       Int        @default(0)
+  passwordResetTokenHash String? @unique
+  passwordResetExpiresAt DateTime?
+  passwordResetRequestedAt DateTime?
+  mustChangePassword Boolean   @default(false)
   role              UserRole   @default(ADMIN)
   status            UserStatus @default(ACTIVE)
   createdAt         DateTime   @default(now())
   updatedAt         DateTime   @updatedAt
   tenant            Tenant?    @relation(fields: [tenantId], references: [id], onDelete: Cascade)
   unit              Unit?      @relation(fields: [unitId], references: [id], onDelete: SetNull)
+  employee          Employee?  @relation(fields: [employeeId], references: [id], onDelete: SetNull)
   auditLogs         AuditLog[]
   createdOrders     Order[]    @relation("OrderCreator")
   commissionPercent Decimal    @default(0) @db.Decimal(5, 2)
@@ -126,6 +156,7 @@ model Employee {
   tenant        Tenant    @relation(fields: [tenantId], references: [id], onDelete: Cascade)
   unit          Unit?     @relation(fields: [unitId], references: [id], onDelete: SetNull)
   shifts        Shift[]
+  user          User?
 
   @@index([tenantId, unitId, status])
   @@index([tenantId, fullName])
@@ -138,6 +169,7 @@ model ProductCategory {
   createdAt DateTime  @default(now())
   tenant    Tenant    @relation(fields: [tenantId], references: [id], onDelete: Cascade)
   products  Product[]
+  schedules CategorySchedule[]
 
   @@unique([tenantId, name])
 }
@@ -220,8 +252,23 @@ model Product {
   modifierGroups  ProductModifierGroup[]
   comboComponents ComboComponent[]       @relation("ComboParent")
   usedInCombos    ComboComponent[]       @relation("ComboChild")
+  barcode         String?
+  favorite        Boolean                @default(false)
+  // Weighed products: `price` is per kg and order lines carry weightKg. `scaleCode` is the PLU sent to / read from the scale.
+  soldByWeight    Boolean                @default(false)
+  sendToScale     Boolean                @default(false)
+  scaleCode       Int?
+  scaleDepartment Int?
+  shelfLifeDays   Int?
+  scaleNotes      String?
+  ncm             String?
+  cest            String?
+  taxRuleId       String?
+  taxRule         TaxRule?               @relation(fields: [taxRuleId], references: [id], onDelete: SetNull)
+  promotionItems  PromotionProduct[]
 
   @@unique([tenantId, code])
+  @@unique([tenantId, scaleCode])
   @@index([tenantId, unitId, active])
   @@index([tenantId, name])
 }
@@ -239,6 +286,11 @@ model Order {
   tableId          String?
   couponId         String?
   deliveryZoneId   String?
+  number           Int?
+  scheduledFor     DateTime?
+  releaseAt        DateTime?
+  releasedAt       DateTime?
+  couvertFee       Decimal           @default(0) @db.Decimal(12, 2)
   subtotal         Decimal           @db.Decimal(12, 2)
   serviceFee       Decimal           @default(0) @db.Decimal(12, 2)
   deliveryFee      Decimal           @default(0) @db.Decimal(12, 2)
@@ -273,6 +325,7 @@ model OrderItem {
   productId    String
   sectorId     String?
   quantity     Int
+  weightKg     Decimal?            @db.Decimal(10, 3)
   unitPrice    Decimal             @db.Decimal(12, 2)
   total        Decimal             @db.Decimal(12, 2)
   notes        String?
@@ -451,6 +504,7 @@ model DeliveryJob {
   tenantId     String
   unitId       String?
   orderId      String         @unique
+  courierId    String?
   courierName  String?
   courierPhone String?
   address      String?
@@ -464,6 +518,7 @@ model DeliveryJob {
   tenant       Tenant         @relation(fields: [tenantId], references: [id], onDelete: Cascade)
   unit         Unit?          @relation(fields: [unitId], references: [id], onDelete: SetNull)
   order        Order          @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  courier      Courier?       @relation(fields: [courierId], references: [id], onDelete: SetNull)
 
   @@index([tenantId, unitId, status, createdAt])
 }
@@ -572,6 +627,8 @@ model PrintJob {
   attempts  Int               @default(0)
   error     String?
   claimedAt DateTime?
+  claimedByAgentId String?
+  claimId   String?
   printedAt DateTime?
   createdAt DateTime          @default(now())
   tenant    Tenant            @relation(fields: [tenantId], references: [id], onDelete: Cascade)
@@ -978,4 +1035,379 @@ enum FiscalStatus {
   AUTHORIZED
   REJECTED
   CANCELLED
+}
+
+enum LicenseStatus {
+  PENDING
+  ACTIVE
+  SUSPENDED
+  REVOKED
+  CANCELLED
+}
+
+enum BillingPeriod {
+  MONTHLY
+  QUARTERLY
+  SEMIANNUAL
+  ANNUAL
+}
+
+enum ProvisioningStatus {
+  WAITING
+  PROCESSING
+  COMPLETED
+  ERROR
+  NEEDS_INTERVENTION
+}
+
+model SaaSPlan {
+  id          String       @id @default(uuid())
+  key         String       @unique
+  name        String
+  description String?
+  active      Boolean      @default(true)
+  trialDays   Int          @default(0)
+  maxUnits    Int?
+  maxUsers    Int?
+  activationFee Decimal   @default(0) @db.Decimal(12, 2)
+  setupFee    Decimal      @default(0) @db.Decimal(12, 2)
+  createdAt   DateTime     @default(now())
+  updatedAt   DateTime     @updatedAt
+  modules     PlanModule[]
+  prices      PlanPrice[]
+  licenses    TenantLicense[]
+
+  @@index([active, name])
+}
+
+model PlanModule {
+  id        String   @id @default(uuid())
+  planId    String
+  moduleKey String
+  plan      SaaSPlan @relation(fields: [planId], references: [id], onDelete: Cascade)
+
+  @@unique([planId, moduleKey])
+}
+
+model PlanPrice {
+  id        String        @id @default(uuid())
+  planId    String
+  period    BillingPeriod
+  amount    Decimal       @db.Decimal(12, 2)
+  plan      SaaSPlan      @relation(fields: [planId], references: [id], onDelete: Cascade)
+
+  @@unique([planId, period])
+}
+
+model TenantLicense {
+  id         String        @id @default(uuid())
+  tenantId   String        @unique
+  status     LicenseStatus @default(PENDING)
+  validUntil DateTime?
+  maxUnits   Int?
+  maxUsers   Int?
+  notes      String?
+  planId     String?
+  billingPeriod BillingPeriod?
+  contractedPrice Decimal?  @db.Decimal(12, 2)
+  activationFee Decimal?     @db.Decimal(12, 2)
+  setupFee    Decimal?       @db.Decimal(12, 2)
+  discountPercent Decimal?   @db.Decimal(5, 2)
+  createdAt  DateTime      @default(now())
+  updatedAt  DateTime      @updatedAt
+  tenant     Tenant        @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  plan       SaaSPlan?     @relation(fields: [planId], references: [id], onDelete: SetNull)
+}
+
+model TenantModule {
+  id        String   @id @default(uuid())
+  tenantId  String
+  moduleKey String
+  createdAt DateTime @default(now())
+  tenant    Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  @@unique([tenantId, moduleKey])
+}
+
+model TenantProvisioning {
+  id          String             @id @default(uuid())
+  tenantId    String             @unique
+  idempotencyKey String?          @unique
+  requestHash String?
+  status      ProvisioningStatus @default(WAITING)
+  step        String             @default("RECEIVED")
+  completedSteps String[]         @default([])
+  attempts    Int                @default(0)
+  lastError   String?
+  startedAt   DateTime?
+  completedAt DateTime?
+  createdAt   DateTime           @default(now())
+  updatedAt   DateTime           @updatedAt
+  tenant      Tenant             @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  @@index([status, updatedAt])
+}
+
+// Per-tenant configuration. `settings` holds validated sections (company, hours, store, pdv, scale, scheduling, ...), see apps/api/src/lib/settings.ts.
+model TenantSettings {
+  tenantId          String   @id
+  settings          Json     @default("{}")
+  adminPasswordHash String?
+  orderCounter      Int      @default(0)
+  orderCounterDate  DateTime?
+  updatedAt         DateTime @updatedAt
+  tenant            Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+}
+
+model Courier {
+  id        String        @id @default(uuid())
+  tenantId  String
+  unitId    String?
+  name      String
+  phone     String?
+  active    Boolean       @default(true)
+  createdAt DateTime      @default(now())
+  tenant    Tenant        @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  jobs      DeliveryJob[]
+
+  @@index([tenantId, active])
+}
+
+model Carrier {
+  id        String   @id @default(uuid())
+  tenantId  String
+  name      String
+  document  String?
+  phone     String?
+  email     String?
+  notes     String?
+  active    Boolean  @default(true)
+  createdAt DateTime @default(now())
+  tenant    Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  @@index([tenantId, active])
+}
+
+// Custom payment labels shown in the sales screens; `equivalent` maps to the PaymentMethod stored on Payment.
+model PaymentMethodConfig {
+  id              String        @id @default(uuid())
+  tenantId        String
+  name            String
+  equivalent      PaymentMethod @default(OTHER)
+  active          Boolean       @default(true)
+  showLocal       Boolean       @default(true)
+  showStore       Boolean       @default(true)
+  showApp         Boolean       @default(true)
+  allowChange     Boolean       @default(false)
+  requireDocument Boolean       @default(false)
+  sortOrder       Int           @default(0)
+  createdAt       DateTime      @default(now())
+  tenant          Tenant        @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  @@unique([tenantId, name])
+}
+
+model FinancialCategory {
+  id        String             @id @default(uuid())
+  tenantId  String
+  type      FinancialEntryType
+  name      String
+  active    Boolean            @default(true)
+  createdAt DateTime           @default(now())
+  tenant    Tenant             @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  @@unique([tenantId, type, name])
+}
+
+model Promotion {
+  id        String             @id @default(uuid())
+  tenantId  String
+  name      String
+  type      DiscountType
+  value     Decimal            @db.Decimal(12, 2)
+  startsAt  DateTime
+  endsAt    DateTime?
+  active    Boolean            @default(true)
+  createdAt DateTime           @default(now())
+  tenant    Tenant             @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  products  PromotionProduct[]
+
+  @@index([tenantId, active, startsAt])
+}
+
+model PromotionProduct {
+  promotionId String
+  productId   String
+  promotion   Promotion @relation(fields: [promotionId], references: [id], onDelete: Cascade)
+  product     Product   @relation(fields: [productId], references: [id], onDelete: Cascade)
+
+  @@id([promotionId, productId])
+  @@index([productId])
+}
+
+// Weekly windows in which a category is shown on the menus. A category without rows is always shown. Minutes are counted from 00:00 local time.
+model CategorySchedule {
+  id          String          @id @default(uuid())
+  tenantId    String
+  categoryId  String
+  weekday     Int
+  startMinute Int
+  endMinute   Int
+  tenant      Tenant          @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  category    ProductCategory @relation(fields: [categoryId], references: [id], onDelete: Cascade)
+
+  @@index([tenantId, categoryId])
+}
+
+model CoverEvent {
+  id          String   @id @default(uuid())
+  tenantId    String
+  unitId      String?
+  description String
+  amount      Decimal  @db.Decimal(12, 2)
+  startsAt    DateTime
+  endsAt      DateTime
+  active      Boolean  @default(true)
+  createdAt   DateTime @default(now())
+  tenant      Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  @@index([tenantId, active, startsAt])
+}
+
+// Audit trail of operations authorised with the administrator password (cancel, discount, cash withdrawal, ...).
+model PasswordRelease {
+  id                String   @id @default(uuid())
+  tenantId          String
+  unitId            String?
+  action            String
+  orderId           String?
+  requestedByUserId String
+  reason            String?
+  createdAt         DateTime @default(now())
+  tenant            Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  @@index([tenantId, createdAt])
+}
+
+// Tax parameters per product group. Stored for the fiscal provider; the API does not compute or transmit taxes by itself.
+model TaxRule {
+  id            String    @id @default(uuid())
+  tenantId      String
+  name          String
+  ncm           String?
+  cest          String?
+  origin        Int       @default(0)
+  cfop          String?
+  icmsCst       String?
+  icmsRate      Decimal?  @db.Decimal(6, 3)
+  icmsReduction Decimal?  @db.Decimal(6, 3)
+  pisCst        String?
+  pisRate       Decimal?  @db.Decimal(6, 3)
+  cofinsCst     String?
+  cofinsRate    Decimal?  @db.Decimal(6, 3)
+  active        Boolean   @default(true)
+  createdAt     DateTime  @default(now())
+  tenant        Tenant    @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  products      Product[]
+
+  @@unique([tenantId, name])
+}
+
+// One WhatsApp Web (QR) session per tenant. The session manager (worker/API process) owns the socket and credentials on disk;
+// the API only writes `desired` and reads status/qr, so both processes coordinate through this row.
+model WhatsappSession {
+  tenantId    String    @id
+  status      String    @default("DISCONNECTED")
+  desired     String    @default("DISCONNECTED")
+  qr          String?
+  phone       String?
+  pushName    String?
+  lastError   String?
+  heartbeatAt DateTime?
+  connectedAt DateTime?
+  updatedAt   DateTime  @updatedAt
+  tenant      Tenant    @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+}
+
+model WhatsappConversation {
+  id             String                @id @default(uuid())
+  tenantId       String
+  jid            String
+  phone          String?
+  name           String?
+  customerId     String?
+  handoff        Boolean               @default(false)
+  handoffUntil   DateTime?
+  optOut         Boolean               @default(false)
+  unread         Int                   @default(0)
+  state          String?
+  stateData      Json?
+  lastGreetingAt DateTime?
+  lastMessageAt  DateTime              @default(now())
+  createdAt      DateTime              @default(now())
+  tenant         Tenant                @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  messages       WhatsappChatMessage[]
+
+  @@unique([tenantId, jid])
+  @@index([tenantId, lastMessageAt])
+}
+
+model WhatsappChatMessage {
+  id             String               @id @default(uuid())
+  tenantId       String
+  conversationId String
+  direction      String
+  source         String
+  body           String
+  externalId     String?
+  createdAt      DateTime             @default(now())
+  conversation   WhatsappConversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+
+  @@index([conversationId, createdAt])
+  @@index([tenantId, createdAt])
+}
+
+model WhatsappAutoMessage {
+  tenantId String
+  key      String
+  enabled  Boolean  @default(true)
+  body     String
+  tenant   Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  @@id([tenantId, key])
+}
+
+model WhatsappKnowledge {
+  id        String   @id @default(uuid())
+  tenantId  String
+  title     String
+  keywords  String[]
+  answer    String
+  active    Boolean  @default(true)
+  hits      Int      @default(0)
+  createdAt DateTime @default(now())
+  tenant    Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  @@index([tenantId, active])
+}
+
+// Questions the bot could not answer, aggregated by normalised text so the owner can teach new answers.
+model WhatsappUnanswered {
+  id          String   @id @default(uuid())
+  tenantId    String
+  text        String
+  count       Int      @default(1)
+  lastAskedAt DateTime @default(now())
+  tenant      Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  @@unique([tenantId, text])
+  @@index([tenantId, lastAskedAt])
+}
+
+// Liveness of the process that owns WhatsApp sockets (worker or API); the panel uses it to warn when no manager is running.
+model WhatsappManager {
+  id          String   @id @default("default")
+  heartbeatAt DateTime
+  pid         Int?
+  host        String?
 }

@@ -1,6 +1,11 @@
 import { DiscountType, OrderChannel, OrderStatus, Prisma } from '@prisma/client';
 import { randomInt } from 'node:crypto';
 import { enqueueProductionPrints } from './print-queue';
+import { ORDER_INCLUDE } from './order-engine-shared';
+import { decideSchedule } from './scheduling';
+import { loadSettings, nextOrderNumber } from './settings';
+import { effectiveUnitPrice } from './promotions';
+import { brl, enqueueAutoMessage, orderLabel, scheduledSuffix } from './whatsapp-auto';
 
 export class OrderEngineError extends Error {
   constructor(readonly reason: string, readonly httpStatus = 400) { super(reason); }
@@ -11,7 +16,7 @@ export type NewOrderInput = {
   unitId: string | null;
   actorUserId?: string | null;
   channel: OrderChannel;
-  items: Array<{ productId: string; quantity: number; notes?: string; modifiers?: Array<{ optionId: string; quantity?: number }> }>;
+  items: Array<{ productId: string; quantity: number; weightKg?: number; notes?: string; modifiers?: Array<{ optionId: string; quantity?: number }> }>;
   // untrusted (anonymous QR-code) callers can create customers but never modify an existing customer record.
   customer?: { name: string; phone?: string; marketingConsent?: boolean; untrusted?: boolean };
   tableId?: string;
@@ -21,6 +26,14 @@ export type NewOrderInput = {
   applyServiceFee?: boolean;
   // Only for trusted server-side integrations (marketplace orders) whose delivery fee is set by the platform.
   deliveryFeeOverride?: Prisma.Decimal;
+  // Future date/time: the order is accepted now but only reaches production at `releaseAt` (see scheduling.ts).
+  scheduledFor?: Date;
+  // Number of guests charged with the artistic cover of the active event (table orders only).
+  couvertPeople?: number;
+  // Marketplace/anonymous-table orders come with third-party contacts, so they must not trigger WhatsApp notices.
+  notifyCustomer?: boolean;
+  // Counter adjustment on top of the coupon: a discount lowers and a surcharge raises the amount owed (stored as a negative discount).
+  adjustment?: { mode: 'DISCOUNT' | 'SURCHARGE'; type: 'FIXED' | 'PERCENT'; value: number };
 };
 
 export function normalizePhone(phone: string): string | null {
@@ -40,7 +53,7 @@ export function newOrderCode(): string {
   return `P-${Date.now().toString(36).toUpperCase()}${randomInt(36 * 36).toString(36).toUpperCase().padStart(2, '0')}`;
 }
 
-export const ORDER_INCLUDE = { items: { include: { product: true, modifiers: true } } } as const;
+export { ORDER_INCLUDE };
 
 // Single entry point used by POS, waiter, QR-code table menu and every other sales channel.
 export async function createOrder(tx: Prisma.TransactionClient, input: NewOrderInput) {
@@ -52,8 +65,21 @@ export async function createOrder(tx: Prisma.TransactionClient, input: NewOrderI
   });
   if (products.length !== ids.length) throw new OrderEngineError('PRODUCTS_UNAVAILABLE');
   const byId = new Map(products.map(product => [product.id, product]));
+  const now = new Date();
+  const promotionRows = await tx.promotion.findMany({
+    where: { tenantId, active: true, startsAt: { lte: now }, OR: [{ endsAt: null }, { endsAt: { gte: now } }], products: { some: { productId: { in: ids } } } },
+    include: { products: { select: { productId: true } } },
+  });
+  const promotions = promotionRows.map(row => ({ type: row.type, value: row.value, startsAt: row.startsAt, endsAt: row.endsAt, active: row.active, productIds: row.products.map(link => link.productId) }));
   const lines = input.items.map(line => {
     const product = byId.get(line.productId)!;
+    // Weighed products are sold by the kilo: price is per kg and the line must carry the weighed amount.
+    if (product.soldByWeight) {
+      if (product.isCombo || !line.weightKg || !(line.weightKg > 0) || line.weightKg > 999.999) throw new OrderEngineError('WEIGHT_REQUIRED');
+    } else if (line.weightKg !== undefined) throw new OrderEngineError('WEIGHT_NOT_ALLOWED');
+    const weightKg = line.weightKg === undefined ? null : new Prisma.Decimal(line.weightKg).toDecimalPlaces(3, Prisma.Decimal.ROUND_HALF_UP);
+    if (weightKg && !weightKg.gt(0)) throw new OrderEngineError('WEIGHT_REQUIRED');
+    const unitPrice = effectiveUnitPrice(product.id, product.price, promotions, now);
     const groups = product.modifierGroups.map(link => link.group).filter(group => group.active);
     const chosen = new Map<string, number>();
     const selected = (line.modifiers ?? []).map(entry => {
@@ -71,7 +97,8 @@ export async function createOrder(tx: Prisma.TransactionClient, input: NewOrderI
       if (product.comboComponents.length === 0 || product.comboComponents.some(component => !component.product.active || component.product.tenantId !== tenantId)) throw new OrderEngineError('COMBO_UNAVAILABLE');
     }
     const modifiersPerUnit = selected.reduce((sum, entry) => sum.add(entry.option.price.mul(entry.quantity)), new Prisma.Decimal(0));
-    return { ...line, product, selected, total: product.price.add(modifiersPerUnit).mul(line.quantity) };
+    const baseTotal = weightKg ? round2(unitPrice.mul(weightKg)) : unitPrice;
+    return { ...line, product, selected, weightKg, unitPrice, total: baseTotal.add(modifiersPerUnit).mul(line.quantity) };
   });
   const subtotal = lines.reduce((sum, line) => sum.add(line.total), new Prisma.Decimal(0));
 
@@ -85,6 +112,7 @@ export async function createOrder(tx: Prisma.TransactionClient, input: NewOrderI
   }
 
   let customerId: string | null = null;
+  let customerPhone: string | null = null;
   let customerName = input.customer?.name ?? null;
   if (input.customer?.phone) {
     const phone = normalizePhone(input.customer.phone);
@@ -96,6 +124,7 @@ export async function createOrder(tx: Prisma.TransactionClient, input: NewOrderI
     });
     customerId = customer.id;
     customerName = customer.name;
+    customerPhone = phone;
   }
 
   let discount = new Prisma.Decimal(0);
@@ -115,11 +144,23 @@ export async function createOrder(tx: Prisma.TransactionClient, input: NewOrderI
     discount = computeDiscount(coupon, subtotal);
   }
 
+  let adjustmentDiscount = new Prisma.Decimal(0);
+  if (input.adjustment) {
+    const base = subtotal.sub(discount);
+    const raw = input.adjustment.type === 'PERCENT' ? base.mul(input.adjustment.value).div(100) : new Prisma.Decimal(input.adjustment.value);
+    const amount = round2(raw);
+    if (input.adjustment.mode === 'DISCOUNT') {
+      if (amount.gt(base)) throw new OrderEngineError('DISCOUNT_EXCEEDS_TOTAL');
+      adjustmentDiscount = amount;
+    } else adjustmentDiscount = amount.neg();
+    discount = discount.add(adjustmentDiscount);
+  }
+
   let serviceFee = new Prisma.Decimal(0);
   if (unitId && (input.channel === OrderChannel.TABLE || tableId) && input.applyServiceFee !== false) {
     const unit = await tx.unit.findFirst({ where: { id: unitId, tenantId }, select: { serviceFeePercent: true } });
     if (!unit) throw new OrderEngineError('UNIT_UNAVAILABLE');
-    serviceFee = round2(subtotal.sub(discount).mul(unit.serviceFeePercent).div(100));
+    serviceFee = round2(subtotal.sub(discount).add(adjustmentDiscount.lt(0) ? adjustmentDiscount.neg() : 0).mul(unit.serviceFeePercent).div(100));
   }
 
   let deliveryFee = new Prisma.Decimal(0);
@@ -138,18 +179,36 @@ export async function createOrder(tx: Prisma.TransactionClient, input: NewOrderI
     deliveryFee = input.deliveryFeeOverride;
   }
 
-  const total = subtotal.sub(discount).add(serviceFee).add(deliveryFee);
+  let couvertFee = new Prisma.Decimal(0);
+  if (input.couvertPeople) {
+    if (input.channel !== OrderChannel.TABLE && !tableId) throw new OrderEngineError('COUVERT_ONLY_FOR_TABLE');
+    const event = await tx.coverEvent.findFirst({ where: { tenantId, active: true, startsAt: { lte: now }, endsAt: { gte: now }, ...(unitId ? { OR: [{ unitId }, { unitId: null }] } : {}) }, orderBy: { startsAt: 'desc' } });
+    if (!event) throw new OrderEngineError('COUVERT_UNAVAILABLE');
+    couvertFee = round2(event.amount.mul(input.couvertPeople));
+  }
+
+  let scheduling: { scheduledFor: Date; releaseAt: Date; releasedAt: Date | null } | null = null;
+  if (input.scheduledFor) {
+    if (input.channel === OrderChannel.TABLE || tableId) throw new OrderEngineError('SCHEDULE_NOT_FOR_TABLE');
+    const settings = await loadSettings(tx, tenantId);
+    const prepMinutes = Math.max(0, ...lines.map(line => line.product.prepTimeMinutes ?? 0));
+    const decision = decideSchedule(input.scheduledFor, settings.scheduling, settings.hours.timezone, now, prepMinutes);
+    if (!decision.ok) throw new OrderEngineError(decision.reason);
+    scheduling = { scheduledFor: input.scheduledFor, releaseAt: decision.releaseAt, releasedAt: decision.releaseNow ? now : null };
+  }
+
+  const total = subtotal.sub(discount).add(serviceFee).add(deliveryFee).add(couvertFee);
   const created = await tx.order.create({
     data: {
-      tenantId, unitId, code: newOrderCode(), channel: input.channel, status: OrderStatus.OPEN, createdByUserId: input.actorUserId ?? null,
+      tenantId, unitId, code: newOrderCode(), number: await nextOrderNumber(tx, tenantId, now), channel: input.channel, status: OrderStatus.OPEN, createdByUserId: input.actorUserId ?? null,
       customerName, customerId, tableId, tableLabel, couponId, deliveryZoneId,
-      subtotal, discount, serviceFee, deliveryFee, total,
+      subtotal, discount, serviceFee, deliveryFee, couvertFee, total, ...(scheduling ?? {}),
     },
   });
   for (const line of lines) {
     const item = await tx.orderItem.create({
       data: {
-        orderId: created.id, productId: line.product.id, quantity: line.quantity, unitPrice: line.product.price, total: line.total, notes: line.notes,
+        orderId: created.id, productId: line.product.id, quantity: line.quantity, weightKg: line.weightKg, unitPrice: line.unitPrice, total: line.total, notes: line.notes,
         // A combo line is a billing wrapper; production happens on its component items.
         sectorId: line.product.isCombo ? null : line.product.sectorId,
         modifiers: { create: line.selected.map(entry => ({ optionId: entry.option.id, name: entry.option.name, price: entry.option.price, quantity: entry.quantity, sectorId: entry.option.sectorId, ingredientId: entry.option.ingredientId, ingredientQuantity: entry.option.ingredientQuantity })) },
@@ -160,7 +219,12 @@ export async function createOrder(tx: Prisma.TransactionClient, input: NewOrderI
     }
   }
   const order = await tx.order.findUniqueOrThrow({ where: { id: created.id }, include: ORDER_INCLUDE });
-  await enqueueProductionPrints(tx, order, { onlyAutoPrint: true });
-  await tx.auditLog.create({ data: { tenantId, actorUserId: input.actorUserId ?? null, action: 'ORDER_CREATED', entityType: 'Order', entityId: order.id, metadata: { channel: input.channel } } });
+  // Orders waiting for their scheduled release must not reach the kitchen yet.
+  if (!scheduling || scheduling.releasedAt) await enqueueProductionPrints(tx, order, { onlyAutoPrint: true });
+  await tx.auditLog.create({ data: { tenantId, actorUserId: input.actorUserId ?? null, action: 'ORDER_CREATED', entityType: 'Order', entityId: order.id, metadata: { channel: input.channel, scheduledFor: scheduling?.scheduledFor.toISOString() ?? null } } });
+  if (input.notifyCustomer !== false && customerPhone) {
+    const settings = await loadSettings(tx, tenantId);
+    await enqueueAutoMessage(tx, { tenantId, key: 'order_received', phone: customerPhone, orderId: order.id, vars: { orderCode: order.code, customerName: customerName ?? '', nome: (customerName ?? 'cliente').split(' ')[0], pedido: orderLabel(order), total: brl(order.total), agendado: scheduledSuffix(scheduling?.scheduledFor, settings.hours.timezone) } });
+  }
   return order;
 }

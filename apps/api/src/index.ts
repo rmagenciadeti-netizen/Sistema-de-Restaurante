@@ -1,10 +1,27 @@
-import 'dotenv/config';
+import './lib/env';
 import express from 'express';
 import cors from 'cors';
 import helmet from 'helmet';
 import { rateLimit } from 'express-rate-limit';
 import { authRoutes } from './routes/auth';
+import { prisma } from './lib/prisma';
+import { WhatsappSessionManager, whatsappSessionsMode } from './lib/whatsapp-sessions';
+import { scaleRoutes } from './routes/scale';
+import { promotionRoutes } from './routes/promotions';
+import { categoryScheduleRoutes } from './routes/category-schedules';
+import { productToolsRoutes } from './routes/product-tools';
+import { settingsRoutes } from './routes/settings';
+import { releaseRoutes } from './routes/releases';
+import { courierRoutes } from './routes/couriers';
+import { carrierRoutes } from './routes/carriers';
+import { paymentMethodRoutes } from './routes/payment-methods';
+import { financialCategoryRoutes } from './routes/financial-categories';
+import { coverEventRoutes } from './routes/cover-events';
+import { taxRuleRoutes } from './routes/tax-rules';
+import { reportsExtraRoutes } from './routes/reports-extra';
+import { storeRoutes } from './routes/store';
 import { tenantRoutes } from './routes/tenants';
+import { planRoutes } from './routes/plans';
 import { dashboardRoutes } from './routes/dashboard';
 import { employeeRoutes } from './routes/employees';
 import { productRoutes } from './routes/products';
@@ -31,6 +48,7 @@ import { shiftRoutes } from './routes/shifts';
 import { paymentRoutes, paymentWebhookRoutes } from './routes/payments';
 import { fiscalRoutes } from './routes/fiscal';
 import { inboundRoutes, integrationRoutes } from './routes/integrations';
+import { auditRoutes } from './routes/audit';
 import { registerProviders } from './providers.config';
 
 export const app = express();
@@ -45,8 +63,12 @@ export function parseAllowedOrigins(config: string | undefined): string[] {
   }
   return origins;
 }
-const allowedOrigins = parseAllowedOrigins(process.env.CORS_ORIGIN);
-app.use(cors({ origin: (origin, callback) => { if (!origin || allowedOrigins.includes(origin)) return callback(null, true); return callback(new OriginNotAllowedError()); } }));
+// The Next apps proxy browser calls with their own Origin, so the configured app URLs are always allowed.
+const appOrigins = [process.env.RM_RESTAURANT_URL, process.env.RM_ADMIN_URL].flatMap(value => { try { return value ? [new URL(value).origin] : []; } catch { return []; } });
+const allowedOrigins = [...new Set([...parseAllowedOrigins(process.env.CORS_ORIGIN), ...appOrigins])];
+// Development only: Codespaces/proxied hosts send arbitrary public Origins, so any origin is reflected outside production.
+const allowAnyOrigin = () => process.env.NODE_ENV !== 'production';
+app.use(cors({ origin: (origin, callback) => { if (!origin || allowAnyOrigin() || allowedOrigins.includes(origin)) return callback(null, true); return callback(new OriginNotAllowedError()); } }));
 const limiterMessage = { message: 'Too many requests. Try again later.' };
 const printAgentPaths = '/print-agent';
 const machinePaths = ['/print-agent', '/public', '/inbound', '/payments/webhook'];
@@ -63,6 +85,8 @@ registerProviders();
 app.get('/api/v1/health', (_req, res) => res.json({ status: 'ok', service: 'rm-restaurant-api', version: '1.0.0' }));
 app.use('/api/v1/auth', authRoutes);
 app.use('/api/v1/tenants', tenantRoutes);
+app.use('/api/v1/plans', planRoutes);
+app.use('/api/v1/plans', planRoutes);
 app.use('/api/v1/units', unitRoutes);
 app.use('/api/v1/dashboard', dashboardRoutes);
 app.use('/api/v1/employees', employeeRoutes);
@@ -75,9 +99,11 @@ app.use('/api/v1/delivery', deliveryRoutes);
 app.use('/api/v1/whatsapp', whatsappRoutes);
 app.use('/api/v1/financial', financialRoutes);
 app.use('/api/v1/reports', reportsRoutes);
+app.use('/api/v1/reports', reportsExtraRoutes);
 app.use('/api/v1/printing', printingRoutes);
 app.use('/api/v1/print-agent', printAgentRoutes);
 app.use('/api/v1/tables', tableRoutes);
+app.use('/api/v1/public/store', storeRoutes);
 app.use('/api/v1/public', publicRoutes);
 app.use('/api/v1/customers', customerRoutes);
 app.use('/api/v1/purchasing', purchasingRoutes);
@@ -89,6 +115,19 @@ app.use('/api/v1/shifts', shiftRoutes);
 app.use('/api/v1/payments', paymentRoutes);
 app.use('/api/v1/fiscal', fiscalRoutes);
 app.use('/api/v1/integrations', integrationRoutes);
+app.use('/api/v1/audit', auditRoutes);
+app.use('/api/v1/scale', scaleRoutes);
+app.use('/api/v1/promotions', promotionRoutes);
+app.use('/api/v1/category-schedules', categoryScheduleRoutes);
+app.use('/api/v1/product-tools', productToolsRoutes);
+app.use('/api/v1/settings', settingsRoutes);
+app.use('/api/v1/releases', releaseRoutes);
+app.use('/api/v1/couriers', courierRoutes);
+app.use('/api/v1/carriers', carrierRoutes);
+app.use('/api/v1/payment-methods', paymentMethodRoutes);
+app.use('/api/v1/financial-categories', financialCategoryRoutes);
+app.use('/api/v1/cover-events', coverEventRoutes);
+app.use('/api/v1/tax-rules', taxRuleRoutes);
 app.use('/api/v1/inbound', inboundRoutes);
 app.use((_req, res) => res.status(404).json({ message: 'Not found' }));
 app.use((error: unknown, _req: express.Request, res: express.Response, _next: express.NextFunction) => {
@@ -105,5 +144,12 @@ class OriginNotAllowedError extends Error {}
 
 if (require.main === module) {
   const port = Number(process.env.PORT || 4000);
-  app.listen(port, () => console.log(`RM Restaurant API listening on port ${port}`));
+  const server = app.listen(port, () => console.log(`RM Restaurant API listening on port ${port}`));
+  // In 'api' mode (default outside production) this process also owns the WhatsApp Web sessions and releases scheduled orders.
+  if (whatsappSessionsMode() === 'api') {
+    const manager = new WhatsappSessionManager(prisma);
+    manager.start().catch(error => console.error('WhatsApp session manager not started:', error instanceof Error ? error.message : error));
+    server.on('close', () => { void manager.stop(); });
+    for (const signal of ['SIGINT', 'SIGTERM'] as const) process.once(signal, () => { void manager.stop().finally(() => process.exit(0)); });
+  }
 }
