@@ -142,6 +142,10 @@ export default function InventoryPage() {
       setMessage({ text: 'Selecione um produto e informe ao menos um ingrediente com quantidade válida.', kind: 'error' });
       return;
     }
+    if (recipeLines.some(line => !recipeIngredients.some(ingredient => ingredient.id === line.ingredientId))) {
+      setMessage({ text: 'A ficha contém ingrediente de outra unidade. Remova a linha incompatível antes de salvar.', kind: 'error' });
+      return;
+    }
     setBusy(true);
     setMessage(null);
     try {
@@ -205,6 +209,7 @@ export default function InventoryPage() {
             <Field label="Quantidade para o rendimento" type="number" min="0.001" step="0.001" required value={line.quantity} onChange={event => setRecipeLines(current => current.map((item, i) => i === index ? { ...item, quantity: event.target.value } : item))} />
             <button type="button" className="rounded-lg border border-slate-700 px-4 py-2 text-sm text-slate-300 hover:bg-slate-800" onClick={() => setRecipeLines(current => current.filter((_, i) => i !== index))}>Remover</button>
           </div>)}
+          {recipeLines.some(line => !recipeIngredients.some(ingredient => ingredient.id === line.ingredientId)) && <p className="text-sm text-amber-300">A ficha existente contém ingrediente de outra unidade. Remova essa linha e selecione um ingrediente compatível.</p>}
           <div className="flex flex-wrap gap-3">
             <button type="button" className="rounded-lg border border-slate-700 px-4 py-2 text-sm text-slate-200 hover:bg-slate-800" disabled={recipeIngredients.length === 0} onClick={() => setRecipeLines(current => [...current, { ingredientId: recipeIngredients[0]?.id ?? '', quantity: '0.001' }])}>Adicionar ingrediente</button>
             <button className={buttonClass} disabled={busy || !productId || recipeLines.length === 0}>Salvar ficha técnica</button>
