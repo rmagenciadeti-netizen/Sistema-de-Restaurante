@@ -61,6 +61,12 @@ export const SETTINGS_SECTIONS = {
   }),
   products: z.object({ defaultMarginPercent: z.number().min(0).max(1000).default(0) }),
   orders: z.object({ resetCounterDaily: z.boolean().default(false) }),
+  // RM Controle de Lucro: calculation method. Rates are estimates applied to registered sales; fixed categories split paid expenses into fixed and variable.
+  profit: z.object({
+    cardFeePercent: z.number().min(0).max(30).default(0), taxPercent: z.number().min(0).max(60).default(0),
+    fixedCategories: z.array(z.string().trim().min(1).max(80)).max(50).default([]),
+    includeCommissions: z.boolean().default(true),
+  }),
   // RM Inteligência: which alerts the restaurant wants and their thresholds. A monthly goal of 0 means no goal.
   intelligence: z.object({
     monthlyGoal: z.number().min(0).max(100_000_000).default(0),

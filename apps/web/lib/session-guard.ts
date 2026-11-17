@@ -3,7 +3,7 @@ import { NextResponse, type NextRequest } from 'next/server';
 // Server-side guard for page navigations. The session token lives in localStorage for the app code and is mirrored into a cookie
 // (see setSessionCookie in lib/api.ts) so the server can see it: a missing, expired or API-rejected session is answered with a redirect
 // to /login (and the cookie is cleared) instead of rendering the page or leaking a bare HTTP 401. The API still enforces authentication.
-const PUBLIC_PREFIXES = ['/login', '/forgot-password', '/reset-password', '/loja', '/m'];
+const PUBLIC_PREFIXES = ['/login', '/forgot-password', '/reset-password', '/loja', '/m', '/demo'];
 const CHECK_TTL_MS = 15_000;
 const verified = new Map<string, number>();
 

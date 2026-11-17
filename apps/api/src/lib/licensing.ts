@@ -16,6 +16,7 @@ export const MODULE_CATALOG = [
   { key: 'reports', name: 'Relatórios Avançados' },
   { key: 'integrations', name: 'Integrações e Pagamentos' },
   { key: 'intelligence', name: 'RM Inteligência' },
+  { key: 'profit', name: 'RM Controle de Lucro' },
 ] as const;
 
 export type ModuleKey = typeof MODULE_CATALOG[number]['key'];
@@ -27,7 +28,7 @@ const ROUTE_MODULES: Record<string, ModuleKey> = {
   whatsapp: 'whatsapp', coupons: 'marketing', fiscal: 'fiscal', reports: 'reports', integrations: 'integrations', payments: 'integrations',
   releases: 'pos', scale: 'pos', couriers: 'delivery', carriers: 'inventory', 'payment-methods': 'financial', 'financial-categories': 'financial',
   promotions: 'marketing', 'cover-events': 'tables', 'tax-rules': 'fiscal', 'fiscal-registry': 'fiscal',
-  intelligence: 'intelligence',
+  intelligence: 'intelligence', profit: 'profit',
 };
 
 export function moduleForPath(originalUrl: string): ModuleKey | null {
@@ -58,6 +59,8 @@ export async function globallyBlockedModules(load: () => Promise<string[]>, now 
 // Tenants without a license row predate licensing and keep unrestricted access; data is never removed, only access is gated.
 export function licenseDenial(license: LicenseSnapshot, enabledModules: string[], originalUrl: string, now = new Date()): string | null {
   if (!license) return null;
+  // A restaurant must always be able to reach support, even with a suspended or expired license.
+  if (/^\/api\/v1\/support(?:[/?]|$)/.test(originalUrl)) return null;
   if (license.status !== LicenseStatus.ACTIVE) return 'License is not active';
   const graceMs = (license.graceDays ?? 0) * 86_400_000;
   if (license.validUntil && license.validUntil.getTime() + graceMs < now.getTime()) return 'License expired';

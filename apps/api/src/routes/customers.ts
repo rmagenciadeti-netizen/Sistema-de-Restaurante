@@ -5,6 +5,7 @@ import { prisma } from '../lib/prisma';
 import { requireAuth, requireTenant } from '../middleware/auth';
 import { allowRead, MANAGEMENT_ROLES, requireRoles, SALES_ROLES } from '../lib/permissions';
 import { normalizePhone } from '../lib/order-engine';
+import { averageSpent, classifyCustomer, SEGMENT_RULES, type CustomerStats } from '../lib/crm';
 
 export const customerRoutes = Router();
 customerRoutes.use(requireAuth, requireTenant, allowRead(SALES_ROLES, SALES_ROLES));
@@ -27,6 +28,25 @@ customerRoutes.post('/', async (req, res, next) => {
     const tenantId = req.auth!.tenantId!;
     if (await prisma.customer.findUnique({ where: { tenantId_phone: { tenantId, phone } } })) return res.status(409).json({ message: 'Customer with this phone already exists' });
     return res.status(201).json(await prisma.customer.create({ data: { ...parsed.data, phone, tenantId } }));
+  } catch (error) { return next(error); }
+});
+// Segments are computed from completed orders only, never from guesses. Must stay above '/:id'.
+customerRoutes.get('/segments', requireRoles(...MANAGEMENT_ROLES), async (req, res, next) => {
+  try {
+    const tenantId = req.auth!.tenantId!; const now = new Date();
+    const [customers, sums] = await Promise.all([
+      prisma.customer.findMany({ where: { tenantId, active: true }, select: { id: true, name: true, phone: true, email: true, marketingConsent: true, loyaltyPoints: true }, take: 5000 }),
+      prisma.order.groupBy({ by: ['customerId'], where: { tenantId, status: 'COMPLETED', customerId: { not: null } }, _count: true, _sum: { total: true }, _min: { createdAt: true }, _max: { createdAt: true } }),
+    ]);
+    const stats = new Map<string, CustomerStats>(sums.map(row => [row.customerId!, { id: row.customerId!, orders: row._count, spent: Number(row._sum.total ?? 0), firstOrderAt: row._min.createdAt, lastOrderAt: row._max.createdAt }]));
+    const all = customers.map(customer => stats.get(customer.id) ?? { id: customer.id, orders: 0, spent: 0, firstOrderAt: null, lastOrderAt: null });
+    const average = averageSpent(all);
+    const items = customers.map(customer => {
+      const entry = stats.get(customer.id) ?? { id: customer.id, orders: 0, spent: 0, firstOrderAt: null, lastOrderAt: null };
+      return { ...customer, segment: classifyCustomer(entry, average, now), orders: entry.orders, spent: Math.round(entry.spent * 100) / 100, averageTicket: entry.orders ? Math.round((entry.spent / entry.orders) * 100) / 100 : null, lastOrderAt: entry.lastOrderAt };
+    }).sort((a, b) => b.spent - a.spent);
+    const counts = items.reduce<Record<string, number>>((acc, item) => ({ ...acc, [item.segment]: (acc[item.segment] ?? 0) + 1 }), {});
+    return res.json({ items, counts, rules: SEGMENT_RULES, averageSpent: Math.round(average * 100) / 100, truncated: customers.length >= 5000 });
   } catch (error) { return next(error); }
 });
 customerRoutes.get('/:id', async (req, res, next) => {

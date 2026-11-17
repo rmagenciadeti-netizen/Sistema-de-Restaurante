@@ -8,6 +8,7 @@ import { useAutoLoad } from '../../lib/use-auto-load';
 import { AppShell, buttonClass, Field, Notice, panelClass, secondaryButtonClass } from '../../components/app-shell';
 import { OpsNav } from '../../components/ops-nav';
 import { Badge, EmptyState } from '../../components/ui';
+import type { Reservation } from '../../lib/api';
 import { elapsedLabel, isHeld, isTabOrder, opsError, orderTitle, paidTotal, type OpsOrder, type OpsTable } from '../../lib/types-ops';
 
 type Tab = { key: string; label: string; tableId: string | null; orders: OpsOrder[]; total: number; paid: number };
@@ -26,6 +27,7 @@ export default function ComandasPage() {
   const router = useRouter();
   const [orders, setOrders] = useState<OpsOrder[]>([]);
   const [tables, setTables] = useState<OpsTable[]>([]);
+  const [reservations, setReservations] = useState<Reservation[]>([]);
   const [search, setSearch] = useState('');
   const [newLabel, setNewLabel] = useState('');
   const [message, setMessage] = useState('');
@@ -33,10 +35,12 @@ export default function ComandasPage() {
 
   async function load() {
     try {
-      const [tabOrders, tableList] = await Promise.all([
+      const [tabOrders, tableList, reservationList] = await Promise.all([
         loadTabOrders(),
         api<ListResponse<OpsTable>>('/tables').catch(error => { if (error instanceof ApiError && error.status === 403) return { items: [] as OpsTable[], total: 0 }; throw error; }),
+        api<ListResponse<Reservation>>('/reservations').catch(() => ({ items: [] as Reservation[], total: 0 })),
       ]);
+      setReservations(reservationList.items);
       setOrders(tabOrders); setTables(tableList.items.filter(table => table.active)); setNow(Date.now()); setMessage('');
     } catch (error) { setMessage(opsError(error, 'Erro ao carregar comandas')); }
   }
@@ -109,22 +113,23 @@ export default function ComandasPage() {
         <ul className="flex flex-wrap gap-3 text-xs text-slate-600" aria-label="Legenda">
           <li className="flex items-center gap-1"><span className="h-3 w-3 rounded bg-emerald-500" />Livre</li>
           <li className="flex items-center gap-1"><span className="h-3 w-3 rounded bg-red-500" />Ocupada</li>
-          <li className="flex items-center gap-1"><span className="h-3 w-3 rounded bg-amber-400" />Parcialmente paga</li>
+          <li className="flex items-center gap-1"><span className="h-3 w-3 rounded bg-amber-400" />Reservada ou parcialmente paga</li>
         </ul>
       </div>
       <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-5 xl:grid-cols-6">
         {tables.filter(table => !term || table.label.toLocaleLowerCase('pt-BR').includes(term)).map(table => {
           const group = groups.get(`table:${table.id}`);
+          const reservation = !group ? reservations.find(item => item.tableId === table.id && (item.status === 'PENDING' || item.status === 'CONFIRMED') && new Date(item.reservedAt).getTime() - (now || Date.now()) < 90 * 60_000 && new Date(item.reservedAt).getTime() - (now || Date.now()) > -30 * 60_000) : undefined;
           const partial = group !== undefined && group.paid > 0 && group.total - group.paid > 0.009;
-          const tone = !group ? 'border-emerald-300 bg-emerald-50 hover:border-emerald-500' : partial ? 'border-amber-300 bg-amber-50 hover:border-amber-500' : 'border-red-300 bg-red-50 hover:border-red-500';
-          const dot = !group ? 'bg-emerald-500' : partial ? 'bg-amber-400' : 'bg-red-500';
+          const tone = reservation ? 'border-amber-300 bg-amber-50 hover:border-amber-500' : !group ? 'border-emerald-300 bg-emerald-50 hover:border-emerald-500' : partial ? 'border-amber-300 bg-amber-50 hover:border-amber-500' : 'border-red-300 bg-red-50 hover:border-red-500';
+          const dot = reservation ? 'bg-amber-400' : !group ? 'bg-emerald-500' : partial ? 'bg-amber-400' : 'bg-red-500';
           const oldest = group?.orders.reduce((min, order) => order.createdAt < min ? order.createdAt : min, group.orders[0].createdAt);
-          return <Link key={table.id} href={group ? openHref(group) : `/pdv?tableId=${encodeURIComponent(table.id)}`} aria-label={`Mesa ${table.label}: ${group ? (partial ? 'parcialmente paga' : 'ocupada') : 'livre'}`} className={`relative flex min-h-28 flex-col justify-between rounded-2xl border-2 p-3 transition ${tone}`}>
+          return <Link key={table.id} href={group ? openHref(group) : `/pdv?tableId=${encodeURIComponent(table.id)}`} aria-label={`Mesa ${table.label}: ${group ? (partial ? 'parcialmente paga' : 'ocupada') : reservation ? 'reservada' : 'livre'}`} className={`relative flex min-h-28 flex-col justify-between rounded-2xl border-2 p-3 transition ${tone}`}>
             <span className={`absolute right-3 top-3 h-3 w-3 rounded-full ${dot}`} />
             <span><span className="block text-[10px] font-semibold uppercase tracking-wider text-slate-500">Mesa</span><span className="block text-2xl font-black text-slate-900">{table.label}</span></span>
             {group && oldest
               ? <span className="text-xs text-slate-700"><strong className="block text-sm text-slate-900">{formatMoney(group.total - group.paid)}</strong>{group.orders.length} pedido(s) · ⏱ {elapsedLabel(oldest, now || undefined)}</span>
-              : <span className="text-xs text-slate-500">{table.seats} lugares · toque para abrir</span>}
+              : reservation ? <span className="text-xs text-amber-800"><strong className="block text-sm">Reservada {new Date(reservation.reservedAt).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}</strong>{reservation.customerName} · {reservation.partySize} pessoas</span> : <span className="text-xs text-slate-500">{table.seats} lugares · toque para abrir</span>}
           </Link>;
         })}
       </div>
