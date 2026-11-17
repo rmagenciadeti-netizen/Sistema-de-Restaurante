@@ -13,7 +13,7 @@ Monólito modular para restaurantes, com Next.js, TypeScript, PostgreSQL/Prisma 
 
 ## Verificação da API
 
-Na raiz do repositório, com Node.js 20:
+Na raiz do repositório, com Node.js 22:
 
 ```sh
 npm ci
@@ -21,9 +21,11 @@ DATABASE_URL=postgresql://localhost:5432/validation npm run db:validate
 DATABASE_URL=postgresql://localhost:5432/validation npm run db:generate
 npm run build --workspace apps/api
 npm run test --workspace apps/api
+npm run lint --workspace apps/web
+npm run build --workspace apps/web
 ```
 
-Validação e geração do cliente não conectam ao banco; a URL acima é apenas um exemplo para esses comandos. A CI executa esta mesma sequência, sem testar migrações ou integração com PostgreSQL.
+Validação e geração do cliente não conectam ao banco; a URL acima é apenas um exemplo para esses comandos. A CI executa esta mesma sequência, sem testar migrações ou integração com PostgreSQL. O lint web emite avisos para alguns efeitos de carregamento e hidratação existentes; eles não são convertidos em erros de forma a não incentivar mudanças de comportamento fora desta etapa.
 
 ## Migrações e dados existentes
 
