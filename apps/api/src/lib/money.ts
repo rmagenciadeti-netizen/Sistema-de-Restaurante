@@ -12,3 +12,8 @@ export const moneySchema = z.number().finite().nonnegative().refine(
 );
 
 export const positiveMoneySchema = moneySchema.refine(value => value > 0, 'Amount must be positive');
+
+export const positiveQuantitySchema = (max: number) => z.number().finite().positive().max(max).refine(
+  value => new Prisma.Decimal(value).decimalPlaces() <= 3,
+  'Quantity must have at most three decimal places',
+);

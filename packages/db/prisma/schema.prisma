@@ -8,64 +8,70 @@ datasource db {
 }
 
 model Tenant {
-  id               String             @id @default(uuid())
-  name             String
-  slug             String             @unique
-  status           TenantStatus       @default(TRIAL)
-  plan             PlanType           @default(BASIC)
-  country          String             @default("BR")
-  createdAt        DateTime           @default(now())
-  updatedAt        DateTime           @updatedAt
-  units            Unit[]
-  users            User[]
-  employees        Employee[]
-  categories       ProductCategory[]
-  sectors          ProductionSector[]
-  printers         Printer[]
-  products         Product[]
-  orders           Order[]
-  auditLogs        AuditLog[]
-  ingredients      Ingredient[]
-  stockMovements   StockMovement[]
-  recipes          Recipe[]
-  cashSessions     CashSession[]
-  payments         Payment[]
-  deliveryJobs     DeliveryJob[]
-  whatsappMessages WhatsappMessage[]
-  financialEntries FinancialEntry[]
-  customers        Customer[]
-  suppliers        Supplier[]
-  purchaseOrders   PurchaseOrder[]
-  tables           RestaurantTable[]
-  printJobs        PrintJob[]
-  printAgents      PrintAgent[]
-  coupons          Coupon[]
-  reservations     Reservation[]
-  deliveryZones    DeliveryZone[]
-  modifierGroups   ModifierGroup[]
-  shifts           Shift[]
-  paymentCharges   PaymentCharge[]
-  fiscalDocuments  FiscalDocument[]
-  integrations     Integration[]
-  externalOrders   ExternalOrder[]
-  license          TenantLicense?
-  modules          TenantModule[]
-  provisioning     TenantProvisioning?
-  settings         TenantSettings?
-  couriers         Courier[]
-  carriers         Carrier[]
-  paymentMethods   PaymentMethodConfig[]
-  financialCategories FinancialCategory[]
-  promotions       Promotion[]
-  categorySchedules CategorySchedule[]
-  coverEvents      CoverEvent[]
-  passwordReleases PasswordRelease[]
-  taxRules         TaxRule[]
-  operationNatures OperationNature[]
-  cstCorrelations  CstCorrelation[]
-  receivedInvoices ReceivedInvoice[]
-  fiscalContingencies FiscalContingency[]
-  whatsappSession  WhatsappSession?
+  id                    String                 @id @default(uuid())
+  name                  String
+  slug                  String                 @unique
+  status                TenantStatus           @default(TRIAL)
+  plan                  PlanType               @default(BASIC)
+  country               String                 @default("BR")
+  createdAt             DateTime               @default(now())
+  updatedAt             DateTime               @updatedAt
+  units                 Unit[]
+  users                 User[]
+  employees             Employee[]
+  categories            ProductCategory[]
+  sectors               ProductionSector[]
+  printers              Printer[]
+  products              Product[]
+  productStockMovements ProductStockMovement[]
+  orders                Order[]
+  auditLogs             AuditLog[]
+  ingredients           Ingredient[]
+  stockMovements        StockMovement[]
+  recipes               Recipe[]
+  cashSessions          CashSession[]
+  payments              Payment[]
+  deliveryJobs          DeliveryJob[]
+  whatsappMessages      WhatsappMessage[]
+  financialEntries      FinancialEntry[]
+  customers             Customer[]
+  suppliers             Supplier[]
+  purchaseOrders        PurchaseOrder[]
+  tables                RestaurantTable[]
+  printJobs             PrintJob[]
+  printAgents           PrintAgent[]
+  coupons               Coupon[]
+  reservations          Reservation[]
+  deliveryZones         DeliveryZone[]
+  modifierGroups        ModifierGroup[]
+  shifts                Shift[]
+  paymentCharges        PaymentCharge[]
+  fiscalDocuments       FiscalDocument[]
+  integrations          Integration[]
+  externalOrders        ExternalOrder[]
+  license               TenantLicense?
+  modules               TenantModule[]
+  provisioning          TenantProvisioning?
+  settings              TenantSettings?
+  couriers              Courier[]
+  carriers              Carrier[]
+  paymentMethods        PaymentMethodConfig[]
+  financialCategories   FinancialCategory[]
+  promotions            Promotion[]
+  categorySchedules     CategorySchedule[]
+  coverEvents           CoverEvent[]
+  passwordReleases      PasswordRelease[]
+  taxRules              TaxRule[]
+  operationNatures      OperationNature[]
+  cstCorrelations       CstCorrelation[]
+  receivedInvoices      ReceivedInvoice[]
+  fiscalContingencies   FiscalContingency[]
+  posDevices            PosDevice[]
+  storeImages           StoreImage[]
+  fiscalNumbering       FiscalNumbering[]
+  fiscalSettings        FiscalSettings?
+  fiscalEvents          FiscalEvent[]
+  whatsappSession       WhatsappSession?
   whatsappConversations WhatsappConversation[]
   whatsappAutoMessages  WhatsappAutoMessage[]
   whatsappKnowledge     WhatsappKnowledge[]
@@ -75,72 +81,74 @@ model Tenant {
 }
 
 model Unit {
-  id                 String             @id @default(uuid())
-  tenantId           String
-  name               String
-  code               String?
-  address            String?
-  status             String             @default("ACTIVE")
-  createdAt          DateTime           @default(now())
-  updatedAt          DateTime           @updatedAt
-  tenant             Tenant             @relation(fields: [tenantId], references: [id], onDelete: Cascade)
-  users              User[]
-  employees          Employee[]
-  sectors            ProductionSector[]
-  printers           Printer[]
-  products           Product[]
-  orders             Order[]
-  ingredients        Ingredient[]
-  stockMovements     StockMovement[]
-  cashSessions       CashSession[]
-  payments           Payment[]
-  deliveryJobs       DeliveryJob[]
-  financialEntries   FinancialEntry[]
-  serviceFeePercent  Decimal            @default(0) @db.Decimal(5, 2)
-  tables             RestaurantTable[]
-  printJobs          PrintJob[]
-  printAgents        PrintAgent[]
-  purchaseOrders     PurchaseOrder[]
-  reservations       Reservation[]
-  deliveryZones      DeliveryZone[]
-  waiterSharePercent Decimal            @default(100) @db.Decimal(5, 2)
-  shifts             Shift[]
-  paymentCharges     PaymentCharge[]
-  fiscalDocuments    FiscalDocument[]
-  receivedInvoices   ReceivedInvoice[]
+  id                    String                 @id @default(uuid())
+  tenantId              String
+  name                  String
+  code                  String?
+  address               String?
+  status                String                 @default("ACTIVE")
+  createdAt             DateTime               @default(now())
+  updatedAt             DateTime               @updatedAt
+  tenant                Tenant                 @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  users                 User[]
+  employees             Employee[]
+  sectors               ProductionSector[]
+  printers              Printer[]
+  products              Product[]
+  productStockMovements ProductStockMovement[]
+  orders                Order[]
+  ingredients           Ingredient[]
+  stockMovements        StockMovement[]
+  cashSessions          CashSession[]
+  payments              Payment[]
+  deliveryJobs          DeliveryJob[]
+  financialEntries      FinancialEntry[]
+  serviceFeePercent     Decimal                @default(0) @db.Decimal(5, 2)
+  tables                RestaurantTable[]
+  printJobs             PrintJob[]
+  printAgents           PrintAgent[]
+  purchaseOrders        PurchaseOrder[]
+  reservations          Reservation[]
+  deliveryZones         DeliveryZone[]
+  waiterSharePercent    Decimal                @default(100) @db.Decimal(5, 2)
+  shifts                Shift[]
+  paymentCharges        PaymentCharge[]
+  fiscalDocuments       FiscalDocument[]
+  receivedInvoices      ReceivedInvoice[]
+  posDevices            PosDevice[]
 
   @@unique([tenantId, code])
   @@index([tenantId, status])
 }
 
 model User {
-  id                String     @id @default(uuid())
-  tenantId          String?
-  unitId            String?
-  employeeId        String?    @unique
-  username          String?    @unique
-  name              String
-  email             String     @unique
-  passwordHash      String
-  mfaEnabled        Boolean    @default(false)
-  mfaSecretEncrypted String?
-  mfaRecoveryCodeHashes String[] @default([])
-  mfaLastUsedStep   BigInt?
-  authVersion       Int        @default(0)
-  passwordResetTokenHash String? @unique
-  passwordResetExpiresAt DateTime?
+  id                       String     @id @default(uuid())
+  tenantId                 String?
+  unitId                   String?
+  employeeId               String?    @unique
+  username                 String?    @unique
+  name                     String
+  email                    String     @unique
+  passwordHash             String
+  mfaEnabled               Boolean    @default(false)
+  mfaSecretEncrypted       String?
+  mfaRecoveryCodeHashes    String[]   @default([])
+  mfaLastUsedStep          BigInt?
+  authVersion              Int        @default(0)
+  passwordResetTokenHash   String?    @unique
+  passwordResetExpiresAt   DateTime?
   passwordResetRequestedAt DateTime?
-  mustChangePassword Boolean   @default(false)
-  role              UserRole   @default(ADMIN)
-  status            UserStatus @default(ACTIVE)
-  createdAt         DateTime   @default(now())
-  updatedAt         DateTime   @updatedAt
-  tenant            Tenant?    @relation(fields: [tenantId], references: [id], onDelete: Cascade)
-  unit              Unit?      @relation(fields: [unitId], references: [id], onDelete: SetNull)
-  employee          Employee?  @relation(fields: [employeeId], references: [id], onDelete: SetNull)
-  auditLogs         AuditLog[]
-  createdOrders     Order[]    @relation("OrderCreator")
-  commissionPercent Decimal    @default(0) @db.Decimal(5, 2)
+  mustChangePassword       Boolean    @default(false)
+  role                     UserRole   @default(ADMIN)
+  status                   UserStatus @default(ACTIVE)
+  createdAt                DateTime   @default(now())
+  updatedAt                DateTime   @updatedAt
+  tenant                   Tenant?    @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  unit                     Unit?      @relation(fields: [unitId], references: [id], onDelete: SetNull)
+  employee                 Employee?  @relation(fields: [employeeId], references: [id], onDelete: SetNull)
+  auditLogs                AuditLog[]
+  createdOrders            Order[]    @relation("OrderCreator")
+  commissionPercent        Decimal    @default(0) @db.Decimal(5, 2)
 
   @@index([tenantId, unitId, status])
 }
@@ -168,11 +176,11 @@ model Employee {
 }
 
 model ProductCategory {
-  id        String    @id @default(uuid())
+  id        String             @id @default(uuid())
   tenantId  String
   name      String
-  createdAt DateTime  @default(now())
-  tenant    Tenant    @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  createdAt DateTime           @default(now())
+  tenant    Tenant             @relation(fields: [tenantId], references: [id], onDelete: Cascade)
   products  Product[]
   schedules CategorySchedule[]
 
@@ -210,6 +218,8 @@ model Printer {
   tenantId       String
   unitId         String?
   sectorId       String?
+  // Windows printers can only be reached by the agent installed on the computer that has them.
+  agentId        String?
   name           String
   connectionType String
   address        String?
@@ -226,58 +236,71 @@ model Printer {
   tenant         Tenant            @relation(fields: [tenantId], references: [id], onDelete: Cascade)
   unit           Unit?             @relation(fields: [unitId], references: [id], onDelete: SetNull)
   sector         ProductionSector? @relation(fields: [sectorId], references: [id], onDelete: SetNull)
+  agent          PrintAgent?       @relation(fields: [agentId], references: [id], onDelete: SetNull)
   printJobs      PrintJob[]
 
   @@index([tenantId, unitId, active])
 }
 
 model Product {
-  id              String                 @id @default(uuid())
-  tenantId        String
-  unitId          String?
-  categoryId      String?
-  sectorId        String?
-  name            String
-  code            String?
-  description     String?
-  price           Decimal                @db.Decimal(12, 2)
-  cost            Decimal?               @db.Decimal(12, 2)
-  stockMin        Decimal?               @db.Decimal(12, 3)
-  prepTimeMinutes Int?
-  active          Boolean                @default(true)
-  createdAt       DateTime               @default(now())
-  updatedAt       DateTime               @updatedAt
-  tenant          Tenant                 @relation(fields: [tenantId], references: [id], onDelete: Cascade)
-  unit            Unit?                  @relation(fields: [unitId], references: [id], onDelete: SetNull)
-  category        ProductCategory?       @relation(fields: [categoryId], references: [id], onDelete: SetNull)
-  sector          ProductionSector?      @relation(fields: [sectorId], references: [id], onDelete: SetNull)
-  orderItems      OrderItem[]
-  recipe          Recipe?
-  isCombo         Boolean                @default(false)
-  modifierGroups  ProductModifierGroup[]
-  comboComponents ComboComponent[]       @relation("ComboParent")
-  usedInCombos    ComboComponent[]       @relation("ComboChild")
-  barcode         String?
-  favorite        Boolean                @default(false)
+  id                      String                 @id @default(uuid())
+  tenantId                String
+  unitId                  String?
+  categoryId              String?
+  sectorId                String?
+  name                    String
+  code                    String?
+  description             String?
+  price                   Decimal                @db.Decimal(12, 2)
+  cost                    Decimal?               @db.Decimal(12, 2)
+  stockMin                Decimal?               @db.Decimal(12, 3)
+  stockControlled         Boolean                @default(false)
+  stockQuantity           Decimal                @default(0) @db.Decimal(12, 3)
+  packagingEnabled        Boolean                @default(false)
+  packagingPrice          Decimal                @default(0) @db.Decimal(12, 2)
+  prepTimeMinutes         Int?
+  active                  Boolean                @default(true)
+  createdAt               DateTime               @default(now())
+  updatedAt               DateTime               @updatedAt
+  tenant                  Tenant                 @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  unit                    Unit?                  @relation(fields: [unitId], references: [id], onDelete: SetNull)
+  category                ProductCategory?       @relation(fields: [categoryId], references: [id], onDelete: SetNull)
+  sector                  ProductionSector?      @relation(fields: [sectorId], references: [id], onDelete: SetNull)
+  orderItems              OrderItem[]
+  recipe                  Recipe?
+  isCombo                 Boolean                @default(false)
+  modifierGroups          ProductModifierGroup[]
+  comboComponents         ComboComponent[]       @relation("ComboParent")
+  usedInCombos            ComboComponent[]       @relation("ComboChild")
+  barcode                 String?
+  favorite                Boolean                @default(false)
   // Weighed products: `price` is per kg and order lines carry weightKg. `scaleCode` is the PLU sent to / read from the scale.
-  soldByWeight    Boolean                @default(false)
-  sendToScale     Boolean                @default(false)
-  scaleCode       Int?
-  scaleDepartment Int?
-  shelfLifeDays   Int?
-  scaleNotes      String?
-  ncm             String?
-  cest            String?
-  taxRuleId       String?
-  taxRule         TaxRule?               @relation(fields: [taxRuleId], references: [id], onDelete: SetNull)
-  promotionItems  PromotionProduct[]
-  gtin            String?
-  measureUnit     String                 @default("UN")
+  soldByWeight            Boolean                @default(false)
+  sendToScale             Boolean                @default(false)
+  scaleCode               Int?
+  scaleDepartment         Int?
+  shelfLifeDays           Int?
+  scaleNotes              String?
+  ncm                     String?
+  cest                    String?
+  taxRuleId               String?
+  taxRule                 TaxRule?               @relation(fields: [taxRuleId], references: [id], onDelete: SetNull)
+  gtin                    String?
+  measureUnit             String                 @default("UN")
   // localOnly: sold only at the venue (hidden from the virtual store and the WhatsApp bot). isComponent: ingredient/part of other products, never sold on its own online.
-  localOnly       Boolean                @default(false)
-  isComponent     Boolean                @default(false)
+  localOnly               Boolean                @default(false)
+  isComponent             Boolean                @default(false)
+  allowNotes              Boolean                @default(true)
+  allowFreePrice          Boolean                @default(false)
+  alwaysShowDescription   Boolean                @default(false)
+  allowFractionalQuantity Boolean                @default(false)
+  pickupTicket            Boolean                @default(false)
+  // Fiscal item kind (SPED Bloco K table): MERCHANDISE, RAW_MATERIAL, PACKAGING, IN_PROCESS, FINISHED, BY_PRODUCT, CONSUMABLE, SERVICE, OTHER.
+  productType             String                 @default("FINISHED")
+  promotionItems          PromotionProduct[]
+  image                   ProductImage?
+  stockMovements          ProductStockMovement[]
 
-  image           ProductImage?
   @@unique([tenantId, code])
   @@unique([tenantId, scaleCode])
   @@index([tenantId, unitId, active])
@@ -285,71 +308,78 @@ model Product {
 }
 
 model Order {
-  id               String            @id @default(uuid())
-  tenantId         String
-  unitId           String?
-  code             String
-  channel          OrderChannel      @default(POS)
-  status           OrderStatus       @default(OPEN)
-  customerName     String?
-  tableLabel       String?
-  customerId       String?
-  tableId          String?
-  couponId         String?
-  deliveryZoneId   String?
-  number           Int?
-  scheduledFor     DateTime?
-  releaseAt        DateTime?
-  releasedAt       DateTime?
-  couvertFee       Decimal           @default(0) @db.Decimal(12, 2)
-  subtotal         Decimal           @db.Decimal(12, 2)
-  serviceFee       Decimal           @default(0) @db.Decimal(12, 2)
-  deliveryFee      Decimal           @default(0) @db.Decimal(12, 2)
-  discount         Decimal           @default(0) @db.Decimal(12, 2)
-  total            Decimal           @db.Decimal(12, 2)
-  createdAt        DateTime          @default(now())
-  updatedAt        DateTime          @updatedAt
-  tenant           Tenant            @relation(fields: [tenantId], references: [id], onDelete: Cascade)
-  unit             Unit?             @relation(fields: [unitId], references: [id], onDelete: SetNull)
-  items            OrderItem[]
-  payments         Payment[]
-  deliveryJob      DeliveryJob?
-  whatsappMessages WhatsappMessage[]
-  customer         Customer?         @relation(fields: [customerId], references: [id], onDelete: SetNull)
-  table            RestaurantTable?  @relation(fields: [tableId], references: [id], onDelete: SetNull)
-  coupon           Coupon?           @relation(fields: [couponId], references: [id], onDelete: SetNull)
-  deliveryZone     DeliveryZone?     @relation(fields: [deliveryZoneId], references: [id], onDelete: SetNull)
-  printJobs        PrintJob[]
-  createdByUserId  String?
-  createdBy        User?             @relation("OrderCreator", fields: [createdByUserId], references: [id], onDelete: SetNull)
-  paymentCharges   PaymentCharge[]
-  fiscalDocuments  FiscalDocument[]
-  externalOrder    ExternalOrder?
+  id                String            @id @default(uuid())
+  tenantId          String
+  unitId            String?
+  code              String
+  channel           OrderChannel      @default(POS)
+  status            OrderStatus       @default(OPEN)
+  customerName      String?
+  tableLabel        String?
+  customerId        String?
+  tableId           String?
+  couponId          String?
+  deliveryZoneId    String?
+  number            Int?
+  scheduledFor      DateTime?
+  releaseAt         DateTime?
+  releasedAt        DateTime?
+  couvertFee        Decimal           @default(0) @db.Decimal(12, 2)
+  subtotal          Decimal           @db.Decimal(12, 2)
+  serviceFee        Decimal           @default(0) @db.Decimal(12, 2)
+  deliveryFee       Decimal           @default(0) @db.Decimal(12, 2)
+  discount          Decimal           @default(0) @db.Decimal(12, 2)
+  total             Decimal           @db.Decimal(12, 2)
+  createdAt         DateTime          @default(now())
+  updatedAt         DateTime          @updatedAt
+  tenant            Tenant            @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  unit              Unit?             @relation(fields: [unitId], references: [id], onDelete: SetNull)
+  items             OrderItem[]
+  payments          Payment[]
+  financialEntry    FinancialEntry?
+  deliveryJob       DeliveryJob?
+  whatsappMessages  WhatsappMessage[]
+  customer          Customer?         @relation(fields: [customerId], references: [id], onDelete: SetNull)
+  table             RestaurantTable?  @relation(fields: [tableId], references: [id], onDelete: SetNull)
+  coupon            Coupon?           @relation(fields: [couponId], references: [id], onDelete: SetNull)
+  deliveryZone      DeliveryZone?     @relation(fields: [deliveryZoneId], references: [id], onDelete: SetNull)
+  printJobs         PrintJob[]
+  createdByUserId   String?
+  createdBy         User?             @relation("OrderCreator", fields: [createdByUserId], references: [id], onDelete: SetNull)
+  paymentCharges    PaymentCharge[]
+  fiscalDocuments   FiscalDocument[]
+  externalOrder     ExternalOrder?
+  // PDV fiscal decision frozen at checkout: FISCAL or NON_FISCAL (null = legacy/not decided).
+  fiscalMode        String?
+  fiscalDecidedById String?
+  fiscalDecidedAt   DateTime?
 
   @@unique([tenantId, code])
   @@index([tenantId, unitId, status, createdAt])
 }
 
 model OrderItem {
-  id           String              @id @default(uuid())
-  orderId      String
-  productId    String
-  sectorId     String?
-  quantity     Int
-  weightKg     Decimal?            @db.Decimal(10, 3)
-  unitPrice    Decimal             @db.Decimal(12, 2)
-  total        Decimal             @db.Decimal(12, 2)
-  notes        String?
-  status       OrderItemStatus     @default(PENDING)
-  createdAt    DateTime            @default(now())
-  updatedAt    DateTime            @updatedAt
-  order        Order               @relation(fields: [orderId], references: [id], onDelete: Cascade)
-  product      Product             @relation(fields: [productId], references: [id], onDelete: Restrict)
-  sector       ProductionSector?   @relation(fields: [sectorId], references: [id], onDelete: SetNull)
-  parentItemId String?
-  parentItem   OrderItem?          @relation("ComboChildren", fields: [parentItemId], references: [id], onDelete: Cascade)
-  children     OrderItem[]         @relation("ComboChildren")
-  modifiers    OrderItemModifier[]
+  id             String              @id @default(uuid())
+  orderId        String
+  productId      String
+  sectorId       String?
+  quantity       Decimal             @db.Decimal(12, 3)
+  withPackaging  Boolean             @default(false)
+  packagingPrice Decimal             @default(0) @db.Decimal(12, 2)
+  weightKg       Decimal?            @db.Decimal(10, 3)
+  unitPrice      Decimal             @db.Decimal(12, 2)
+  total          Decimal             @db.Decimal(12, 2)
+  notes          String?
+  status         OrderItemStatus     @default(PENDING)
+  createdAt      DateTime            @default(now())
+  updatedAt      DateTime            @updatedAt
+  order          Order               @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  product        Product             @relation(fields: [productId], references: [id], onDelete: Restrict)
+  sector         ProductionSector?   @relation(fields: [sectorId], references: [id], onDelete: SetNull)
+  parentItemId   String?
+  parentItem     OrderItem?          @relation("ComboChildren", fields: [parentItemId], references: [id], onDelete: Cascade)
+  children       OrderItem[]         @relation("ComboChildren")
+  modifiers      OrderItemModifier[]
 
   @@index([orderId, status])
   @@index([sectorId, status, createdAt])
@@ -471,6 +501,26 @@ model StockMovement {
   @@index([ingredientId, createdAt])
 }
 
+model ProductStockMovement {
+  id          String                   @id @default(uuid())
+  tenantId    String
+  unitId      String?
+  productId   String
+  type        ProductStockMovementType
+  quantity    Decimal                  @db.Decimal(12, 3)
+  reference   String?
+  note        String?
+  actorUserId String?
+  createdAt   DateTime                 @default(now())
+  tenant      Tenant                   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  unit        Unit?                    @relation(fields: [unitId], references: [id], onDelete: SetNull)
+  product     Product                  @relation(fields: [productId], references: [id], onDelete: Cascade)
+
+  @@index([tenantId, unitId, createdAt])
+  @@index([productId, createdAt])
+  @@index([tenantId, reference, type])
+}
+
 model CashSession {
   id             String            @id @default(uuid())
   tenantId       String
@@ -556,10 +606,14 @@ model FinancialEntry {
   id          String               @id @default(uuid())
   tenantId    String
   unitId      String?
+  orderId     String?              @unique
+  customerId  String?
+  debtorName  String?
   description String
   type        FinancialEntryType
   category    String?
   amount      Decimal              @db.Decimal(12, 2)
+  paidAmount  Decimal              @default(0) @db.Decimal(12, 2)
   dueAt       DateTime?
   settledAt   DateTime?
   status      FinancialEntryStatus @default(OPEN)
@@ -567,13 +621,16 @@ model FinancialEntry {
   createdAt   DateTime             @default(now())
   tenant      Tenant               @relation(fields: [tenantId], references: [id], onDelete: Cascade)
   unit        Unit?                @relation(fields: [unitId], references: [id], onDelete: SetNull)
+  order       Order?               @relation(fields: [orderId], references: [id], onDelete: SetNull)
+  customer    Customer?            @relation(fields: [customerId], references: [id], onDelete: SetNull)
 
   @@index([tenantId, unitId, status, dueAt])
   @@index([tenantId, type, settledAt])
+  @@index([tenantId, customerId, status])
 }
 
 model Customer {
-  id               String   @id @default(uuid())
+  id               String           @id @default(uuid())
   tenantId         String
   name             String
   phone            String
@@ -581,13 +638,14 @@ model Customer {
   document         String?
   address          String?
   notes            String?
-  marketingConsent Boolean  @default(false)
-  loyaltyPoints    Int      @default(0)
-  active           Boolean  @default(true)
-  createdAt        DateTime @default(now())
-  updatedAt        DateTime @updatedAt
-  tenant           Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  marketingConsent Boolean          @default(false)
+  loyaltyPoints    Int              @default(0)
+  active           Boolean          @default(true)
+  createdAt        DateTime         @default(now())
+  updatedAt        DateTime         @updatedAt
+  tenant           Tenant           @relation(fields: [tenantId], references: [id], onDelete: Cascade)
   orders           Order[]
+  financialEntries FinancialEntry[]
 
   @@unique([tenantId, phone])
   @@index([tenantId, name])
@@ -611,42 +669,46 @@ model RestaurantTable {
 }
 
 model PrintAgent {
-  id         String    @id @default(uuid())
-  tenantId   String
-  unitId     String?
-  name       String
-  tokenHash  String    @unique
-  active     Boolean   @default(true)
-  lastSeenAt DateTime?
-  createdAt  DateTime  @default(now())
-  tenant     Tenant    @relation(fields: [tenantId], references: [id], onDelete: Cascade)
-  unit       Unit?     @relation(fields: [unitId], references: [id], onDelete: SetNull)
+  id                 String    @id @default(uuid())
+  tenantId           String
+  unitId             String?
+  name               String
+  tokenHash          String    @unique
+  active             Boolean   @default(true)
+  lastSeenAt         DateTime?
+  // Printers installed on the agent's computer ([{ name, isDefault, driver, port, status }]), reported by the agent itself.
+  printers           Json      @default("[]")
+  printersReportedAt DateTime?
+  createdAt          DateTime  @default(now())
+  tenant             Tenant    @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  unit               Unit?     @relation(fields: [unitId], references: [id], onDelete: SetNull)
+  printerLinks       Printer[]
 
   @@index([tenantId, active])
 }
 
 model PrintJob {
-  id        String            @id @default(uuid())
-  tenantId  String
-  unitId    String?
-  printerId String?
-  sectorId  String?
-  orderId   String?
-  kind      PrintJobKind      @default(PRODUCTION)
-  content   String
-  status    PrintJobStatus    @default(PENDING)
-  attempts  Int               @default(0)
-  error     String?
-  claimedAt DateTime?
+  id               String            @id @default(uuid())
+  tenantId         String
+  unitId           String?
+  printerId        String?
+  sectorId         String?
+  orderId          String?
+  kind             PrintJobKind      @default(PRODUCTION)
+  content          String
+  status           PrintJobStatus    @default(PENDING)
+  attempts         Int               @default(0)
+  error            String?
+  claimedAt        DateTime?
   claimedByAgentId String?
-  claimId   String?
-  printedAt DateTime?
-  createdAt DateTime          @default(now())
-  tenant    Tenant            @relation(fields: [tenantId], references: [id], onDelete: Cascade)
-  unit      Unit?             @relation(fields: [unitId], references: [id], onDelete: SetNull)
-  printer   Printer?          @relation(fields: [printerId], references: [id], onDelete: SetNull)
-  sector    ProductionSector? @relation(fields: [sectorId], references: [id], onDelete: SetNull)
-  order     Order?            @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  claimId          String?
+  printedAt        DateTime?
+  createdAt        DateTime          @default(now())
+  tenant           Tenant            @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  unit             Unit?             @relation(fields: [unitId], references: [id], onDelete: SetNull)
+  printer          Printer?          @relation(fields: [printerId], references: [id], onDelete: SetNull)
+  sector           ProductionSector? @relation(fields: [sectorId], references: [id], onDelete: SetNull)
+  order            Order?            @relation(fields: [orderId], references: [id], onDelete: Cascade)
 
   @@index([tenantId, unitId, status, createdAt])
   @@index([orderId])
@@ -813,25 +875,114 @@ model PaymentCharge {
 }
 
 model FiscalDocument {
-  id          String       @id @default(uuid())
-  tenantId    String
-  unitId      String?
-  orderId     String
-  provider    String
-  kind        FiscalKind   @default(NFCE)
-  status      FiscalStatus @default(PENDING)
-  number      String?
-  accessKey   String?
-  documentUrl String?
-  error       String?
-  createdAt   DateTime     @default(now())
-  updatedAt   DateTime     @updatedAt
-  tenant      Tenant       @relation(fields: [tenantId], references: [id], onDelete: Cascade)
-  unit        Unit?        @relation(fields: [unitId], references: [id], onDelete: SetNull)
-  order       Order        @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  id            String            @id @default(uuid())
+  tenantId      String
+  unitId        String?
+  orderId       String
+  provider      String
+  kind          FiscalKind        @default(NFCE)
+  status        FiscalStatus      @default(PENDING)
+  series        String?
+  number        String?
+  accessKey     String?
+  documentUrl   String?
+  error         String?
+  // HOMOLOGATION and PRODUCTION documents never share numbering, XML or protocols.
+  environment   FiscalEnvironment @default(PRODUCTION)
+  protocol      String?
+  statusCode    String?
+  // XML exactly as returned by the provider/SEFAZ; exports never rebuild it.
+  xml           String?
+  // Snapshot of the data sent to the provider (items, taxes, overrides) for audit.
+  payload       Json?
+  contingency   Boolean           @default(false)
+  contingencyAt DateTime?
+  attempts      Int               @default(0)
+  lastAttemptAt DateTime?
+  issuedById    String?
+  createdAt     DateTime          @default(now())
+  updatedAt     DateTime          @updatedAt
+  tenant        Tenant            @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  unit          Unit?             @relation(fields: [unitId], references: [id], onDelete: SetNull)
+  order         Order             @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  events        FiscalEvent[]
 
   @@unique([orderId, kind])
   @@index([tenantId, status, createdAt])
+  @@index([tenantId, environment, createdAt])
+}
+
+// Current series and next sequential number per document kind. Emission reserves the number atomically (see lib/fiscal-numbering.ts).
+model FiscalNumbering {
+  id          String            @id @default(uuid())
+  tenantId    String
+  kind        FiscalKind        @default(NFCE)
+  series      String            @default("1")
+  nextNumber  Int               @default(1)
+  environment FiscalEnvironment @default(PRODUCTION)
+  updatedAt   DateTime          @updatedAt
+  tenant      Tenant            @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  @@unique([tenantId, kind, environment])
+}
+
+enum FiscalEnvironment {
+  HOMOLOGATION
+  PRODUCTION
+}
+
+// One fiscal configuration per company (aba Fiscais). Secrets are AES-256-GCM encrypted with FISCAL_ENCRYPTION_KEY.
+model FiscalSettings {
+  id               String            @id @default(uuid())
+  tenantId         String            @unique
+  environment      FiscalEnvironment @default(HOMOLOGATION)
+  provider         String?
+  providerTokenEnc String?
+  issuer           Json              @default("{}")
+  nfe              Json              @default("{}")
+  nfce             Json              @default("{}")
+  cscId            String?
+  cscTokenEnc      String?
+  certPfxEnc       String?
+  certPasswordEnc  String?
+  certSubject      String?
+  certCnpj         String?
+  certValidFrom    DateTime?
+  certValidTo      DateTime?
+  certUploadedAt   DateTime?
+  // FISCAL: every PDV sale is invoiced; NON_FISCAL: never; ASK: the operator decides at checkout.
+  pdvMode          String            @default("NON_FISCAL")
+  defaultTaxRuleId String?
+  updatedAt        DateTime          @updatedAt
+  tenant           Tenant            @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  defaultTaxRule   TaxRule?          @relation(fields: [defaultTaxRuleId], references: [id], onDelete: SetNull)
+}
+
+// Fiscal history: emissions, consultations, cancellations, CC-e, inutilizations and certificate changes, with request/response XML.
+model FiscalEvent {
+  id            String            @id @default(uuid())
+  tenantId      String
+  unitId        String?
+  documentId    String?
+  environment   FiscalEnvironment
+  type          String
+  status        String
+  kind          FiscalKind?
+  series        String?
+  numberFrom    Int?
+  numberTo      Int?
+  sequence      Int?
+  justification String?
+  protocol      String?
+  message       String?
+  xml           String?
+  actorUserId   String?
+  createdAt     DateTime          @default(now())
+  tenant        Tenant            @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  document      FiscalDocument?   @relation(fields: [documentId], references: [id], onDelete: Cascade)
+
+  @@index([tenantId, type, createdAt])
+  @@index([documentId, createdAt])
 }
 
 model Integration {
@@ -944,6 +1095,14 @@ enum StockMovementType {
   TRANSFER_OUT
 }
 
+enum ProductStockMovementType {
+  PURCHASE
+  ADJUSTMENT
+  WASTE
+  ORDER_CONSUMPTION
+  ORDER_REVERSAL
+}
+
 enum CashSessionStatus {
   OPEN
   CLOSED
@@ -1046,6 +1205,11 @@ enum FiscalStatus {
   AUTHORIZED
   REJECTED
   CANCELLED
+  // Sent but no official answer yet (lost return / async batch): must be consulted before any new attempt.
+  PROCESSING
+  // Sale registered while SEFAZ/provider was unreachable; waits for later transmission.
+  CONTINGENCY
+  DENIED
 }
 
 enum LicenseStatus {
@@ -1072,21 +1236,21 @@ enum ProvisioningStatus {
 }
 
 model SaaSPlan {
-  id          String       @id @default(uuid())
-  key         String       @unique
-  name        String
-  description String?
-  active      Boolean      @default(true)
-  trialDays   Int          @default(0)
-  maxUnits    Int?
-  maxUsers    Int?
-  activationFee Decimal   @default(0) @db.Decimal(12, 2)
-  setupFee    Decimal      @default(0) @db.Decimal(12, 2)
-  createdAt   DateTime     @default(now())
-  updatedAt   DateTime     @updatedAt
-  modules     PlanModule[]
-  prices      PlanPrice[]
-  licenses    TenantLicense[]
+  id            String          @id @default(uuid())
+  key           String          @unique
+  name          String
+  description   String?
+  active        Boolean         @default(true)
+  trialDays     Int             @default(0)
+  maxUnits      Int?
+  maxUsers      Int?
+  activationFee Decimal         @default(0) @db.Decimal(12, 2)
+  setupFee      Decimal         @default(0) @db.Decimal(12, 2)
+  createdAt     DateTime        @default(now())
+  updatedAt     DateTime        @updatedAt
+  modules       PlanModule[]
+  prices        PlanPrice[]
+  licenses      TenantLicense[]
 
   @@index([active, name])
 }
@@ -1101,33 +1265,33 @@ model PlanModule {
 }
 
 model PlanPrice {
-  id        String        @id @default(uuid())
-  planId    String
-  period    BillingPeriod
-  amount    Decimal       @db.Decimal(12, 2)
-  plan      SaaSPlan      @relation(fields: [planId], references: [id], onDelete: Cascade)
+  id     String        @id @default(uuid())
+  planId String
+  period BillingPeriod
+  amount Decimal       @db.Decimal(12, 2)
+  plan   SaaSPlan      @relation(fields: [planId], references: [id], onDelete: Cascade)
 
   @@unique([planId, period])
 }
 
 model TenantLicense {
-  id         String        @id @default(uuid())
-  tenantId   String        @unique
-  status     LicenseStatus @default(PENDING)
-  validUntil DateTime?
-  maxUnits   Int?
-  maxUsers   Int?
-  notes      String?
-  planId     String?
-  billingPeriod BillingPeriod?
-  contractedPrice Decimal?  @db.Decimal(12, 2)
-  activationFee Decimal?     @db.Decimal(12, 2)
-  setupFee    Decimal?       @db.Decimal(12, 2)
-  discountPercent Decimal?   @db.Decimal(5, 2)
-  createdAt  DateTime      @default(now())
-  updatedAt  DateTime      @updatedAt
-  tenant     Tenant        @relation(fields: [tenantId], references: [id], onDelete: Cascade)
-  plan       SaaSPlan?     @relation(fields: [planId], references: [id], onDelete: SetNull)
+  id              String         @id @default(uuid())
+  tenantId        String         @unique
+  status          LicenseStatus  @default(PENDING)
+  validUntil      DateTime?
+  maxUnits        Int?
+  maxUsers        Int?
+  notes           String?
+  planId          String?
+  billingPeriod   BillingPeriod?
+  contractedPrice Decimal?       @db.Decimal(12, 2)
+  activationFee   Decimal?       @db.Decimal(12, 2)
+  setupFee        Decimal?       @db.Decimal(12, 2)
+  discountPercent Decimal?       @db.Decimal(5, 2)
+  createdAt       DateTime       @default(now())
+  updatedAt       DateTime       @updatedAt
+  tenant          Tenant         @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  plan            SaaSPlan?      @relation(fields: [planId], references: [id], onDelete: SetNull)
 }
 
 model TenantModule {
@@ -1141,33 +1305,33 @@ model TenantModule {
 }
 
 model TenantProvisioning {
-  id          String             @id @default(uuid())
-  tenantId    String             @unique
-  idempotencyKey String?          @unique
-  requestHash String?
-  status      ProvisioningStatus @default(WAITING)
-  step        String             @default("RECEIVED")
-  completedSteps String[]         @default([])
-  attempts    Int                @default(0)
-  lastError   String?
-  startedAt   DateTime?
-  completedAt DateTime?
-  createdAt   DateTime           @default(now())
-  updatedAt   DateTime           @updatedAt
-  tenant      Tenant             @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  id             String             @id @default(uuid())
+  tenantId       String             @unique
+  idempotencyKey String?            @unique
+  requestHash    String?
+  status         ProvisioningStatus @default(WAITING)
+  step           String             @default("RECEIVED")
+  completedSteps String[]           @default([])
+  attempts       Int                @default(0)
+  lastError      String?
+  startedAt      DateTime?
+  completedAt    DateTime?
+  createdAt      DateTime           @default(now())
+  updatedAt      DateTime           @updatedAt
+  tenant         Tenant             @relation(fields: [tenantId], references: [id], onDelete: Cascade)
 
   @@index([status, updatedAt])
 }
 
 // Per-tenant configuration. `settings` holds validated sections (company, hours, store, pdv, scale, scheduling, ...), see apps/api/src/lib/settings.ts.
 model TenantSettings {
-  tenantId          String   @id
-  settings          Json     @default("{}")
+  tenantId          String    @id
+  settings          Json      @default("{}")
   adminPasswordHash String?
-  orderCounter      Int      @default(0)
+  orderCounter      Int       @default(0)
   orderCounterDate  DateTime?
-  updatedAt         DateTime @updatedAt
-  tenant            Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  updatedAt         DateTime  @updatedAt
+  tenant            Tenant    @relation(fields: [tenantId], references: [id], onDelete: Cascade)
 }
 
 model Courier {
@@ -1302,24 +1466,42 @@ model PasswordRelease {
 
 // Tax parameters per product group. Stored for the fiscal provider; the API does not compute or transmit taxes by itself.
 model TaxRule {
-  id            String    @id @default(uuid())
-  tenantId      String
-  name          String
-  ncm           String?
-  cest          String?
-  origin        Int       @default(0)
-  cfop          String?
-  icmsCst       String?
-  icmsRate      Decimal?  @db.Decimal(6, 3)
-  icmsReduction Decimal?  @db.Decimal(6, 3)
-  pisCst        String?
-  pisRate       Decimal?  @db.Decimal(6, 3)
-  cofinsCst     String?
-  cofinsRate    Decimal?  @db.Decimal(6, 3)
-  active        Boolean   @default(true)
-  createdAt     DateTime  @default(now())
-  tenant        Tenant    @relation(fields: [tenantId], references: [id], onDelete: Cascade)
-  products      Product[]
+  id               String           @id @default(uuid())
+  tenantId         String
+  name             String
+  ncm              String?
+  cest             String?
+  origin           Int              @default(0)
+  cfop             String?
+  icmsCst          String?
+  icmsRate         Decimal?         @db.Decimal(6, 3)
+  icmsReduction    Decimal?         @db.Decimal(6, 3)
+  pisCst           String?
+  pisRate          Decimal?         @db.Decimal(6, 3)
+  cofinsCst        String?
+  cofinsRate       Decimal?         @db.Decimal(6, 3)
+  icmsStMva        Decimal?         @db.Decimal(6, 3)
+  icmsStRate       Decimal?         @db.Decimal(6, 3)
+  icmsStReduction  Decimal?         @db.Decimal(6, 3)
+  fcpRate          Decimal?         @db.Decimal(6, 3)
+  fcpStRate        Decimal?         @db.Decimal(6, 3)
+  cBenef           String?
+  ipiCst           String?
+  ipiEnquadramento String?
+  ipiRate          Decimal?         @db.Decimal(6, 3)
+  ibsCbsCst        String?
+  cClassTrib       String?
+  ibsUfRate        Decimal?         @db.Decimal(6, 3)
+  ibsMunRate       Decimal?         @db.Decimal(6, 3)
+  cbsRate          Decimal?         @db.Decimal(6, 3)
+  isRate           Decimal?         @db.Decimal(6, 3)
+  validFrom        DateTime?
+  validTo          DateTime?
+  active           Boolean          @default(true)
+  createdAt        DateTime         @default(now())
+  tenant           Tenant           @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  products         Product[]
+  fiscalDefaults   FiscalSettings[]
 
   @@unique([tenantId, name])
 }
@@ -1381,9 +1563,9 @@ model WhatsappChatMessage {
 model WhatsappAutoMessage {
   tenantId String
   key      String
-  enabled  Boolean  @default(true)
+  enabled  Boolean @default(true)
   body     String
-  tenant   Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  tenant   Tenant  @relation(fields: [tenantId], references: [id], onDelete: Cascade)
 
   @@id([tenantId, key])
 }
@@ -1499,4 +1681,33 @@ model ProductImage {
   data        Bytes
   updatedAt   DateTime @updatedAt
   product     Product  @relation(fields: [productId], references: [id], onDelete: Cascade)
+}
+
+// Card terminals (maquininhas) registered per unit. Only the registry lives here: charging through a terminal still needs the provider's adapter.
+model PosDevice {
+  id        String   @id @default(uuid())
+  tenantId  String
+  unitId    String?
+  provider  String
+  name      String
+  serial    String
+  active    Boolean  @default(true)
+  createdAt DateTime @default(now())
+  tenant    Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  unit      Unit?    @relation(fields: [unitId], references: [id], onDelete: SetNull)
+
+  @@unique([tenantId, provider, serial])
+  @@index([tenantId, active])
+}
+
+// Virtual store profile pictures (logo and cover); bytes are kept apart from the settings JSON.
+model StoreImage {
+  tenantId    String
+  kind        String
+  contentType String
+  data        Bytes
+  updatedAt   DateTime @updatedAt
+  tenant      Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  @@id([tenantId, kind])
 }

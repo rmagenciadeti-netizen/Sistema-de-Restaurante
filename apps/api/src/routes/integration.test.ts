@@ -324,6 +324,11 @@ test('database-backed API behaviour', { skip: !enabled }, async t => {
   await t.test('public QR-code menu and ordering', async () => {
     const table = (await call('POST', '/tables', a, { label: 'QR1', seats: 2, unitId: A.unit.id })).body;
     assert.equal((await call('GET', '/public/tables/short/menu')).status, 404);
+    const fulfillmentSettings = (await call('GET', '/settings', a)).body.settings.fulfillment;
+    await call('PUT', '/settings/fulfillment', a, { ...fulfillmentSettings, allowDineIn: false });
+    assert.equal((await call('GET', `/public/tables/${table.qrToken}/menu`)).status, 409);
+    assert.equal((await call('POST', `/public/tables/${table.qrToken}/orders`, undefined, { items: [{ productId: soda.id, quantity: 1 }] })).status, 409);
+    await call('PUT', '/settings/fulfillment', a, { ...fulfillmentSettings, allowDineIn: true });
     const menu = await call('GET', `/public/tables/${table.qrToken}/menu`);
     assert.equal(menu.status, 200);
     assert.equal(menu.body.table, 'QR1');
@@ -646,15 +651,15 @@ test('database-backed API behaviour', { skip: !enabled }, async t => {
     assert.equal((await hook('valid', { externalRef: 'never-created', status: 'PAID' })).body.result, 'unknown');
   });
 
-  await t.test('fiscal emission needs a provider and a completed order', async () => {
+  await t.test('fiscal emission needs a provider, tax rules and a non-cancelled order', async () => {
+    const rule = await prisma.taxRule.create({ data: { tenantId: A.tenant.id, name: 'Bebidas', ncm: '22021000', cfop: '5102', icmsCst: '00' } });
+    await prisma.product.update({ where: { id: soda.id }, data: { taxRuleId: rule.id } });
     const order = await call('POST', '/orders', a, { unitId: A.unit.id, items: [{ productId: soda.id, quantity: 1 }] });
     const emit = (token = a) => call('POST', `/fiscal/orders/${order.body.id}/emit`, token, { provider: 'fakefisc' });
     assert.equal((await emit()).status, 501);
     let outcome: 'AUTHORIZED' | 'REJECTED' = 'REJECTED';
     fiscalProviders.register({ name: 'fakefisc', emit: async () => ({ status: outcome, number: '123', accessKey: 'K'.repeat(44), error: outcome === 'REJECTED' ? 'CNPJ inválido' : undefined }), cancel: async () => ({ cancelled: true }) });
     t.after(() => fiscalProviders.clear());
-    assert.equal((await emit()).status, 409, 'order is not completed');
-    for (const status of ['PREPARING', 'READY', 'COMPLETED']) await call('PATCH', `/orders/${order.body.id}/status`, a, { status });
     assert.equal((await emit(A.actors.WAITER!.token)).status, 403);
     assert.equal((await emit(b)).status, 404);
     const rejected = await emit(); assert.equal(rejected.status, 422); assert.equal(rejected.body.status, 'REJECTED');
@@ -664,6 +669,7 @@ test('database-backed API behaviour', { skip: !enabled }, async t => {
     assert.equal((await call('POST', `/fiscal/documents/${ok.body.id}/cancel`, a, { reason: 'curto' })).status, 400);
     assert.equal((await call('POST', `/fiscal/documents/${ok.body.id}/cancel`, b, { reason: 'Erro de digitação no pedido' })).status, 404);
     assert.equal((await call('POST', `/fiscal/documents/${ok.body.id}/cancel`, a, { reason: 'Erro de digitação no pedido' })).body.status, 'CANCELLED');
+    await prisma.product.update({ where: { id: soda.id }, data: { taxRuleId: null } });
   });
 
   await t.test('marketplace orders enter through scoped integration keys, idempotently', async () => {
@@ -733,7 +739,9 @@ test('database-backed API behaviour', { skip: !enabled }, async t => {
 
   await t.test('restaurant dashboard aggregates real data per tenant and hides finance from operational roles', async () => {
     const D = await createTenant();
+    cleanupTenantIds.push(D.tenant.id);
     const E = await createTenant();
+    cleanupTenantIds.push(E.tenant.id);
     const order = (status: 'COMPLETED' | 'OPEN' | 'CANCELLED', total: number, tableId?: string) => prisma.order.create({ data: {
       tenantId: D.tenant.id, unitId: D.unit.id, code: `D-${suffix()}`, status, subtotal: total, total, tableId,
     } });
@@ -763,6 +771,7 @@ test('database-backed API behaviour', { skip: !enabled }, async t => {
 
   await t.test('licenses gate modules, status and limits on the backend and are master-only', async () => {
     const L = await createTenant();
+    cleanupTenantIds.push(L.tenant.id);
     const master = await prisma.user.create({ data: { name: 'Master', email: `master-${suffix()}@test.local`, passwordHash: 'x', role: UserRole.MASTER_ADMIN, mfaEnabled: true } });
     const masterToken = signAccessToken({ userId: master.id, tenantId: null, unitId: null, role: UserRole.MASTER_ADMIN, mfaAuthenticated: true });
     assert.equal((await call('GET', `/financial/entries`, L.admin.token)).status, 200);

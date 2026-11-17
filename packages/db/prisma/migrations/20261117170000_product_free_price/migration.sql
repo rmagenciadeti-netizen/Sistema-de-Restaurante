@@ -1,0 +1,1 @@
+ALTER TABLE "Product" ADD COLUMN "allowFreePrice" BOOLEAN NOT NULL DEFAULT false;

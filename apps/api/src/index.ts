@@ -3,6 +3,7 @@ import express from 'express';
 import cors from 'cors';
 import helmet from 'helmet';
 import { rateLimit } from 'express-rate-limit';
+import { sessionRateKey } from './middleware/auth';
 import { authRoutes } from './routes/auth';
 import { prisma } from './lib/prisma';
 import { WhatsappSessionManager, whatsappSessionsMode } from './lib/whatsapp-sessions';
@@ -70,12 +71,16 @@ const allowedOrigins = [...new Set([...parseAllowedOrigins(process.env.CORS_ORIG
 // Development only: Codespaces/proxied hosts send arbitrary public Origins, so any origin is reflected outside production.
 const allowAnyOrigin = () => process.env.NODE_ENV !== 'production';
 app.use(cors({ origin: (origin, callback) => { if (!origin || allowAnyOrigin() || allowedOrigins.includes(origin)) return callback(null, true); return callback(new OriginNotAllowedError()); } }));
-const productImagePath = /^\/store\/[^/]+\/products\/[^/]+\/image$/;
+const productImagePath = /^\/store\/[^/]+\/(?:products\/[^/]+\/image|image\/(?:LOGO|COVER))$/;
 const limiterMessage = { message: 'Too many requests. Try again later.' };
 const printAgentPaths = '/print-agent';
 const machinePaths = ['/print-agent', '/public', '/inbound', '/payments/webhook'];
 // The print agent polls continuously from the restaurant network, so it has its own budget instead of the shared API one.
-app.use('/api/v1', rateLimit({ windowMs: 15 * 60 * 1000, limit: 300, standardHeaders: 'draft-7', legacyHeaders: false, message: limiterMessage, skip: req => machinePaths.some(prefix => req.path.startsWith(prefix)) }));
+// The browser reaches the API through the Next proxy, so every user shares one IP: signed-in staff are limited per user (a screen makes several calls and
+// the order monitor polls), while callers without a valid session keep the strict per-IP budget.
+app.use('/api/v1', (req, res, next) => { res.locals.sessionKey = sessionRateKey(req); next(); });
+app.use('/api/v1', rateLimit({ windowMs: 15 * 60 * 1000, limit: 3000, standardHeaders: 'draft-7', legacyHeaders: false, message: limiterMessage, keyGenerator: (_req, res) => res.locals.sessionKey, skip: (req, res) => !res.locals.sessionKey || machinePaths.some(prefix => req.path.startsWith(prefix)) }));
+app.use('/api/v1', rateLimit({ windowMs: 15 * 60 * 1000, limit: 300, standardHeaders: 'draft-7', legacyHeaders: false, message: limiterMessage, skip: (req, res) => Boolean(res.locals.sessionKey) || machinePaths.some(prefix => req.path.startsWith(prefix)) }));
 app.use(`/api/v1${printAgentPaths}`, rateLimit({ windowMs: 15 * 60 * 1000, limit: 1500, standardHeaders: 'draft-7', legacyHeaders: false, message: limiterMessage }));
 app.use('/api/v1/inbound', rateLimit({ windowMs: 15 * 60 * 1000, limit: 1000, standardHeaders: 'draft-7', legacyHeaders: false, message: limiterMessage }));
 app.use('/api/v1/payments/webhook', rateLimit({ windowMs: 15 * 60 * 1000, limit: 1000, standardHeaders: 'draft-7', legacyHeaders: false, message: limiterMessage }));

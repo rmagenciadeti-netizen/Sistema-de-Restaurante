@@ -26,6 +26,15 @@ export function verifyScopedToken(token: string, purpose: ScopedTokenPurpose): S
     throw error;
   }
 }
+// Identifies the caller of a request for rate limiting without touching the database: a verified, non-scoped access token yields the user id.
+// Unverifiable tokens return null, so forged tokens cannot be used to spread requests over many buckets.
+export function sessionRateKey(req: Request): string | null {
+  const token = req.headers.authorization?.match(/^Bearer\s+(.+)$/i)?.[1]; if (!token) return null;
+  try {
+    const verified = jwt.verify(token, secret(), { issuer: 'rm-restaurant-api' }) as { userId?: unknown; purpose?: unknown };
+    return !verified.purpose && typeof verified.userId === 'string' ? `user:${verified.userId}` : null;
+  } catch { return null; }
+}
 export async function requireAuth(req: Request, res: Response, next: NextFunction) {
   const token = req.headers.authorization?.match(/^Bearer\s+(.+)$/i)?.[1]; if (!token) return res.status(401).json({ message: 'Authentication required' });
   let claims: AuthContext;

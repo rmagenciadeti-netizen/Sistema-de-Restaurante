@@ -202,4 +202,20 @@ test('auxiliary registries', { skip: !enabled }, async t => {
     assert.equal(report.body.withoutDocument.total, 40);
     assert.equal((await call('GET', '/fiscal-registry/reconciliation', B.admin)).body.orders.count, 0);
   });
+  await t.test('POS terminals are a per-tenant registry managed by management roles', async () => {
+    const body = { provider: 'Stone', name: 'Maquininha balcão', serial: 'SN-0001', unitId: A.unit.id };
+    assert.equal((await call('POST', '/integrations/pos', A.cashier, body)).status, 403);
+    const created = await call('POST', '/integrations/pos', A.admin, body);
+    assert.equal(created.status, 201);
+    assert.equal(created.body.unit.name, 'Matriz');
+    assert.equal((await call('POST', '/integrations/pos', A.admin, { ...body, serial: 'sn-0001' })).status, 409, 'serial is unique per provider, ignoring case');
+    assert.equal((await call('POST', '/integrations/pos', A.admin, { ...body, provider: 'Vero' })).status, 201, 'same serial under another provider is fine');
+    assert.equal((await call('POST', '/integrations/pos', A.admin, { ...body, provider: 'Desconhecida', serial: 'X1234' })).status, 400);
+    assert.equal((await call('POST', '/integrations/pos', A.admin, { ...body, serial: 'SN-9', unitId: B.unit.id })).status, 400, 'foreign unit');
+    assert.equal((await call('GET', '/integrations/pos', B.admin)).body.total, 0, 'tenant scoped');
+    assert.equal((await call('PATCH', `/integrations/pos/${created.body.id}`, B.admin, { active: false })).status, 404);
+    assert.equal((await call('PATCH', `/integrations/pos/${created.body.id}`, A.admin, { active: false })).body.active, false);
+    assert.equal((await call('DELETE', `/integrations/pos/${created.body.id}`, A.admin)).status, 200);
+    assert.equal((await call('GET', '/integrations/pos', A.admin)).body.total, 1);
+  });
 });

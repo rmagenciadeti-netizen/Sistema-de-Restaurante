@@ -44,7 +44,7 @@ async function loadItems(ctx: Ctx) {
   });
 }
 
-const unitsOf = (item: { quantity: number; weightKg: Prisma.Decimal | null }) => (item.weightKg ? item.weightKg.mul(item.quantity) : D(item.quantity));
+const unitsOf = (item: { quantity: Prisma.Decimal; weightKg: Prisma.Decimal | null }) => (item.weightKg ? item.weightKg.mul(item.quantity) : D(item.quantity));
 
 type OrderSums = { subtotal: Prisma.Decimal; discount: Prisma.Decimal; serviceFee: Prisma.Decimal; deliveryFee: Prisma.Decimal; couvertFee: Prisma.Decimal; total: Prisma.Decimal };
 const sumOrders = (orders: OrderSums[]) => ({
@@ -288,7 +288,7 @@ async function financialEntries(ctx: Ctx, type: 'EXPENSE' | 'INCOME'): Promise<R
   const label: Record<string, string> = { OPEN: 'Em aberto', PAID: type === 'EXPENSE' ? 'Pago' : 'Recebido', CANCELLED: 'Cancelado' };
   const rows = entries.map(e => {
     const late = e.status === 'OPEN' && e.dueAt !== null && e.dueAt < ctx.now;
-    return { description: e.description, category: e.category ?? '', dueAt: e.dueAt, status: late ? 'Em atraso' : label[e.status], daysLate: late ? Math.max(1, Math.floor((ctx.now.getTime() - e.dueAt!.getTime()) / DAY_MS)) : 0, amount: e.amount, settledAt: e.settledAt };
+    return { description: e.description, category: e.category ?? '', dueAt: e.dueAt, status: late ? 'Em atraso' : label[e.status], daysLate: late ? Math.max(1, Math.floor((ctx.now.getTime() - e.dueAt!.getTime()) / DAY_MS)) : 0, amount: type === 'INCOME' && e.status === 'OPEN' ? e.amount.sub(e.paidAmount) : e.amount, settledAt: e.settledAt };
   });
   const sumWhere = (pick: (row: (typeof rows)[number]) => boolean) => sumDecimals(rows.filter(pick).map(r => r.amount));
   return {
@@ -361,7 +361,7 @@ async function promotedProducts(ctx: Ctx): Promise<ReportBody> {
     const promoPrice = effectiveUnitPrice(product.id, product.price, [{ type: promotion.type, value: promotion.value, startsAt: new Date(0), endsAt: null, active: true, productIds: [product.id] }]);
     return {
       promotion: promotion.name, product: product.name, discount: promotion.type === 'PERCENT' ? `${promotion.value.toString()}%` : `R$ ${promotion.value.toFixed(2).replace('.', ',')}`, startsAt: promotion.startsAt, endsAt: promotion.endsAt, status,
-      price: product.price, promoPrice, quantity: sold.reduce((sum, item) => sum + item.quantity, 0), revenue: sumDecimals(sold.map(item => item.total)),
+      price: product.price, promoPrice, quantity: sold.reduce((sum, item) => sum + item.quantity.toNumber(), 0), revenue: sumDecimals(sold.map(item => item.total)),
     };
   }));
   return {

@@ -7,6 +7,7 @@ import { weekdayNames } from '../../../lib/settings';
 import type { StoreData, StoreOrderResult, StoreProduct } from '../../../lib/types-store';
 import { useAutoLoad } from '../../../lib/use-auto-load';
 import { ModifierPicker, ModifierSelection, modifiersPayload, modifiersUnitTotal, selectionError } from '../../../components/modifier-picker';
+import { parseQuantity } from '../../../lib/quantity';
 
 declare global { interface Window { fbq?: ((...args: unknown[]) => void) & { queue?: unknown[]; loaded?: boolean; callMethod?: (...args: unknown[]) => void } } }
 
@@ -19,7 +20,7 @@ function loadMetaPixel(pixelId: string) {
   fbq('init', pixelId); fbq('track', 'PageView');
 }
 
-type Line = { quantity: number; weight: string; notes: string; mods: ModifierSelection };
+type Line = { quantity: number | string; weight: string; notes: string; mods: ModifierSelection; withPackaging: boolean };
 type Fulfillment = 'TAKEAWAY' | 'DELIVERY';
 
 const MAX_QTY = 20;
@@ -58,6 +59,7 @@ const ERRORS: Record<string, string> = {
   ADDRESS_REQUIRED: 'Informe o endereço de entrega.',
   WEIGHT_REQUIRED: 'Informe o peso (kg) dos produtos vendidos por quilo.',
   WEIGHT_NOT_ALLOWED: 'Um dos itens não é vendido por peso. Atualize a página.',
+  FRACTIONAL_QUANTITY_NOT_ALLOWED: 'Este produto não permite quantidade fracionada. Atualize a página.',
   MODIFIER_UNAVAILABLE: 'Uma opção escolhida não está mais disponível.',
   MODIFIER_SELECTION_INVALID: 'Confira as opções obrigatórias dos itens.',
   FULFILLMENT_NOT_ALLOWED: 'Este tipo de atendimento não está disponível.',
@@ -67,6 +69,7 @@ const ERRORS: Record<string, string> = {
   SCHEDULE_TOO_FAR: 'O horário escolhido está distante demais.',
   SCHEDULE_BLOCKED: 'Não aceitamos agendamentos nesta data.',
   SCHEDULE_OUTSIDE_SLOTS: 'O horário escolhido está fora das faixas de agendamento.',
+  AGE_CONFIRMATION_REQUIRED: 'Confirme que você tem idade legal para fazer este pedido.',
 };
 
 function scheduleProblem(store: StoreData, scheduledAt: string): string {
@@ -101,6 +104,7 @@ export default function StorePage() {
   const [fulfillment, setFulfillment] = useState<Fulfillment | null>(null); const [zoneId, setZoneId] = useState(''); const [address, setAddress] = useState('');
   const [name, setName] = useState(''); const [phone, setPhone] = useState(''); const [coupon, setCoupon] = useState(''); const [notes, setNotes] = useState('');
   const [schedule, setSchedule] = useState(false); const [scheduledAt, setScheduledAt] = useState('');
+  const [adultConfirmed, setAdultConfirmed] = useState(false);
   const [paymentId, setPaymentId] = useState(''); const [changeFor, setChangeFor] = useState('');
   const [loadedAt, setLoadedAt] = useState(0);
   const [busy, setBusy] = useState(false); const [formError, setFormError] = useState(''); const [confirmation, setConfirmation] = useState<StoreOrderResult | null>(null);
@@ -124,9 +128,9 @@ export default function StorePage() {
 
   const unitPrice = (product: StoreProduct, line: Line) => {
     const price = Number(product.promoPrice ?? product.price);
-    return (product.soldByWeight ? round2(price * parseWeight(line.weight)) : price) + modifiersUnitTotal(product.modifierGroups ?? [], line.mods);
+    return (product.soldByWeight ? round2(price * parseWeight(line.weight)) : price) + modifiersUnitTotal(product.modifierGroups ?? [], line.mods) + (line.withPackaging ? Number(product.packagingPrice ?? 0) : 0);
   };
-  const subtotal = round2(lines.reduce((sum, product) => sum + unitPrice(product, cart[product.id]) * cart[product.id].quantity, 0));
+  const subtotal = round2(lines.reduce((sum, product) => sum + round2(unitPrice(product, cart[product.id]) * (parseQuantity(cart[product.id].quantity, Boolean(product.allowFractionalQuantity && !product.soldByWeight), MAX_QTY) ?? 0)), 0));
   const zone = store?.deliveryZones.find(entry => entry.id === zoneId);
   const usesZones = Boolean(store && store.deliveryZones.length > 0 && (store.fulfillment.deliveryFeeMode === 'ZONES' || store.fulfillment.deliveryFeeMode === 'DISTRICT' || zoneId));
   const baseFee = channel !== 'DELIVERY' ? 0 : usesZones ? Number(zone?.fee ?? 0) : Number(fulfil?.singleFee ?? 0);
@@ -140,8 +144,16 @@ export default function StorePage() {
 
   function setQuantity(product: StoreProduct, quantity: number) {
     setCart(current => {
-      const next = { ...current }; const clamped = Math.max(0, Math.min(MAX_QTY, quantity));
-      if (clamped === 0) delete next[product.id]; else next[product.id] = { quantity: clamped, weight: current[product.id]?.weight ?? '', notes: current[product.id]?.notes ?? '', mods: current[product.id]?.mods ?? {} };
+      const next = { ...current }; const clampedValue = Math.max(0, Math.min(MAX_QTY, quantity)); const clamped = product.allowFractionalQuantity ? Math.round(clampedValue * 1000) / 1000 : Math.round(clampedValue);
+      if (clamped === 0) delete next[product.id]; else next[product.id] = { quantity: clamped, weight: current[product.id]?.weight ?? '', notes: current[product.id]?.notes ?? '', mods: current[product.id]?.mods ?? {}, withPackaging: current[product.id]?.withPackaging ?? false };
+      return next;
+    });
+  }
+  function setFractionalQuantity(product: StoreProduct, quantity: string) {
+    setCart(current => {
+      const next = { ...current };
+      if (quantity === '') delete next[product.id];
+      else next[product.id] = { quantity, weight: current[product.id]?.weight ?? '', notes: current[product.id]?.notes ?? '', mods: current[product.id]?.mods ?? {}, withPackaging: current[product.id]?.withPackaging ?? false };
       return next;
     });
   }
@@ -153,6 +165,7 @@ export default function StorePage() {
     if (lines.length === 0) { setFormError('Adicione ao menos um item ao pedido.'); return; }
     for (const product of lines) {
       const line = cart[product.id];
+      if (parseQuantity(line.quantity, Boolean(product.allowFractionalQuantity && !product.soldByWeight), MAX_QTY) === null) { setFormError(`${product.name}: informe uma quantidade válida, com até três casas decimais.`); return; }
       const problem = selectionError(product.modifierGroups ?? [], line.mods);
       if (problem) { setFormError(`${product.name}: ${problem}`); return; }
       if (product.soldByWeight && !validWeight(line.weight)) { setFormError(`${product.name}: informe o peso em kg (ex.: 0,350).`); return; }
@@ -175,9 +188,10 @@ export default function StorePage() {
         address: channel === 'DELIVERY' ? address.trim() : undefined, deliveryZoneId: channel === 'DELIVERY' && zone ? zone.id : undefined,
         couponCode: coupon.trim() || undefined, scheduledFor: scheduling ? new Date(scheduledAt).toISOString() : undefined, notes: notes.trim() || undefined,
         paymentMethodId: method?.id, changeFor: method?.allowChange && method.equivalent === 'CASH' && change > 0 ? change : undefined,
+        adultConfirmed: store.minorControl ? adultConfirmed : undefined,
         items: lines.map(product => {
           const line = cart[product.id]; const mods = modifiersPayload(line.mods);
-          return { productId: product.id, quantity: line.quantity, weightKg: product.soldByWeight ? parseWeight(line.weight) : undefined, notes: line.notes.trim() || undefined, modifiers: mods.length ? mods : undefined };
+          return { productId: product.id, quantity: parseQuantity(line.quantity, Boolean(product.allowFractionalQuantity && !product.soldByWeight), MAX_QTY), weightKg: product.soldByWeight ? parseWeight(line.weight) : undefined, withPackaging: line.withPackaging || undefined, notes: line.notes.trim() || undefined, modifiers: mods.length ? mods : undefined };
         }),
       }) });
       if (pixelId) window.fbq?.('track', 'Purchase', { value: Number(result.total), currency: 'BRL' });
@@ -201,7 +215,7 @@ export default function StorePage() {
         <div className="flex justify-between"><dt className="text-neutral-400">Total</dt><dd className="font-bold" style={{ color: accent }}>{formatMoney(confirmation.total)}</dd></div>
       </dl>
       <p className="mt-4 text-xs text-neutral-400">{confirmation.autoAccept ? 'Seu pedido foi enviado e será aceito automaticamente.' : 'O restaurante vai confirmar seu pedido em instantes.'} O pagamento é feito na {channel === 'DELIVERY' ? 'entrega' : 'retirada'}. Guarde o código para acompanhar o pedido.</p>
-      <button type="button" className="mt-5 w-full rounded-xl px-4 py-3 font-semibold text-neutral-950" style={{ background: accent }} onClick={() => { setConfirmation(null); void load(); }}>Fazer novo pedido</button>
+      <button type="button" className="mt-5 w-full rounded-xl px-4 py-3 font-semibold text-neutral-950" style={{ background: accent }} onClick={() => { setConfirmation(null); setAdultConfirmed(false); void load(); }}>Fazer novo pedido</button>
     </div>
   </main>;
 
@@ -211,14 +225,21 @@ export default function StorePage() {
   const minInput = localInput(new Date(loadedAt + 10 * 60_000));
   const maxInput = localInput(new Date(loadedAt + (store.scheduling.maxDaysAhead > 0 ? store.scheduling.maxDaysAhead : 30) * 86_400_000));
 
+  const imageSrc = (kind: 'LOGO' | 'COVER', version: number) => `/api-proxy/public/store/${encodeURIComponent(slug)}/image/${kind}?v=${version}`;
   return <main className={`${shell} mx-auto max-w-2xl px-4 pb-28`}>
+    {/* eslint-disable-next-line @next/next/no-img-element -- served by the API with its own cache headers */}
+    {store.restaurant.coverVersion && <img src={imageSrc('COVER', store.restaurant.coverVersion)} alt="" className="-mx-4 h-36 w-[calc(100%+2rem)] max-w-none object-cover sm:h-44" />}
     <header className="sticky top-0 z-20 -mx-4 border-b border-white/10 bg-neutral-950/95 px-4 py-4 backdrop-blur">
       <div className="flex items-center justify-between gap-3">
-        <div className="min-w-0"><p className="text-xs font-semibold uppercase tracking-[0.22em]" style={{ color: accent }}>Cardápio online</p><h1 className="truncate text-xl font-bold text-white">{store.restaurant.name}</h1></div>
+        <div className="flex min-w-0 items-center gap-3">
+          {/* eslint-disable-next-line @next/next/no-img-element -- served by the API with its own cache headers */}
+          {store.restaurant.logoVersion && <img src={imageSrc('LOGO', store.restaurant.logoVersion)} alt="Logo" className="h-12 w-12 shrink-0 rounded-xl border border-white/10 object-cover" />}
+          <div className="min-w-0"><p className="text-xs font-semibold uppercase tracking-[0.22em]" style={{ color: accent }}>{store.storeMode === 'ECOMMERCE' ? 'Loja virtual' : 'Cardápio online'}</p><h1 className="truncate text-xl font-bold text-white">{store.restaurant.name}</h1></div>
+        </div>
         <span className={`shrink-0 rounded-full px-3 py-1 text-xs font-semibold ${store.open ? 'bg-emerald-500/15 text-emerald-300' : 'bg-red-500/15 text-red-300'}`}>{store.open ? '● Aberto' : '● Fechado'}</span>
       </div>
-      <label className="sr-only" htmlFor="store-search">Buscar no cardápio</label>
-      <input id="store-search" type="search" value={search} onChange={event => setSearch(event.target.value)} placeholder="Buscar no cardápio…" className="mt-3 w-full rounded-xl border border-neutral-700 bg-neutral-900 px-3 py-2.5 text-sm text-neutral-100 outline-none placeholder:text-neutral-500 focus:border-brand-400" />
+      <label className="sr-only" htmlFor="store-search">Buscar produtos</label>
+      <input id="store-search" type="search" value={search} onChange={event => setSearch(event.target.value)} placeholder={store.storeMode === 'ECOMMERCE' ? 'Buscar produtos…' : 'Buscar no cardápio…'} className="mt-3 w-full rounded-xl border border-neutral-700 bg-neutral-900 px-3 py-2.5 text-sm text-neutral-100 outline-none placeholder:text-neutral-500 focus:border-brand-400" />
       {visible.length > 1 && <nav aria-label="Categorias" className="-mx-1 mt-3 flex gap-2 overflow-x-auto pb-1">{visible.map(category => <a key={category.id ?? 'none'} href={`#cat-${category.id ?? 'none'}`} className="shrink-0 rounded-full border border-neutral-700 px-3 py-1 text-xs font-medium text-neutral-300 hover:border-brand-400 hover:text-brand-300">{category.name}</a>)}</nav>}
     </header>
 
@@ -233,7 +254,7 @@ export default function StorePage() {
     {visible.length === 0 && <p className="mt-8 text-center text-neutral-500">{search ? 'Nenhum produto encontrado.' : 'Nenhum produto disponível no momento.'}</p>}
     {visible.map(category => <section key={category.id ?? 'none'} id={`cat-${category.id ?? 'none'}`} className="mt-6 scroll-mt-40">
       <h2 className="mb-3 flex items-center gap-3 text-lg font-bold tracking-tight text-white"><span className="h-6 w-1 rounded-full" style={{ background: accent }} />{category.name}</h2>
-      <div className="grid gap-3">{category.products.map(product => {
+      <div className={`grid gap-3 ${store.storeMode === 'ECOMMERCE' ? 'sm:grid-cols-2' : ''}`}>{category.products.map(product => {
         const line = cart[product.id]; const onSale = product.promoPrice !== null && product.promoPrice !== undefined;
         const priceText = formatMoney(onSale ? product.promoPrice : product.price);
         return <article key={product.id} className="rounded-2xl border border-neutral-800 bg-neutral-900 p-4">
@@ -249,15 +270,18 @@ export default function StorePage() {
             {product.soldByWeight
               ? (line ? <button type="button" className="shrink-0 rounded-xl border border-neutral-700 px-3 py-2 text-sm text-neutral-300 hover:border-red-400 hover:text-red-300" onClick={() => setQuantity(product, 0)}>Remover</button>
                 : <button type="button" className="shrink-0 rounded-xl px-4 py-2 text-sm font-semibold text-neutral-950" style={{ background: accent }} onClick={() => setQuantity(product, 1)}>Adicionar</button>)
-              : <div className="flex shrink-0 items-center gap-2">
-                <button type="button" aria-label={`Remover ${product.name}`} disabled={!line} className="h-10 w-10 rounded-xl border border-neutral-700 text-xl text-neutral-200 transition hover:border-brand-400 disabled:opacity-30" onClick={() => setQuantity(product, (line?.quantity ?? 0) - 1)}>−</button>
+              : product.allowFractionalQuantity
+                ? <label className="w-28 shrink-0 text-xs text-neutral-400">Quantidade<input aria-label={`Quantidade de ${product.name}`} type="text" inputMode="decimal" value={line?.quantity ?? ''} onChange={event => setFractionalQuantity(product, event.target.value)} className={`${field} text-sm`} /></label>
+                : <div className="flex shrink-0 items-center gap-2">
+                <button type="button" aria-label={`Remover ${product.name}`} disabled={!line} className="h-10 w-10 rounded-xl border border-neutral-700 text-xl text-neutral-200 transition hover:border-brand-400 disabled:opacity-30" onClick={() => setQuantity(product, Number(line?.quantity ?? 0) - 1)}>−</button>
                 <span aria-live="polite" className="w-6 text-center font-semibold">{line?.quantity ?? 0}</span>
-                <button type="button" aria-label={`Adicionar ${product.name}`} disabled={(line?.quantity ?? 0) >= MAX_QTY} className="h-10 w-10 rounded-xl text-xl font-bold text-neutral-950 disabled:opacity-40" style={{ background: accent }} onClick={() => setQuantity(product, (line?.quantity ?? 0) + 1)}>+</button>
+                <button type="button" aria-label={`Adicionar ${product.name}`} disabled={Number(line?.quantity ?? 0) >= MAX_QTY} className="h-10 w-10 rounded-xl text-xl font-bold text-neutral-950 disabled:opacity-40" style={{ background: accent }} onClick={() => setQuantity(product, Number(line?.quantity ?? 0) + 1)}>+</button>
               </div>}
           </div>
           {line && product.soldByWeight && <label className="mt-3 block text-sm font-medium text-neutral-300">Peso (kg)<input className={field} inputMode="decimal" autoFocus placeholder="0,350" value={line.weight} onChange={event => patchLine(product.id, { weight: event.target.value })} aria-describedby={`w-${product.id}`} /><span id={`w-${product.id}`} className="mt-1 block text-xs text-neutral-500">Informe o peso desejado em quilos, com até 3 casas decimais (0,001 kg = 1 g).{validWeight(line.weight) ? ` Valor estimado: ${formatMoney(unitPrice(product, line))}` : ''}</span></label>}
           {line && (product.modifierGroups?.length ?? 0) > 0 && <ModifierPicker large groups={product.modifierGroups ?? []} value={line.mods} onChange={mods => patchLine(product.id, { mods })} />}
-          {line && <input aria-label={`Observação para ${product.name}`} maxLength={200} placeholder="Observação (ex.: sem cebola)" className="mt-3 w-full rounded-xl border border-neutral-800 bg-neutral-950 px-3 py-2 text-sm text-neutral-100 outline-none placeholder:text-neutral-600 focus:border-brand-400" value={line.notes} onChange={event => patchLine(product.id, { notes: event.target.value })} />}
+          {line && product.packagingEnabled && <label className="mt-3 flex items-center gap-2 text-sm text-neutral-300"><input type="checkbox" checked={line.withPackaging} onChange={event => patchLine(product.id, { withPackaging: event.target.checked })} className="h-4 w-4 accent-brand-400" />Adicionar embalagem {Number(product.packagingPrice) > 0 && `(+${formatMoney(product.packagingPrice)})`}</label>}
+          {line && product.allowNotes !== false && <input aria-label={`Observação para ${product.name}`} maxLength={200} placeholder="Observação (ex.: sem cebola)" className="mt-3 w-full rounded-xl border border-neutral-800 bg-neutral-950 px-3 py-2 text-sm text-neutral-100 outline-none placeholder:text-neutral-600 focus:border-brand-400" value={line.notes} onChange={event => patchLine(product.id, { notes: event.target.value })} />}
         </article>;
       })}</div>
     </section>)}
@@ -266,7 +290,7 @@ export default function StorePage() {
       <h2 className="text-lg font-bold text-white">Seu pedido</h2>
       {lines.length === 0 ? <p className="mt-2 text-sm text-neutral-500">Nenhum item selecionado.</p> : <ul className="mt-3 grid gap-1 text-sm">{lines.map(product => {
         const line = cart[product.id];
-        return <li key={product.id} className="flex justify-between gap-3"><span>{product.soldByWeight ? `${line.weight || '—'} kg` : `${line.quantity}×`} {product.name}{(product.modifierGroups ?? []).flatMap(group => group.options).filter(option => line.mods[option.id]).map(option => <span key={option.id} className="block text-xs text-neutral-500">+ {line.mods[option.id]}× {option.name}</span>)}</span><span className="shrink-0">{formatMoney(unitPrice(product, line) * line.quantity)}</span></li>;
+        return <li key={product.id} className="flex justify-between gap-3"><span>{product.soldByWeight ? `${line.weight || '—'} kg` : `${line.quantity}×`} {product.name}{(product.modifierGroups ?? []).flatMap(group => group.options).filter(option => line.mods[option.id]).map(option => <span key={option.id} className="block text-xs text-neutral-500">+ {line.mods[option.id]}× {option.name}</span>)}</span><span className="shrink-0">{formatMoney(unitPrice(product, line) * (parseQuantity(line.quantity, Boolean(product.allowFractionalQuantity && !product.soldByWeight), MAX_QTY) ?? 0))}</span></li>;
       })}</ul>}
 
       <fieldset className="mt-5"><legend className="text-sm font-semibold text-neutral-300">Como você quer receber?</legend>
@@ -289,6 +313,10 @@ export default function StorePage() {
         <label className="block text-sm font-medium text-neutral-300">Nome<input className={field} maxLength={160} autoComplete="name" required value={name} onChange={event => setName(event.target.value)} /></label>
         <label className="block text-sm font-medium text-neutral-300">Telefone / WhatsApp<input className={field} type="tel" maxLength={30} autoComplete="tel" placeholder="(11) 99999-9999" required value={phone} onChange={event => setPhone(event.target.value)} /></label>
       </fieldset>
+      {store.minorControl && <label className="mt-4 flex items-start gap-3 rounded-xl border border-neutral-700 p-3 text-sm text-neutral-300">
+        <input type="checkbox" className="mt-0.5 h-4 w-4 accent-amber-500" checked={adultConfirmed} onChange={event => setAdultConfirmed(event.target.checked)} />
+        <span>Confirmo que tenho idade legal para realizar este pedido.</span>
+      </label>}
 
       {canSchedule && <fieldset className="mt-5"><legend className="text-sm font-semibold text-neutral-300">Agendar pedido</legend>
         <label className="mt-2 flex items-center gap-3 text-sm text-neutral-300"><input type="checkbox" className="h-5 w-5 accent-amber-500" checked={scheduling} disabled={closedOnly} onChange={event => setSchedule(event.target.checked)} />{closedOnly ? 'Estamos fechados: o pedido será agendado' : 'Quero agendar para outro dia ou horário'}</label>
@@ -310,7 +338,7 @@ export default function StorePage() {
         <div className="flex justify-between text-base font-bold"><span>Total estimado</span><span style={{ color: accent }}>{formatMoney(total)}</span></div>
       </div>
       {formError && <div role="alert" className="mt-4 rounded-xl border border-red-500/40 bg-red-950/40 px-4 py-3 text-sm text-red-200">{formError}</div>}
-      <button disabled={busy || lines.length === 0 || !channel || (closedOnly && !canSchedule)} className="mt-5 w-full rounded-xl px-4 py-4 text-base font-semibold text-neutral-950 transition disabled:cursor-not-allowed disabled:opacity-50" style={{ background: accent }}>{busy ? 'Enviando...' : scheduling ? `Agendar pedido · ${formatMoney(total)}` : `Enviar pedido · ${formatMoney(total)}`}</button>
+      <button disabled={busy || lines.length === 0 || !channel || (closedOnly && !canSchedule) || (store.minorControl && !adultConfirmed)} className="mt-5 w-full rounded-xl px-4 py-4 text-base font-semibold text-neutral-950 transition disabled:cursor-not-allowed disabled:opacity-50" style={{ background: accent }}>{busy ? 'Enviando...' : scheduling ? `Agendar pedido · ${formatMoney(total)}` : `Enviar pedido · ${formatMoney(total)}`}</button>
       <p className="mt-3 text-center text-xs text-neutral-500">{acceptsNow ? 'O pagamento é feito na ' : 'O pagamento será feito na '}{channel === 'DELIVERY' ? 'entrega' : 'retirada'}; o valor final confirma o desconto do cupom.</p>
     </form>
 

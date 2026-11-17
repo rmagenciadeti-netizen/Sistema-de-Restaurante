@@ -5,8 +5,9 @@ import { useState } from 'react';
 import { ApiError, formatMoney, PublicMenu, PublicOrderResult, PublicProduct, publicApi } from '../../../lib/api';
 import { useAutoLoad } from '../../../lib/use-auto-load';
 import { ModifierPicker, ModifierSelection, modifiersPayload, modifiersUnitTotal, selectionError } from '../../../components/modifier-picker';
+import { parseQuantity } from '../../../lib/quantity';
 
-type CartLine = { quantity: number; notes: string; mods: ModifierSelection };
+type CartLine = { quantity: number | string; notes: string; mods: ModifierSelection; withPackaging: boolean };
 const MAX_QTY = 20;
 const inputClass = 'mt-1 w-full rounded-xl border border-slate-300 bg-white px-3 py-3 text-base text-slate-900 outline-none transition placeholder:text-slate-400 focus:border-brand-500 focus:ring-2 focus:ring-brand-500/15';
 
@@ -33,16 +34,24 @@ export default function PublicMenuPage() {
   useAutoLoad(load);
 
   const products = menu?.categories.flatMap(category => category.products) ?? [];
-  const lines = products.filter(product => cart[product.id]?.quantity > 0);
-  const unitPrice = (product: PublicProduct) => Number(product.price) + modifiersUnitTotal(product.modifierGroups ?? [], cart[product.id]?.mods ?? {});
-  const subtotal = lines.reduce((sum, product) => sum + unitPrice(product) * cart[product.id].quantity, 0);
+  const lines = products.filter(product => cart[product.id]);
+  const unitPrice = (product: PublicProduct) => Number(product.price) + modifiersUnitTotal(product.modifierGroups ?? [], cart[product.id]?.mods ?? {}) + (cart[product.id]?.withPackaging ? Number(product.packagingPrice ?? 0) : 0);
+  const subtotal = lines.reduce((sum, product) => sum + Math.round(unitPrice(product) * (parseQuantity(cart[product.id].quantity, Boolean(product.allowFractionalQuantity), MAX_QTY) ?? 0) * 100) / 100, 0);
   const feePercent = Number(menu?.serviceFeePercent ?? 0);
   const serviceFee = Math.round(subtotal * feePercent) / 100;
 
-  function setQuantity(productId: string, quantity: number) {
+  function setQuantity(product: PublicProduct, quantity: number) {
     setCart(current => {
-      const next = { ...current }; const clamped = Math.max(0, Math.min(MAX_QTY, quantity));
-      if (clamped === 0) delete next[productId]; else next[productId] = { quantity: clamped, notes: current[productId]?.notes ?? '', mods: current[productId]?.mods ?? {} };
+      const next = { ...current }; const clampedValue = Math.max(0, Math.min(MAX_QTY, quantity)); const clamped = product.allowFractionalQuantity ? Math.round(clampedValue * 1000) / 1000 : Math.round(clampedValue);
+      if (clamped === 0) delete next[product.id]; else next[product.id] = { quantity: clamped, notes: current[product.id]?.notes ?? '', mods: current[product.id]?.mods ?? {}, withPackaging: current[product.id]?.withPackaging ?? false };
+      return next;
+    });
+  }
+  function setFractionalQuantity(product: PublicProduct, quantity: string) {
+    setCart(current => {
+      const next = { ...current };
+      if (quantity === '') delete next[product.id];
+      else next[product.id] = { quantity, notes: current[product.id]?.notes ?? '', mods: current[product.id]?.mods ?? {}, withPackaging: current[product.id]?.withPackaging ?? false };
       return next;
     });
   }
@@ -50,6 +59,7 @@ export default function PublicMenuPage() {
   async function submit(event: React.FormEvent) {
     event.preventDefault(); setFormError('');
     if (!lines.length) { setFormError('Adicione ao menos um item ao pedido.'); return; }
+    if (lines.some(product => parseQuantity(cart[product.id].quantity, Boolean(product.allowFractionalQuantity), MAX_QTY) === null)) { setFormError('Informe quantidades válidas, com até três casas decimais.'); return; }
     for (const product of lines) { const problem = selectionError(product.modifierGroups ?? [], cart[product.id].mods); if (problem) { setFormError(`${product.name}: ${problem}`); return; } }
     if (phone.trim() && !name.trim()) { setFormError('Informe seu nome para registrar o telefone.'); return; }
     setBusy(true);
@@ -57,7 +67,7 @@ export default function PublicMenuPage() {
       const hasContact = name.trim().length > 0;
       const result = await publicApi<PublicOrderResult>(`/public/tables/${encodeURIComponent(token)}/orders`, { method: 'POST', body: JSON.stringify({
         customerName: hasContact ? name.trim() : undefined, customerPhone: hasContact && phone.trim() ? phone.trim() : undefined, marketingConsent: hasContact && phone.trim() ? consent : undefined,
-        items: lines.map(product => ({ productId: product.id, quantity: cart[product.id].quantity, notes: cart[product.id].notes.trim() || undefined, modifiers: modifiersPayload(cart[product.id].mods).length ? modifiersPayload(cart[product.id].mods) : undefined })),
+        items: lines.map(product => ({ productId: product.id, quantity: parseQuantity(cart[product.id].quantity, Boolean(product.allowFractionalQuantity), MAX_QTY), withPackaging: cart[product.id].withPackaging || undefined, notes: cart[product.id].notes.trim() || undefined, modifiers: modifiersPayload(cart[product.id].mods).length ? modifiersPayload(cart[product.id].mods) : undefined })),
       }) });
       setConfirmation(result); setCart({});
     } catch (e) { setFormError(friendlyError(e)); } finally { setBusy(false); }
@@ -74,13 +84,15 @@ export default function PublicMenuPage() {
     {menu.categories.map(category => <section key={category.id ?? 'none'} className="mt-6"><h2 className="mb-3 flex items-center gap-3 text-lg font-bold tracking-tight text-slate-900 before:h-6 before:w-1 before:rounded-full before:bg-brand-500">{category.name}</h2><div className="grid gap-3">{category.products.map(product => {
       const line = cart[product.id];
       return <article key={product.id} className="rm-surface rounded-2xl border border-slate-200 bg-white p-4 shadow-sm shadow-black/[0.03]"><div className="flex items-start justify-between gap-3"><div><h3 className="font-semibold text-slate-900">{product.name}</h3>{product.description && <p className="mt-1 text-sm text-slate-500">{product.description}</p>}{product.isCombo && product.comboComponents && product.comboComponents.length > 0 && <p className="mt-1 text-sm text-brand-700">Combo inclui: {product.comboComponents.map(component => `${component.quantity}× ${component.product.name}`).join(', ')}</p>}<p className="mt-2 font-semibold text-brand-700">{formatMoney(product.price)}</p></div>
-        <div className="flex shrink-0 items-center gap-2"><button type="button" aria-label={`Remover ${product.name}`} disabled={!line} className="h-10 w-10 rounded-xl border border-slate-300 text-xl text-slate-700 transition hover:border-brand-400 hover:text-brand-700 disabled:opacity-30" onClick={() => setQuantity(product.id, (line?.quantity ?? 0) - 1)}>−</button><span className="w-6 text-center font-semibold">{line?.quantity ?? 0}</span><button type="button" aria-label={`Adicionar ${product.name}`} disabled={(line?.quantity ?? 0) >= MAX_QTY} className="h-10 w-10 rounded-xl bg-brand-500 text-xl font-semibold text-neutral-950 transition hover:bg-brand-400 disabled:opacity-30" onClick={() => setQuantity(product.id, (line?.quantity ?? 0) + 1)}>+</button></div></div>
-        {line && (product.modifierGroups?.length ?? 0) > 0 && <ModifierPicker large groups={product.modifierGroups ?? []} value={line.mods} onChange={mods => setCart(current => ({ ...current, [product.id]: { ...line, mods } }))} />}{line && <input aria-label={`Observação para ${product.name}`} maxLength={200} placeholder="Observação (ex.: sem cebola)" className={inputClass} value={line.notes} onChange={e => setCart(current => ({ ...current, [product.id]: { ...line, notes: e.target.value } }))} />}</article>;
+        {product.allowFractionalQuantity
+          ? <label className="w-28 shrink-0 text-xs text-slate-500">Quantidade<input aria-label={`Quantidade de ${product.name}`} type="text" inputMode="decimal" value={line?.quantity ?? ''} onChange={event => setFractionalQuantity(product, event.target.value)} className={inputClass} /></label>
+          : <div className="flex shrink-0 items-center gap-2"><button type="button" aria-label={`Remover ${product.name}`} disabled={!line} className="h-10 w-10 rounded-xl border border-slate-300 text-xl text-slate-700 transition hover:border-brand-400 hover:text-brand-700 disabled:opacity-30" onClick={() => setQuantity(product, Number(line?.quantity ?? 0) - 1)}>−</button><span className="w-6 text-center font-semibold">{line?.quantity ?? 0}</span><button type="button" aria-label={`Adicionar ${product.name}`} disabled={Number(line?.quantity ?? 0) >= MAX_QTY} className="h-10 w-10 rounded-xl bg-brand-500 text-xl font-semibold text-neutral-950 transition hover:bg-brand-400 disabled:opacity-30" onClick={() => setQuantity(product, Number(line?.quantity ?? 0) + 1)}>+</button></div>}</div>
+        {line && (product.modifierGroups?.length ?? 0) > 0 && <ModifierPicker large groups={product.modifierGroups ?? []} value={line.mods} onChange={mods => setCart(current => ({ ...current, [product.id]: { ...line, mods } }))} />}{line && product.packagingEnabled && <label className="mt-3 flex items-center gap-2 text-sm text-slate-600"><input type="checkbox" checked={line.withPackaging} onChange={event => setCart(current => ({ ...current, [product.id]: { ...line, withPackaging: event.target.checked } }))} className="h-4 w-4 accent-brand-600" />Adicionar embalagem {Number(product.packagingPrice) > 0 && `(+${formatMoney(product.packagingPrice)})`}</label>}{line && <input aria-label={`Observação para ${product.name}`} maxLength={200} placeholder="Observação (ex.: sem cebola)" className={inputClass} value={line.notes} onChange={e => setCart(current => ({ ...current, [product.id]: { ...line, notes: e.target.value } }))} />}</article>;
     })}</div></section>)}
 
     <form onSubmit={submit} className="rm-surface mt-8 rounded-2xl border border-slate-200 bg-white p-5 shadow-lg shadow-black/[0.04]">
       <h2 className="text-lg font-bold text-slate-900">Seu pedido</h2>
-      {lines.length === 0 ? <p className="mt-2 text-sm text-slate-400">Nenhum item selecionado.</p> : <ul className="mt-3 grid gap-1 text-sm">{lines.map(product => <li key={product.id} className="flex justify-between gap-3"><span>{cart[product.id].quantity}× {product.name}{(product.modifierGroups ?? []).flatMap(group => group.options).filter(option => cart[product.id].mods[option.id]).map(option => ` + ${cart[product.id].mods[option.id]}× ${option.name}`).join('')}</span><span>{formatMoney(unitPrice(product) * cart[product.id].quantity)}</span></li>)}</ul>}
+      {lines.length === 0 ? <p className="mt-2 text-sm text-slate-400">Nenhum item selecionado.</p> : <ul className="mt-3 grid gap-1 text-sm">{lines.map(product => <li key={product.id} className="flex justify-between gap-3"><span>{cart[product.id].quantity}× {product.name}{(product.modifierGroups ?? []).flatMap(group => group.options).filter(option => cart[product.id].mods[option.id]).map(option => ` + ${cart[product.id].mods[option.id]}× ${option.name}`).join('')}</span><span>{formatMoney(unitPrice(product) * (parseQuantity(cart[product.id].quantity, Boolean(product.allowFractionalQuantity), MAX_QTY) ?? 0))}</span></li>)}</ul>}
       <div className="mt-4 grid gap-1 border-t border-slate-200 pt-3 text-sm"><div className="flex justify-between"><span className="text-slate-500">Subtotal</span><span>{formatMoney(subtotal)}</span></div>{feePercent > 0 && <div className="flex justify-between"><span className="text-slate-500">Taxa de serviço estimada ({feePercent}%)</span><span>{formatMoney(serviceFee)}</span></div>}<div className="flex justify-between text-base font-semibold"><span>Total estimado</span><span>{formatMoney(subtotal + serviceFee)}</span></div></div>
       <fieldset className="mt-5 grid gap-3"><legend className="text-sm font-semibold text-slate-700">Identificação (opcional)</legend>
         <label className="block text-sm font-medium text-slate-700">Nome<input className={inputClass} maxLength={160} autoComplete="name" value={name} onChange={e => setName(e.target.value)} /></label>

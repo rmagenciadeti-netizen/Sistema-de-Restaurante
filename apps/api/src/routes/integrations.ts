@@ -7,7 +7,7 @@ import { serializable } from '../lib/serializable';
 import { requireAuth, requireTenant } from '../middleware/auth';
 import { MANAGEMENT_ROLES, requireRoles } from '../lib/permissions';
 import { createOrder, OrderEngineError } from '../lib/order-engine';
-import { moneySchema } from '../lib/money';
+import { moneySchema, positiveQuantitySchema } from '../lib/money';
 import { emailProviders, fiscalProviders, paymentProviders } from '../lib/providers';
 
 const hashKey = (key: string) => createHash('sha256').update(key).digest('hex');
@@ -17,6 +17,54 @@ export const integrationRoutes = Router();
 integrationRoutes.use(requireAuth, requireTenant, requireRoles(...MANAGEMENT_ROLES));
 // Which concrete adapters this deployment registered (see providers.config.ts). Credentials never leave the server.
 integrationRoutes.get('/providers', (_req, res) => res.json({ payment: paymentProviders.names(), fiscal: fiscalProviders.names(), email: emailProviders.names() }));
+// ---- Card terminals (maquininhas): registry per unit. Taking payments through them still requires the provider's adapter. ----
+export const POS_PROVIDERS = ['Stone', 'Vero', 'GetNet', 'Cielo', 'PagSeguro', 'Rede', 'Stone App', 'Inter', 'Sicredi', 'Caixa', 'Clover', 'Mercado Pago'] as const;
+const posSchema = z.object({ provider: z.enum(POS_PROVIDERS), name: z.string().trim().min(2).max(100), serial: z.string().trim().min(3).max(60), unitId: z.string().uuid().nullish(), active: z.boolean().default(true) });
+const posSelect = { id: true, provider: true, name: true, serial: true, unitId: true, active: true, createdAt: true, unit: { select: { name: true } } } satisfies Prisma.PosDeviceSelect;
+const unitAllowed = async (req: import('express').Request, unitId: string | null | undefined) => {
+  if (!unitId) return !req.auth!.unitId;
+  if (req.auth!.unitId && unitId !== req.auth!.unitId) return false;
+  return Boolean(await prisma.unit.findFirst({ where: { id: unitId, tenantId: req.auth!.tenantId! }, select: { id: true } }));
+};
+integrationRoutes.get('/pos/providers', (_req, res) => res.json({ items: POS_PROVIDERS, adapters: paymentProviders.names() }));
+integrationRoutes.get('/pos', async (req, res, next) => {
+  try { const items = await prisma.posDevice.findMany({ where: { tenantId: req.auth!.tenantId!, ...(req.auth!.unitId ? { unitId: req.auth!.unitId } : {}) }, select: posSelect, orderBy: [{ provider: 'asc' }, { name: 'asc' }], take: 200 }); return res.json({ items, total: items.length }); }
+  catch (error) { return next(error); }
+});
+integrationRoutes.post('/pos', async (req, res, next) => {
+  try {
+    const parsed = posSchema.safeParse(req.body); if (!parsed.success) return res.status(400).json({ message: 'Validation failed', errors: parsed.error.flatten() });
+    const unitId = parsed.data.unitId ?? req.auth!.unitId ?? null;
+    if (!await unitAllowed(req, unitId)) return res.status(400).json({ message: 'Unit does not belong to this tenant' });
+    const tenantId = req.auth!.tenantId!;
+    if (await prisma.posDevice.findFirst({ where: { tenantId, provider: parsed.data.provider, serial: { equals: parsed.data.serial, mode: 'insensitive' } }, select: { id: true } })) return res.status(409).json({ message: 'Já existe uma maquininha desse provedor com esse número de série.' });
+    const created = await prisma.posDevice.create({ data: { ...parsed.data, unitId, tenantId }, select: posSelect });
+    await prisma.auditLog.create({ data: { tenantId, actorUserId: req.auth!.userId, action: 'POS_DEVICE_CREATED', entityType: 'PosDevice', entityId: created.id } });
+    return res.status(201).json(created);
+  } catch (error) { return next(error); }
+});
+integrationRoutes.patch('/pos/:id', async (req, res, next) => {
+  try {
+    const parsed = posSchema.partial().safeParse(req.body); if (!parsed.success) return res.status(400).json({ message: 'Validation failed', errors: parsed.error.flatten() });
+    const tenantId = req.auth!.tenantId!;
+    const current = await prisma.posDevice.findFirst({ where: { id: req.params.id, tenantId, ...(req.auth!.unitId ? { unitId: req.auth!.unitId } : {}) } }); if (!current) return res.status(404).json({ message: 'Maquininha não encontrada.' });
+    if (parsed.data.unitId !== undefined && !await unitAllowed(req, parsed.data.unitId)) return res.status(400).json({ message: 'Unit does not belong to this tenant' });
+    const provider = parsed.data.provider ?? current.provider; const serial = parsed.data.serial ?? current.serial;
+    if (await prisma.posDevice.findFirst({ where: { tenantId, id: { not: current.id }, provider, serial: { equals: serial, mode: 'insensitive' } }, select: { id: true } })) return res.status(409).json({ message: 'Já existe uma maquininha desse provedor com esse número de série.' });
+    const updated = await prisma.posDevice.update({ where: { id: current.id }, data: parsed.data, select: posSelect });
+    await prisma.auditLog.create({ data: { tenantId, actorUserId: req.auth!.userId, action: 'POS_DEVICE_UPDATED', entityType: 'PosDevice', entityId: current.id } });
+    return res.json(updated);
+  } catch (error) { return next(error); }
+});
+integrationRoutes.delete('/pos/:id', async (req, res, next) => {
+  try {
+    const tenantId = req.auth!.tenantId!;
+    const current = await prisma.posDevice.findFirst({ where: { id: req.params.id, tenantId, ...(req.auth!.unitId ? { unitId: req.auth!.unitId } : {}) }, select: { id: true } }); if (!current) return res.status(404).json({ message: 'Maquininha não encontrada.' });
+    await prisma.posDevice.delete({ where: { id: current.id } });
+    await prisma.auditLog.create({ data: { tenantId, actorUserId: req.auth!.userId, action: 'POS_DEVICE_DELETED', entityType: 'PosDevice', entityId: current.id } });
+    return res.json({ deleted: true });
+  } catch (error) { return next(error); }
+});
 integrationRoutes.get('/', async (req, res, next) => {
   try { const items = await prisma.integration.findMany({ where: { tenantId: req.auth!.tenantId! }, select: { id: true, provider: true, name: true, unitId: true, active: true, lastUsedAt: true, createdAt: true }, orderBy: { createdAt: 'desc' } }); return res.json({ items, total: items.length }); }
   catch (error) { return next(error); }
@@ -48,7 +96,7 @@ const inboundSchema = z.object({
   customer: z.object({ name: z.string().min(1).max(160), phone: z.string().max(30).optional() }),
   address: z.string().max(500).optional(),
   deliveryFee: moneySchema.optional(),
-  items: z.array(z.object({ code: z.string().min(1).max(50), quantity: z.number().int().positive().max(999), notes: z.string().max(500).optional() })).min(1).max(100),
+  items: z.array(z.object({ code: z.string().min(1).max(50), quantity: positiveQuantitySchema(999), notes: z.string().max(500).optional() })).min(1).max(100),
 });
 
 inboundRoutes.post('/:source/orders', async (req, res, next) => {
@@ -92,7 +140,7 @@ inboundRoutes.post('/:source/orders', async (req, res, next) => {
       throw error;
     }
   } catch (error) {
-    if (error instanceof OrderEngineError) return res.status(error.httpStatus === 400 ? 422 : error.httpStatus).json({ message: error.reason });
+    if (error instanceof OrderEngineError) return res.status(error.httpStatus === 400 ? 422 : error.httpStatus).json({ message: error.reason === 'FRACTIONAL_QUANTITY_NOT_ALLOWED' ? 'Este produto não permite quantidade fracionada.' : error.reason });
     return next(error);
   }
 });

@@ -2,7 +2,7 @@
   "name": "@rm-restaurant/print-agent",
   "private": true,
   "version": "1.0.0",
-  "description": "Local print agent: polls the RM Restaurant API and sends production tickets to ESC/POS network printers.",
+  "description": "Local print agent: polls the RM Restaurant API and sends production tickets to ESC/POS printers (network, device path or any printer installed in Windows).",
   "type": "module",
   "bin": { "rm-print-agent": "src/agent.js" },
   "scripts": {

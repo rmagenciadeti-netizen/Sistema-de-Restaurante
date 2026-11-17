@@ -17,8 +17,10 @@ const printerSchema = z.object({
   unitId: z.string().uuid().optional(),
   sectorId: z.string().uuid().nullable().optional(),
   kind: z.nativeEnum(PrinterKind).default(PrinterKind.KITCHEN),
-  connectionType: z.enum(['NETWORK', 'USB', 'SHARED', 'SERIAL']),
+  connectionType: z.enum(['NETWORK', 'USB', 'SHARED', 'SERIAL', 'WINDOWS']),
+  // For WINDOWS this is the printer name as installed on the agent's computer.
   address: z.string().max(255).optional(),
+  agentId: z.string().uuid().nullable().optional(),
   port: z.number().int().min(1).max(65535).optional(),
   manufacturer: z.string().max(80).optional(),
   model: z.string().max(80).optional(),
@@ -29,7 +31,12 @@ const printerSchema = z.object({
   active: z.boolean().default(true),
 });
 
-async function validateRefs(tenantId: string, data: { unitId?: string | null; sectorId?: string | null }) {
+async function validateRefs(tenantId: string, data: { unitId?: string | null; sectorId?: string | null; agentId?: string | null }) {
+  if (data.agentId) {
+    const agent = await prisma.printAgent.findFirst({ where: { id: data.agentId, tenantId } });
+    if (!agent) return 'Print agent does not belong to this tenant';
+    if (agent.unitId && data.unitId && agent.unitId !== data.unitId) return 'Print agent and printer belong to different units';
+  }
   if (data.unitId && !await prisma.unit.findFirst({ where: { id: data.unitId, tenantId } })) return 'Unit does not belong to this tenant';
   if (data.sectorId) {
     const sector = await prisma.productionSector.findFirst({ where: { id: data.sectorId, tenantId } });
@@ -38,6 +45,10 @@ async function validateRefs(tenantId: string, data: { unitId?: string | null; se
   }
   return null;
 }
+
+// A Windows printer is addressed by its installed name and printed by one specific agent.
+const windowsIssue = (data: { connectionType?: string; address?: string | null; agentId?: string | null }) =>
+  data.connectionType === 'WINDOWS' && (!data.address?.trim() || !data.agentId) ? 'Escolha a impressora do Windows e o computador (agente) onde ela está instalada.' : null;
 
 printingRoutes.get('/printers', async (req, res, next) => {
   try { const items = await prisma.printer.findMany({ where: { tenantId: req.auth!.tenantId!, ...unitScope(req) }, include: { sector: { select: { id: true, name: true } } }, orderBy: { name: 'asc' } }); return res.json({ items, total: items.length }); }
@@ -48,10 +59,11 @@ printingRoutes.post('/printers', async (req, res, next) => {
     const parsed = printerSchema.safeParse(req.body); if (!parsed.success) return res.status(400).json({ message: 'Validation failed', errors: parsed.error.flatten() });
     const tenantId = req.auth!.tenantId!; const unitId = parsed.data.unitId ?? req.auth!.unitId;
     if (parsed.data.unitId && req.auth!.unitId && parsed.data.unitId !== req.auth!.unitId) return res.status(403).json({ message: 'Unit access denied' });
-    const refError = await validateRefs(tenantId, { unitId, sectorId: parsed.data.sectorId }); if (refError) return res.status(400).json({ message: refError });
+    const windows = windowsIssue(parsed.data); if (windows) return res.status(400).json({ message: windows });
+    const refError = await validateRefs(tenantId, { unitId, sectorId: parsed.data.sectorId, agentId: parsed.data.agentId }); if (refError) return res.status(400).json({ message: refError });
     const printer = await prisma.$transaction(async tx => {
       if (parsed.data.isPrimary && parsed.data.sectorId) await tx.printer.updateMany({ where: { tenantId, sectorId: parsed.data.sectorId, unitId }, data: { isPrimary: false } });
-      return tx.printer.create({ data: { ...parsed.data, tenantId, unitId } });
+      return tx.printer.create({ data: { ...parsed.data, agentId: parsed.data.connectionType === 'WINDOWS' ? parsed.data.agentId : null, tenantId, unitId } });
     });
     return res.status(201).json(printer);
   } catch (error) { return next(error); }
@@ -64,11 +76,13 @@ printingRoutes.patch('/printers/:id', async (req, res, next) => {
     if (parsed.data.unitId && req.auth!.unitId && parsed.data.unitId !== req.auth!.unitId) return res.status(403).json({ message: 'Unit access denied' });
     const unitId = parsed.data.unitId ?? current.unitId;
     const sectorId = parsed.data.sectorId === undefined ? current.sectorId : parsed.data.sectorId;
-    const refError = await validateRefs(tenantId, { unitId, sectorId }); if (refError) return res.status(400).json({ message: refError });
+    const next = { connectionType: parsed.data.connectionType ?? current.connectionType, address: parsed.data.address === undefined ? current.address : parsed.data.address, agentId: parsed.data.agentId === undefined ? current.agentId : parsed.data.agentId };
+    const windows = windowsIssue(next); if (windows) return res.status(400).json({ message: windows });
+    const refError = await validateRefs(tenantId, { unitId, sectorId, agentId: next.agentId }); if (refError) return res.status(400).json({ message: refError });
     if (sectorId && req.auth!.unitId && !await prisma.productionSector.findFirst({ where: { id: sectorId, tenantId, OR: [{ unitId: req.auth!.unitId }, { unitId: null }] } })) return res.status(403).json({ message: 'Sector access denied' });
     const printer = await prisma.$transaction(async tx => {
       if ((parsed.data.isPrimary ?? current.isPrimary) && sectorId) await tx.printer.updateMany({ where: { tenantId, sectorId, unitId, id: { not: current.id } }, data: { isPrimary: false } });
-      return tx.printer.update({ where: { id: current.id }, data: parsed.data });
+      return tx.printer.update({ where: { id: current.id }, data: { ...parsed.data, ...(next.connectionType === 'WINDOWS' ? {} : { agentId: null }) } });
     });
     return res.json(printer);
   } catch (error) { return next(error); }
@@ -112,7 +126,7 @@ printingRoutes.post('/orders/:orderId/print', async (req, res, next) => {
 });
 
 printingRoutes.get('/agents', async (req, res, next) => {
-  try { const items = await prisma.printAgent.findMany({ where: { tenantId: req.auth!.tenantId!, ...unitScope(req) }, select: { id: true, name: true, unitId: true, active: true, lastSeenAt: true, createdAt: true }, orderBy: { name: 'asc' } }); return res.json({ items, total: items.length }); }
+  try { const items = await prisma.printAgent.findMany({ where: { tenantId: req.auth!.tenantId!, ...unitScope(req) }, select: { id: true, name: true, unitId: true, active: true, lastSeenAt: true, createdAt: true, printers: true, printersReportedAt: true }, orderBy: { name: 'asc' } }); return res.json({ items, total: items.length }); }
   catch (error) { return next(error); }
 });
 printingRoutes.post('/agents', async (req, res, next) => {

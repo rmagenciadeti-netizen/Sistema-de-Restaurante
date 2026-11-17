@@ -20,7 +20,7 @@ reportsRoutes.get('/overview', async (req, res, next) => {
       prisma.orderItem.groupBy({ by: ['productId'], where: { order: { ...scope, createdAt: { gte: from, lte: to }, status: { not: 'CANCELLED' } } }, _sum: { quantity: true, total: true }, orderBy: { _sum: { quantity: 'desc' } }, take: 10 }),
     ]);
     const productIds = popularItems.map(x => x.productId); const products = await prisma.product.findMany({ where: { id: { in: productIds }, tenantId: req.auth!.tenantId! }, select: { id: true, name: true } }); const names = new Map(products.map(p => [p.id, p.name]));
-    return res.json({ period: { from: from.toISOString(), to: to.toISOString() }, orders, totals: orderTotals._sum, paidExpenses: expenses._sum.amount ?? 0, paymentsByMethod: paymentMethods, bestSellers: popularItems.map(x => ({ productId: x.productId, name: names.get(x.productId) ?? 'Produto removido', quantity: x._sum.quantity, sales: x._sum.total })) });
+    return res.json({ period: { from: from.toISOString(), to: to.toISOString() }, orders, totals: orderTotals._sum, paidExpenses: expenses._sum.amount ?? 0, paymentsByMethod: paymentMethods, bestSellers: popularItems.map(x => ({ productId: x.productId, name: names.get(x.productId) ?? 'Produto removido', quantity: x._sum.quantity?.toNumber() ?? null, sales: x._sum.total })) });
   } catch (error) { return next(error); }
 });
 // Completed sales and service fee per attendant, the base for tip/commission distribution rules defined by the restaurant.

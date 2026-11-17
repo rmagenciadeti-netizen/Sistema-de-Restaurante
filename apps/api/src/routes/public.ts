@@ -6,6 +6,8 @@ import { serializable } from '../lib/serializable';
 import { createOrder, OrderEngineError } from '../lib/order-engine';
 import { hiddenCategoryIds } from '../lib/menu-visibility';
 import { effectiveUnitPrice } from '../lib/promotions';
+import { loadSettings } from '../lib/settings';
+import { positiveQuantitySchema } from '../lib/money';
 
 export const MAX_OPEN_ORDERS_PER_TABLE = 10;
 export const publicRoutes = Router();
@@ -20,6 +22,8 @@ async function resolveTable(qrToken: string) {
 publicRoutes.get('/tables/:qrToken/menu', async (req, res, next) => {
   try {
     const table = await resolveTable(req.params.qrToken); if (!table) return res.status(404).json({ message: 'Table not found' });
+    const settings = await loadSettings(prisma, table.tenantId);
+    if (!settings.fulfillment.allowDineIn) return res.status(409).json({ message: 'DINE_IN_DISABLED' });
     const now = new Date();
     const [hidden, promotionRows] = await Promise.all([
       hiddenCategoryIds(prisma, table.tenantId, now),
@@ -27,7 +31,7 @@ publicRoutes.get('/tables/:qrToken/menu', async (req, res, next) => {
     ]);
     const promotions = promotionRows.map(row => ({ type: row.type, value: row.value, startsAt: row.startsAt, endsAt: row.endsAt, active: row.active, productIds: row.products.map(link => link.productId) }));
     // Weighed products need a scale reading, which the self-service QR order cannot provide.
-    const products = await prisma.product.findMany({ where: { tenantId: table.tenantId, active: true, soldByWeight: false, ...(hidden.size ? { OR: [{ categoryId: null }, { categoryId: { notIn: [...hidden] } }] } : {}), AND: [{ OR: [{ unitId: table.unitId }, { unitId: null }] }] }, select: { id: true, name: true, description: true, price: true, isCombo: true, category: { select: { id: true, name: true } }, comboComponents: { select: { quantity: true, product: { select: { name: true } } } }, modifierGroups: { select: { group: { select: { id: true, name: true, minSelect: true, maxSelect: true, active: true, options: { where: { active: true }, select: { id: true, name: true, price: true }, orderBy: { name: 'asc' } } } } } } }, orderBy: { name: 'asc' }, take: 500 });
+    const products = await prisma.product.findMany({ where: { tenantId: table.tenantId, active: true, soldByWeight: false, ...(hidden.size ? { OR: [{ categoryId: null }, { categoryId: { notIn: [...hidden] } }] } : {}), AND: [{ OR: [{ unitId: table.unitId }, { unitId: null }] }] }, select: { id: true, name: true, description: true, price: true, isCombo: true, allowFractionalQuantity: true, packagingEnabled: true, packagingPrice: true, category: { select: { id: true, name: true } }, comboComponents: { select: { quantity: true, product: { select: { name: true } } } }, modifierGroups: { select: { group: { select: { id: true, name: true, minSelect: true, maxSelect: true, active: true, options: { where: { active: true }, select: { id: true, name: true, price: true }, orderBy: { name: 'asc' } } } } } } }, orderBy: { name: 'asc' }, take: 500 });
     const categories = new Map<string, { id: string | null; name: string; products: unknown[] }>();
     for (const { category, modifierGroups, ...rest } of products) {
       const promoPrice = effectiveUnitPrice(rest.id, rest.price, promotions, now);
@@ -44,13 +48,15 @@ const orderSchema = z.object({
   customerName: z.string().min(1).max(160).optional(),
   customerPhone: z.string().max(30).optional(),
   marketingConsent: z.boolean().optional(),
-  items: z.array(z.object({ productId: z.string().uuid(), quantity: z.number().int().positive().max(20), notes: z.string().max(200).optional(), modifiers: z.array(z.object({ optionId: z.string().uuid(), quantity: z.number().int().positive().max(20).optional() })).max(20).optional() })).min(1).max(30),
+  items: z.array(z.object({ productId: z.string().uuid(), quantity: positiveQuantitySchema(20), withPackaging: z.boolean().optional(), notes: z.string().max(200).optional(), modifiers: z.array(z.object({ optionId: z.string().uuid(), quantity: z.number().int().positive().max(20).optional() })).max(20).optional() })).min(1).max(30),
 });
 publicRoutes.post('/tables/:qrToken/orders', async (req, res, next) => {
   try {
     const parsed = orderSchema.safeParse(req.body); if (!parsed.success) return res.status(400).json({ message: 'Validation failed', errors: parsed.error.flatten() });
     if (parsed.data.customerPhone && !parsed.data.customerName) return res.status(400).json({ message: 'customerName is required with customerPhone' });
     const table = await resolveTable(req.params.qrToken); if (!table) return res.status(404).json({ message: 'Table not found' });
+    const settings = await loadSettings(prisma, table.tenantId);
+    if (!settings.fulfillment.allowDineIn) return res.status(409).json({ message: 'DINE_IN_DISABLED' });
     const open = await prisma.order.count({ where: { tableId: table.id, status: { in: [OrderStatus.OPEN, OrderStatus.PREPARING, OrderStatus.READY] } } });
     if (open >= MAX_OPEN_ORDERS_PER_TABLE) return res.status(429).json({ message: 'Too many open orders for this table. Call a waiter.' });
     const { customerName, customerPhone, marketingConsent, items } = parsed.data;
@@ -60,7 +66,7 @@ publicRoutes.post('/tables/:qrToken/orders', async (req, res, next) => {
     }));
     return res.status(201).json({ id: order.id, code: order.code, status: order.status, total: order.total, serviceFee: order.serviceFee });
   } catch (error) {
-    if (error instanceof OrderEngineError) return res.status(error.httpStatus).json({ message: error.reason });
+    if (error instanceof OrderEngineError) return res.status(error.httpStatus).json({ message: error.reason === 'FRACTIONAL_QUANTITY_NOT_ALLOWED' ? 'Este produto não permite quantidade fracionada.' : error.reason === 'PACKAGING_NOT_ALLOWED' ? 'Este produto não permite embalagem.' : error.reason });
     return next(error);
   }
 });

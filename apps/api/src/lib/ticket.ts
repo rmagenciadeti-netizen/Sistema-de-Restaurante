@@ -1,10 +1,13 @@
 export type TicketItem = { quantity: number; name: string; notes?: string | null; extras?: string[] };
+
+const quantityLabel = (quantity: number) => Number.isInteger(quantity) ? String(quantity) : String(Number(quantity.toFixed(3)));
 export type TicketInput = {
   title: string;
   orderCode: string;
   channel: string;
   tableLabel?: string | null;
   customerName?: string | null;
+  companyHeader?: string[];
   createdAt: Date;
   items: TicketItem[];
 };
@@ -33,12 +36,14 @@ export function renderProductionTicket(input: TicketInput, paperWidthMm = 80): s
   const width = paperColumns(paperWidthMm);
   const rule = '-'.repeat(width);
   const when = input.createdAt.toISOString().replace('T', ' ').slice(0, 16);
-  const lines = [center(input.title.toUpperCase(), width), rule, `Pedido: ${input.orderCode}`, `Canal: ${input.channel}`];
+  const lines = [center(input.title.toUpperCase(), width)];
+  if (input.companyHeader?.length) lines.push(...input.companyHeader.flatMap(value => wrap(value, width)));
+  lines.push(rule, `Pedido: ${input.orderCode}`, `Canal: ${input.channel}`);
   if (input.tableLabel) lines.push(`Mesa: ${input.tableLabel}`);
   if (input.customerName) lines.push(...wrap(`Cliente: ${input.customerName}`, width));
   lines.push(`Hora: ${when} UTC`, rule);
   for (const item of input.items) {
-    lines.push(...wrap(`${item.quantity}x ${item.name}`, width));
+    lines.push(...wrap(`${quantityLabel(item.quantity)}x ${item.name}`, width));
     for (const extra of item.extras ?? []) lines.push(...wrap(`+ ${extra}`, width, '  '));
     if (item.notes) lines.push(...wrap(`* ${item.notes}`, width, '  '));
   }

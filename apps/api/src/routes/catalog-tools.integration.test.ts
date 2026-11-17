@@ -41,6 +41,49 @@ test('catalog tools: bulk price adjustment, scale lookup/export and category sch
   const A = await setup('catalog-a');
   const B = await setup('catalog-b');
 
+  await t.test('product display and POS free-price options are persisted', async () => {
+    const created = await call('POST', '/products', A.admin, { name: 'Preço variável', price: 12, allowFreePrice: true, alwaysShowDescription: true, allowFractionalQuantity: true, pickupTicket: true });
+    assert.equal(created.status, 201);
+    assert.equal(created.body.allowFreePrice, true);
+    assert.equal(created.body.alwaysShowDescription, true);
+    assert.equal(created.body.allowFractionalQuantity, true);
+    assert.equal(created.body.pickupTicket, true);
+    const updated = await call('PATCH', `/products/${created.body.id}`, A.admin, { allowFreePrice: false, alwaysShowDescription: false, allowFractionalQuantity: false, pickupTicket: false });
+    assert.equal(updated.status, 200);
+    assert.equal(updated.body.allowFreePrice, false);
+    assert.equal(updated.body.alwaysShowDescription, false);
+    assert.equal(updated.body.allowFractionalQuantity, false);
+    assert.equal(updated.body.pickupTicket, false);
+    const stored = await prisma.product.findUniqueOrThrow({ where: { id: created.body.id } });
+    assert.equal(stored.allowFreePrice, false);
+    assert.equal(stored.alwaysShowDescription, false);
+    assert.equal(stored.allowFractionalQuantity, false);
+    assert.equal(stored.pickupTicket, false);
+  });
+
+  await t.test('product stock is tenant-scoped, auditable and rejects negative balances', async () => {
+    const invalidInitial = await call('POST', '/products', A.admin, { name: 'Sem controle', price: 4, initialStock: 2 });
+    assert.equal(invalidInitial.status, 400);
+    const created = await call('POST', '/products', A.admin, { name: 'Produto controlado', price: 7, stockControlled: true, stockMin: 1, initialStock: 3 });
+    assert.equal(created.status, 201, JSON.stringify(created.body));
+    assert.equal(created.body.stockQuantity, '3');
+    assert.equal((await prisma.productStockMovement.count({ where: { productId: created.body.id } })), 1, 'opening balance creates a movement');
+
+    const movement = (token: string, type: string, action: string, quantity: number) => call('POST', `/products/${created.body.id}/stock-movements`, token, { type, action, quantity });
+    assert.equal((await movement(A.waiter, 'PURCHASE', 'ADD', 1)).status, 403, 'stock moves require management');
+    assert.equal((await movement(A.admin, 'PURCHASE', 'REMOVE', 1)).status, 400, 'purchase cannot reduce stock');
+    const purchase = await movement(A.admin, 'PURCHASE', 'ADD', 1.5);
+    assert.equal(purchase.status, 201);
+    assert.equal(purchase.body.stockQuantity, '4.5');
+    const waste = await movement(A.admin, 'WASTE', 'REMOVE', 0.5);
+    assert.equal(waste.status, 201);
+    assert.equal(waste.body.stockQuantity, '4');
+    assert.equal((await movement(A.admin, 'WASTE', 'REMOVE', 5)).status, 409);
+    assert.equal((await movement(B.admin, 'PURCHASE', 'ADD', 1)).status, 404, 'products cannot cross tenants');
+    assert.equal((await call('PATCH', `/products/${created.body.id}`, A.admin, { stockControlled: false })).status, 409, 'cannot turn off tracking with stock remaining');
+    assert.equal((await prisma.product.findUniqueOrThrow({ where: { id: created.body.id } })).stockQuantity.toString(), '4');
+  });
+
   await t.test('bulk adjust previews, skips invalid items, applies atomically and stays tenant-scoped', async () => {
     const [cheap, costed, noCost] = await Promise.all([
       prisma.product.create({ data: { tenantId: A.tenant.id, unitId: A.unit.id, name: 'Água', price: 3 } }),

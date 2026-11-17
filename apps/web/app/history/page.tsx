@@ -85,7 +85,7 @@ export default function HistoryPage() {
                 <td className="whitespace-nowrap text-slate-600">{formatDateTime(order.createdAt)}</td>
                 <td>{order.tableLabel ? `Mesa/comanda ${order.tableLabel}` : order.customerName || order.customer?.name || '—'}</td>
                 <td>{channelLabels[order.channel] ?? order.channel}</td>
-                <td>{order.items.filter(item => !item.parentItemId).reduce((sum, item) => sum + item.quantity, 0)}</td>
+                <td>{order.items.filter(item => !item.parentItemId).reduce((sum, item) => sum + Number(item.quantity), 0)}</td>
                 <td>{paid <= 0 ? <Badge>Pendente</Badge> : paid >= Number(order.total) ? <Badge tone="green">{formatMoney(paid)}</Badge> : <Badge tone="amber">Parcial {formatMoney(paid)}</Badge>}</td>
                 <td className="text-right font-semibold">{formatMoney(order.total)}</td>
                 <td><Badge tone={statusTone[order.status as keyof typeof statusTone] ?? 'neutral'}>{statusLabels[order.status] ?? order.status}</Badge></td>

@@ -1,6 +1,7 @@
 'use client';
 
-import { useState } from 'react';
+import { Suspense, useState } from 'react';
+import { useSearchParams } from 'next/navigation';
 import { api, errorMessage, ListResponse } from '../../lib/api';
 import { useAutoLoad } from '../../lib/use-auto-load';
 import { AppShell, buttonClass, Field, Notice, secondaryButtonClass } from '../../components/app-shell';
@@ -11,9 +12,10 @@ import type { DeleteResult, FinancialCategory, FinancialCategoryType } from '../
 const tabs: { key: FinancialCategoryType; label: string }[] = [{ key: 'EXPENSE', label: 'Contas a pagar' }, { key: 'INCOME', label: 'Contas a receber' }];
 const emptyForm = { name: '', active: true };
 
-export default function FinancialCategoriesPage() {
+function FinancialCategoriesContent() {
+  const typeParam = useSearchParams().get('type');
   const [items, setItems] = useState<FinancialCategory[]>([]);
-  const [type, setType] = useState<FinancialCategoryType>('EXPENSE');
+  const [type, setType] = useState<FinancialCategoryType>(typeParam === 'INCOME' ? 'INCOME' : 'EXPENSE');
   const [q, setQ] = useState(''); const [active, setActive] = useState('');
   const [editing, setEditing] = useState<FinancialCategory | 'new' | null>(null);
   const [form, setForm] = useState(emptyForm);
@@ -71,4 +73,8 @@ export default function FinancialCategoriesPage() {
         </tr>)}
       </DataTable>}
   </AppShell>;
+}
+
+export default function FinancialCategoriesPage() {
+  return <Suspense fallback={null}><FinancialCategoriesContent /></Suspense>;
 }

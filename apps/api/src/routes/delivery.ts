@@ -1,5 +1,5 @@
 import { Router, type Request } from 'express';
-import { DeliveryStatus } from '@prisma/client';
+import { DeliveryStatus, type Prisma } from '@prisma/client';
 import { z } from 'zod';
 import { prisma } from '../lib/prisma';
 import { requireAuth, requireTenant } from '../middleware/auth';
@@ -63,7 +63,35 @@ deliveryRoutes.patch('/:id/courier', async (req, res, next) => {
     return res.json(await prisma.deliveryJob.update({ where: { id: job.id }, data }));
   } catch (error) { return next(error); }
 });
+const notifyOutForDelivery = (order: { id: string; code: string; number: number | null; total: Prisma.Decimal; customer: { name: string; phone: string } | null }, job: { tenantId: string; courierName: string | null }) => {
+  if (!order.customer) return Promise.resolve();
+  return enqueueAutoMessage(prisma, { tenantId: job.tenantId, key: 'order_out_for_delivery', phone: order.customer.phone, orderId: order.id, vars: { nome: order.customer.name.split(' ')[0], pedido: orderLabel(order), orderCode: order.code, customerName: order.customer.name, total: brl(order.total), entregador: job.courierName ? ` com ${job.courierName}` : '' } }).then(() => undefined).catch(() => undefined);
+};
 deliveryRoutes.patch('/:id/status', async (req, res, next) => {
-  try { const status = z.nativeEnum(DeliveryStatus).safeParse(req.body?.status); if (!status.success) return res.status(400).json({ message: 'Invalid delivery status' }); const job = await prisma.deliveryJob.findFirst({ where: { id: req.params.id, tenantId: req.auth!.tenantId!, ...(req.auth!.unitId ? { unitId: req.auth!.unitId } : {}) } }); if (!job) return res.status(404).json({ message: 'Delivery job not found' }); const updated = await prisma.deliveryJob.update({ where: { id: job.id }, data: { status: status.data, ...(status.data === 'PICKED_UP' ? { dispatchedAt: new Date() } : {}), ...(status.data === 'DELIVERED' ? { deliveredAt: new Date() } : {}) } }); if (status.data === 'PICKED_UP' && job.status !== 'PICKED_UP') { const order = await prisma.order.findUnique({ where: { id: job.orderId }, include: { customer: { select: { name: true, phone: true } } } }); if (order?.customer) await enqueueAutoMessage(prisma, { tenantId: job.tenantId, key: 'order_out_for_delivery', phone: order.customer.phone, orderId: order.id, vars: { nome: order.customer.name.split(' ')[0], pedido: orderLabel(order), orderCode: order.code, customerName: order.customer.name, total: brl(order.total), entregador: updated.courierName ? ` com ${updated.courierName}` : '' } }).catch(() => undefined); } return res.json(updated); }
+  try { const status = z.nativeEnum(DeliveryStatus).safeParse(req.body?.status); if (!status.success) return res.status(400).json({ message: 'Invalid delivery status' }); const job = await prisma.deliveryJob.findFirst({ where: { id: req.params.id, tenantId: req.auth!.tenantId!, ...(req.auth!.unitId ? { unitId: req.auth!.unitId } : {}) } }); if (!job) return res.status(404).json({ message: 'Delivery job not found' }); const updated = await prisma.deliveryJob.update({ where: { id: job.id }, data: { status: status.data, ...(status.data === 'PICKED_UP' ? { dispatchedAt: new Date() } : {}), ...(status.data === 'DELIVERED' ? { deliveredAt: new Date() } : {}) } }); if (status.data === 'PICKED_UP' && job.status !== 'PICKED_UP') { const order = await prisma.order.findUnique({ where: { id: job.orderId }, include: { customer: { select: { name: true, phone: true } } } }); if (order) await notifyOutForDelivery(order, updated); } return res.json(updated); }
   catch (error) { return next(error); }
+});
+// One step from the order board: creates the delivery when the order has none, sets the courier and marks it as out for delivery.
+deliveryRoutes.post('/orders/:orderId/dispatch', async (req, res, next) => {
+  try {
+    const input = z.object({ courierId: z.string().uuid().optional(), courierName: z.string().trim().max(160).optional(), courierPhone: z.string().trim().max(30).optional(), address: z.string().trim().max(500).optional() }).safeParse(req.body); if (!input.success) return res.status(400).json({ message: 'Validation failed', errors: input.error.flatten() });
+    const tenantId = req.auth!.tenantId!;
+    const order = await prisma.order.findFirst({ where: { id: req.params.orderId, tenantId, ...(req.auth!.unitId ? { unitId: req.auth!.unitId } : {}), channel: 'DELIVERY' }, include: { customer: { select: { name: true, phone: true } }, deliveryJob: true } });
+    if (!order) return res.status(404).json({ message: 'Delivery order not found' });
+    if (order.status !== 'READY') return res.status(409).json({ message: 'Só pedidos prontos podem sair para entrega.' });
+    const current = order.deliveryJob;
+    if (current && (current.status === 'DELIVERED' || current.status === 'CANCELLED')) return res.status(409).json({ message: 'Entrega encerrada não pode ser despachada.' });
+    let courier: { courierId: string | null; courierName: string | null; courierPhone: string | null } | null = null;
+    if (input.data.courierId) {
+      const found = await findActiveCourier(req, input.data.courierId); if (!found) return res.status(400).json({ message: 'Entregador inválido ou inativo.' });
+      courier = { courierId: found.id, courierName: found.name, courierPhone: found.phone };
+    } else if (input.data.courierName) courier = { courierId: null, courierName: input.data.courierName, courierPhone: input.data.courierPhone || null };
+    else if (current?.courierName) courier = { courierId: current.courierId, courierName: current.courierName, courierPhone: current.courierPhone };
+    if (!courier) return res.status(400).json({ message: 'Escolha o entregador antes de enviar o pedido.' });
+    const address = input.data.address || current?.address || undefined;
+    const data = { ...courier, ...(address ? { address } : {}), status: 'PICKED_UP' as const, dispatchedAt: new Date() };
+    const job = current ? await prisma.deliveryJob.update({ where: { id: current.id }, data }) : await prisma.deliveryJob.create({ data: { ...data, tenantId, unitId: order.unitId, orderId: order.id } });
+    if (current?.status !== 'PICKED_UP') await notifyOutForDelivery(order, job);
+    return res.status(current ? 200 : 201).json(job);
+  } catch (error) { return next(error); }
 });

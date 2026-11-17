@@ -56,6 +56,13 @@ test('tabular reports and virtual store', { skip: process.env.RUN_DB_TESTS !== '
   const range = `from=${encodeURIComponent(new Date(Date.now() - 3600_000).toISOString())}&to=${encodeURIComponent(new Date(Date.now() + 3 * 24 * 3600_000).toISOString())}`;
 
   await t.test('lists kinds and restricts reports to finance roles', async () => {
+    const fractionalProduct = await prisma.product.create({ data: { tenantId: A.tenant.id, unitId: A.unit.id, name: 'Queijo fracionado', price: 8, allowFractionalQuantity: true } });
+    const fractionalSale = await sale(`R4-${suffix}`, fractionalProduct.id, 0.375, 8);
+    const overview = await call<any>('GET', `/reports/overview?${range}`, A.admin);
+    assert.equal(overview.status, 200);
+    assert.equal(overview.body.bestSellers.find((item: any) => item.productId === fractionalProduct.id).quantity, 0.375);
+    await prisma.order.delete({ where: { id: fractionalSale.id } });
+    await prisma.product.delete({ where: { id: fractionalProduct.id } });
     const list = await call<{ items: { kind: string }[] }>('GET', '/reports/x', A.admin);
     assert.equal(list.status, 200);
     assert.ok(list.body.items.length >= 18);
@@ -113,9 +120,17 @@ test('tabular reports and virtual store', { skip: process.env.RUN_DB_TESTS !== '
     assert.equal(store.status, 200);
     assert.equal(store.body.restaurant.name, 'Loja a');
     assert.equal(store.body.open, true);
+    assert.equal(store.body.storeMode, 'MENU');
+    assert.equal(store.body.minorControl, false);
     assert.equal(store.body.metaPixelId, null, 'no pixel configured by default');
     assert.equal((await call('PUT', '/settings/store', A.admin, { metaPixelId: '123456789012345' })).status, 200);
     assert.equal((await call<any>('GET', `/public/store/${A.tenant.slug}`)).body.metaPixelId, '123456789012345', 'configured pixel reaches the public store');
+    const savedStoreSettings = (await call<any>('GET', '/settings', A.admin)).body.settings.store;
+    assert.equal((await call('PUT', '/settings/store', A.admin, { ...savedStoreSettings, mode: 'ECOMMERCE', minorControl: true })).status, 200);
+    const configuredStore = await call<any>('GET', `/public/store/${A.tenant.slug}`);
+    assert.equal(configuredStore.body.storeMode, 'ECOMMERCE');
+    assert.equal(configuredStore.body.minorControl, true);
+    await call('PUT', '/settings/store', A.admin, savedStoreSettings);
     assert.equal(store.body.scheduling.enabled, true);
     const products = store.body.categories.flatMap((category: any) => category.products);
     assert.equal(products.length, 3);
@@ -147,6 +162,27 @@ test('tabular reports and virtual store', { skip: process.env.RUN_DB_TESTS !== '
     assert.equal((await fetch(`${base}/public/store/${A.tenant.slug}/products/${p2.id}/image`)).status, 404);
   });
 
+  await t.test('store logo and cover are validated, managed by managers and served publicly', async () => {
+    const png = Buffer.concat([Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]), Buffer.alloc(32, 3)]);
+    const dataUrl = `data:image/png;base64,${png.toString('base64')}`;
+    assert.equal((await call('PUT', '/settings/store-image/LOGO', A.waiter, { dataUrl })).status, 403);
+    assert.equal((await call('PUT', '/settings/store-image/BANNER', A.admin, { dataUrl })).status, 404);
+    assert.equal((await call('PUT', '/settings/store-image/LOGO', A.admin, { dataUrl: 'data:image/svg+xml;base64,PHN2Zz48L3N2Zz4=' })).status, 400);
+    assert.equal((await call('PUT', '/settings/store-image/LOGO', A.admin, { dataUrl })).status, 200);
+    assert.equal((await call<any>('GET', '/settings/store-image/LOGO', A.waiter)).body.dataUrl, dataUrl);
+    assert.ok((await call<any>('GET', '/settings', A.admin)).body.storeImages.LOGO);
+    const store = await call<any>('GET', `/public/store/${A.tenant.slug}`);
+    assert.ok(store.body.restaurant.logoVersion);
+    assert.equal(store.body.restaurant.coverVersion, null);
+    const served = await fetch(`${base}/public/store/${A.tenant.slug}/image/LOGO`);
+    assert.equal(served.status, 200);
+    assert.equal(served.headers.get('content-type'), 'image/png');
+    assert.equal((await fetch(`${base}/public/store/${B.tenant.slug}/image/LOGO`)).status, 404, 'each store serves only its own picture');
+    assert.equal((await fetch(`${base}/public/store/${A.tenant.slug}/image/COVER`)).status, 404);
+    assert.equal((await call('DELETE', '/settings/store-image/LOGO', A.admin)).status, 200);
+    assert.equal((await fetch(`${base}/public/store/${A.tenant.slug}/image/LOGO`)).status, 404);
+  });
+
   await t.test('venue-only products and components stay off the online menu', async () => {
     assert.equal((await call('PATCH', `/products/${p2.id}`, A.admin, { gtin: '123' })).status, 400, 'GTIN length');
     assert.equal((await call('PATCH', `/products/${p2.id}`, A.admin, { measureUnit: 'XX' })).status, 400);
@@ -158,6 +194,10 @@ test('tabular reports and virtual store', { skip: process.env.RUN_DB_TESTS !== '
     const rejected = await call<any>('POST', `/public/store/${A.tenant.slug}/orders`, undefined, { fulfillment: 'TAKEAWAY', customer: { name: 'Maria', phone: '11988887777' }, items: [{ productId: p2.id, quantity: 1 }] });
     assert.equal(rejected.status, 400);
     assert.equal(rejected.body.message, 'PRODUCTS_UNAVAILABLE');
+    assert.equal((await call('PATCH', `/products/${p2.id}`, A.admin, { productType: 'NOPE' })).status, 400);
+    await call('PATCH', `/products/${p2.id}`, A.admin, { localOnly: false, isComponent: false, allowNotes: false, productType: 'MERCHANDISE' });
+    assert.equal((await call<any>('GET', `/public/store/${A.tenant.slug}`)).body.categories.flatMap((category: any) => category.products).find((item: any) => item.id === p2.id).allowNotes, false, 'store hides the note box');
+    await call('PATCH', `/products/${p2.id}`, A.admin, { allowNotes: true });
     await call('PATCH', `/products/${p2.id}`, A.admin, { localOnly: false, isComponent: true });
     assert.equal((await call<any>('GET', `/public/store/${A.tenant.slug}`)).body.categories.flatMap((category: any) => category.products).some((item: any) => item.id === p2.id), false, 'components are hidden too');
     await call('PATCH', `/products/${p2.id}`, A.admin, { isComponent: false });
@@ -168,6 +208,14 @@ test('tabular reports and virtual store', { skip: process.env.RUN_DB_TESTS !== '
     const customer = { name: 'Maria', phone: '11988887777' };
     const items = [{ productId: p1.id, quantity: 1 }];
     const when = new Date(Date.now() + 2 * 24 * 3600_000);
+    const savedStoreSettings = (await call<any>('GET', '/settings', A.admin)).body.settings.store;
+    await call('PUT', '/settings/store', A.admin, { ...savedStoreSettings, allowBuyWhenClosed: false, minorControl: true });
+    const missingAgeConfirmation = await call<any>('POST', `/public/store/${A.tenant.slug}/orders`, undefined, { fulfillment: 'TAKEAWAY', customer, items });
+    assert.equal(missingAgeConfirmation.status, 400);
+    assert.equal(missingAgeConfirmation.body.message, 'AGE_CONFIRMATION_REQUIRED');
+    const confirmed = await call<any>('POST', `/public/store/${A.tenant.slug}/orders`, undefined, { fulfillment: 'TAKEAWAY', customer, items, adultConfirmed: true });
+    assert.equal(confirmed.status, 201);
+    await call('PUT', '/settings/store', A.admin, { ...savedStoreSettings, minorControl: false });
     const scheduled = await call<any>('POST', `/public/store/${A.tenant.slug}/orders`, undefined, { fulfillment: 'TAKEAWAY', customer, items, scheduledFor: when.toISOString() });
     assert.equal(scheduled.status, 201);
     assert.equal(scheduled.body.total, '100');
@@ -176,6 +224,11 @@ test('tabular reports and virtual store', { skip: process.env.RUN_DB_TESTS !== '
     assert.equal(order.channel, 'TAKEAWAY');
     assert.equal(order.releasedAt, null);
     assert.equal(await prisma.payment.count({ where: { orderId: order.id } }), 0);
+    const fractionalProduct = await prisma.product.create({ data: { tenantId: A.tenant.id, unitId: A.unit.id, name: 'Farinha fracionada', price: 8, allowFractionalQuantity: true } });
+    const fractional = await call<any>('POST', `/public/store/${A.tenant.slug}/orders`, undefined, { fulfillment: 'TAKEAWAY', customer, items: [{ productId: fractionalProduct.id, quantity: 0.375 }] });
+    assert.equal(fractional.status, 201, JSON.stringify(fractional.body));
+    const fractionalOrder = await prisma.order.findFirstOrThrow({ where: { tenantId: A.tenant.id, code: fractional.body.code }, include: { items: true } });
+    assert.equal(fractionalOrder.items[0].quantity.toString(), '0.375');
     const report = await call<Report>('GET', `/reports/x/scheduled-sales?${range}`, A.admin);
     assert.deepEqual(report.body.rows.map(row => row.status), ['Aguardando liberação']);
     const tooSoon = await call('POST', `/public/store/${A.tenant.slug}/orders`, undefined, { fulfillment: 'TAKEAWAY', customer, items, scheduledFor: new Date(Date.now() + 60_000).toISOString() });

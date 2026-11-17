@@ -6,9 +6,9 @@ import { allowRead, FINANCE_ROLES, MANAGEMENT_ROLES } from '../lib/permissions';
 import { activeFilter, audit, isUniqueViolation, listQuerySchema, unitReadScope, validationError } from '../lib/registry';
 
 /**
- * Fiscal/Tributos: cadastro de regras tributárias (NCM, CEST, CFOP, origem, CST e alíquotas de ICMS/PIS/COFINS).
- * Este módulo APENAS armazena os parâmetros que serão repassados ao provedor fiscal configurado em /fiscal.
- * Ele não calcula impostos, não valida a regra contra a legislação e não transmite nada à SEFAZ.
+ * Fiscal/Tributos: regras tributárias (NCM, CEST, CFOP, origem, ICMS/ST/FCP, PIS, COFINS, IPI, IBS/CBS/IS, cClassTrib, cBenef) com vigência.
+ * As alíquotas são parâmetros da empresa (nada fixo no código) e são repassadas ao provedor fiscal na emissão (/fiscal).
+ * Fora da vigência a regra é ignorada e vale a regra padrão da empresa (Configurações > Fiscais).
  */
 export const taxRuleRoutes = Router();
 taxRuleRoutes.use(requireAuth, requireTenant, allowRead(FINANCE_ROLES, MANAGEMENT_ROLES));
@@ -35,8 +35,14 @@ const schema = z.object({
   pisRate: rate,
   cofinsCst: cst('CST da COFINS'),
   cofinsRate: rate,
+  icmsStMva: rate, icmsStRate: rate, icmsStReduction: rate, fcpRate: rate, fcpStRate: rate,
+  cBenef: z.string().trim().regex(/^([A-Z]{2}\d{6}|[A-Z]{2}[A-Z0-9]{6})?$/, 'cBenef deve ter 8 caracteres (ex.: MT000001)').nullish().transform(value => value || null),
+  ipiCst: cst('CST do IPI'), ipiEnquadramento: digits(3, 'Código de enquadramento do IPI'), ipiRate: rate,
+  ibsCbsCst: z.string().trim().regex(/^\d{3}$/, 'CST IBS/CBS deve ter 3 dígitos').nullish().transform(value => value || null), cClassTrib: digits(6, 'cClassTrib'),
+  ibsUfRate: rate, ibsMunRate: rate, cbsRate: rate, isRate: rate,
+  validFrom: z.coerce.date().nullish(), validTo: z.coerce.date().nullish(),
   active: z.boolean().default(true),
-});
+}).refine(value => !value.validFrom || !value.validTo || value.validFrom <= value.validTo, { message: 'A vigência final deve ser posterior à inicial', path: ['validTo'] });
 const conflict = { message: 'Já existe uma regra com esse nome.' };
 const idsSchema = z.object({ productIds: z.array(z.string().uuid()).min(1).max(500) });
 const ruleScope = (req: Parameters<typeof unitReadScope>[0], id: string) => ({ id, tenantId: req.auth!.tenantId! });
@@ -105,7 +111,7 @@ taxRuleRoutes.post('/:id/unassign', async (req, res, next) => {
 taxRuleRoutes.patch('/:id', async (req, res, next) => {
   try {
     if (!MANAGEMENT_ROLES.includes(req.auth!.role)) return res.status(403).json({ message: 'Insufficient permissions' });
-    const parsed = schema.partial().safeParse(req.body); if (!parsed.success) return res.status(400).json(validationError(parsed.error));
+    const parsed = schema.innerType().partial().safeParse(req.body); if (!parsed.success) return res.status(400).json(validationError(parsed.error));
     const tenantId = req.auth!.tenantId!;
     const current = await prisma.taxRule.findFirst({ where: ruleScope(req, req.params.id) }); if (!current) return res.status(404).json({ message: 'Regra não encontrada.' });
     if (parsed.data.name && await prisma.taxRule.findFirst({ where: { tenantId, id: { not: current.id }, name: { equals: parsed.data.name, mode: 'insensitive' } } })) return res.status(409).json(conflict);

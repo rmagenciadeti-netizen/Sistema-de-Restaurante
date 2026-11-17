@@ -28,27 +28,33 @@ export const menuGroups: MenuGroup[] = [
   { title: 'Início', icon: '🏠', items: [{ href: '/dashboard', label: 'Visão geral', icon: '🏠' }] },
   { title: 'Para seus clientes', icon: '🙂', items: [
     { href: '/store', label: 'Link da loja virtual', icon: '🔗' }, { href: '/customers', label: 'Cadastro de clientes', icon: '⭐' },
-    { href: '/coupons', label: 'Cupons de desconto', icon: '🏷️' }, { href: '/reservations', label: 'Reservas', icon: '📅' },
+    { href: '/coupons', label: 'Cupons de desconto', icon: '🏷️' }, { href: '/tables', label: 'QR Code na mesa', icon: '▦' },
+    { href: '/reservations', label: 'Reservas', icon: '📅' },
   ] },
   { title: 'Gerenciamento de produtos', icon: '📦', items: [
-    { href: '/categories', label: 'Categorias', icon: '📋' }, { href: '/production', label: 'Setores de produção e impressão', icon: '🖨️' },
+    { href: '/categories', label: 'Categorias', icon: '📋' }, { href: '/production', label: 'Setores de produção', icon: '🖨️' },
     { href: '/products', label: 'Produtos', icon: '🍔' }, { href: '/bulk-adjust', label: 'Ajuste em massa', icon: '🔄' },
     { href: '/category-hours', label: 'Exibição das categorias', icon: '🕘' }, { href: '/promotions', label: 'Promoções', icon: '🔖' },
     { href: '/scale-file', label: 'Arquivo para balança', icon: '⚖️' }, { href: '/catalog', label: 'Adicionais e combos', icon: '🧀' },
     { href: '/inventory', label: 'Estoque e fichas', icon: '📦' },
   ] },
   { title: 'Controle de entrega', icon: '🛵', items: [
-    { href: '/delivery', label: 'Entregas e zonas', icon: '🛵' }, { href: '/couriers', label: 'Entregadores', icon: '🏍️' }, { href: '/settings?tab=fulfillment', label: 'Zonas não mapeadas e taxas', icon: '📍' },
+    { href: '/couriers', label: 'Entregadores', icon: '🏍️' }, { href: '/settings?tab=fulfillment', label: 'Zonas não mapeadas', icon: '📍' },
+    { href: '/delivery', label: 'Entregas e zonas mapeadas', icon: '🛵' },
   ] },
   { title: 'Gerenciamento financeiro', icon: '💵', items: [
-    { href: '/cash', label: 'Caixa e pagamentos', icon: '💳' }, { href: '/payment-methods', label: 'Formas de pagamento', icon: '💶' },
-    { href: '/financial', label: 'Contas a pagar e receber', icon: '💰' }, { href: '/financial-categories', label: 'Categorias de contas', icon: '🗂️' },
+    { href: '/payment-methods', label: 'Formas de pagamento', icon: '💶' }, { href: '/financial?type=EXPENSE', label: 'Contas a pagar', icon: '📤' },
+    { href: '/financial?type=INCOME', label: 'Contas a receber', icon: '📥' }, { href: '/financial-categories?type=EXPENSE', label: 'Categorias (Contas a pagar)', icon: '🗂️' },
+    { href: '/financial-categories?type=INCOME', label: 'Categorias (Contas a receber)', icon: '🗂️' }, { href: '/received-invoices', label: 'NFC-es de recebimento', icon: '🧾' },
+    { href: '/cash', label: 'Caixa e pagamentos', icon: '💳' }, { href: '/financial', label: 'Visão geral do financeiro', icon: '💰' },
   ] },
   { title: 'Integração', icon: '🔗', items: [
-    { href: '/integrations', label: 'Marketplaces', icon: '🔌' }, { href: '/integrations?tab=payments', label: 'PIX, POS e fiscal', icon: '💠' }, { href: '/settings?tab=store', label: 'Pixel da loja (Meta)', icon: '🎯' }, { href: '/whatsapp', label: 'WhatsApp', icon: '💬' },
+    { href: '/integrations?tab=payments', label: 'Integração PIX', icon: '💠' }, { href: '/integrations?tab=pos', label: 'Integração POS', icon: '📟' },
+    { href: '/settings?tab=store', label: 'Integração Pixel', icon: '🎯' }, { href: '/whatsapp', label: 'Integração WhatsApp Business', icon: '💬' },
+    { href: '/integrations', label: 'Marketplaces e API', icon: '🔌' },
   ] },
   { title: 'Comandas', icon: '🪑', items: [
-    { href: '/tables', label: 'Mesas e QR Code', icon: '🪑' }, { href: '/comandas', label: 'Controle de comandas', icon: '📒' },
+    { href: '/tables', label: 'Mesas', icon: '🪑' }, { href: '/comandas', label: 'Controle de comandas', icon: '📒' },
     { href: '/history?channel=TABLE', label: 'Histórico de comandas', icon: '🕓' }, { href: '/kds', label: 'Cozinha (KDS)', icon: '👨‍🍳' },
   ] },
   { title: 'Movimento', icon: '🧾', items: [
@@ -58,7 +64,7 @@ export const menuGroups: MenuGroup[] = [
   { title: 'Relatórios', icon: '📊', items: reportMenu },
   { title: 'Cadastros', icon: '🗃️', items: [
     { href: '/employees', label: 'Funcionários', icon: '👥' }, { href: '/users', label: 'Usuários e permissões', icon: '🔐' },
-    { href: '/shifts', label: 'Escalas', icon: '🕒' }, { href: '/purchasing', label: 'Fornecedores e compras', icon: '🛒' },
+    { href: '/shifts', label: 'Escalas', icon: '🕒' }, { href: '/purchasing', label: 'Fornecedores', icon: '🛒' },
     { href: '/carriers', label: 'Transportadoras', icon: '🚚' }, { href: '/units', label: 'Unidades', icon: '📍' },
     { href: '/companies', label: 'Empresas', icon: '🏢', masterOnly: true }, { href: '/provisioning', label: 'Provisionamento', icon: '⚙️', masterOnly: true },
   ] },
@@ -71,8 +77,9 @@ export const menuGroups: MenuGroup[] = [
     { href: '/cst-map', label: 'Correlação CST ICMS x Entrada', icon: '🔁' },
   ] },
   { title: 'Configurações gerais', icon: '⚙️', items: [
-    { href: '/settings', label: 'Empresa e preferências', icon: '⚙️' }, { href: '/schedule-settings', label: 'Agendamento de pedidos', icon: '⏰' },
-    { href: '/cover-events', label: 'Couvert artístico', icon: '🎤' }, { href: '/order-statuses', label: 'Status dos pedidos', icon: '📝' },
+    { href: '/settings', label: 'Empresa', icon: '⚙️' }, { href: '/schedule-settings', label: 'Agendamento de pedidos', icon: '⏰' },
+    { href: '/users', label: 'Cadastros de usuários', icon: '🔐' }, { href: '/cover-events', label: 'Couvert artístico', icon: '🎤' },
+    { href: '/order-statuses', label: 'Status dos pedidos', icon: '📝' }, { href: '/production', label: 'Gerenciadores de pedidos', icon: '🖨️' },
     { href: '/downloads', label: 'Downloads', icon: '⬇️' }, { href: '/audit', label: 'Auditoria', icon: '🛡️' },
     { href: '/plans', label: 'Planos e preços', icon: '💎', masterOnly: true }, { href: '/licenses', label: 'Licenças e módulos', icon: '🔑', masterOnly: true },
   ] },

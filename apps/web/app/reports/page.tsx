@@ -2,13 +2,14 @@
 
 import Link from 'next/link';
 import { useRouter, useSearchParams } from 'next/navigation';
-import { Suspense, useRef, useState } from 'react';
+import { Suspense, useEffect, useRef, useState } from 'react';
 import { api, API_BASE, errorMessage, formatMoney, ListResponse, ReportOverview, ServiceFeeDistribution, tokenStorageKey, WaiterReportRow } from '../../lib/api';
 import { useAutoLoad } from '../../lib/use-auto-load';
 import { REPORT_CATALOG, REPORT_OPTIONS, ReportTable } from '../../lib/types-reports';
 import { AppShell, buttonClass, Field, Notice, panelClass, secondaryButtonClass, Select } from '../../components/app-shell';
 import { PageHeader, StatCard } from '../../components/ui';
 import { ReportTableView, tableToCsv } from '../../components/report-table';
+import type { SettingsResponse, TenantSettings } from '../../lib/settings';
 
 const pad = (value: number) => String(value).padStart(2, '0');
 const dayString = (date: Date) => `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}`;
@@ -53,7 +54,17 @@ function ReportView({ kind, period, onPeriod }: { kind: string; period: Period; 
   const [from, setFrom] = useState(period.from); const [to, setTo] = useState(period.to); const [choice, setChoice] = useState('');
   const [message, setMessage] = useState(''); const [loading, setLoading] = useState(false); const [exporting, setExporting] = useState(false);
   const [loaded, setLoaded] = useState<Loaded>({});
+  const [settings, setSettings] = useState<TenantSettings | null>(null);
+  const [settingsLoading, setSettingsLoading] = useState(true);
   const request = useRef(0);
+
+  useEffect(() => {
+    let active = true;
+    api<SettingsResponse>('/settings').then(result => { if (active) setSettings(result.settings); })
+      .catch(e => { if (active) setMessage(errorMessage(e, 'Não foi possível carregar as configurações de impressão')); })
+      .finally(() => { if (active) setSettingsLoading(false); });
+    return () => { active = false; };
+  }, []);
 
   const queryFor = (start: string, end: string, filter: string) => `from=${encodeURIComponent(startOf(start))}&to=${encodeURIComponent(endOf(end))}${option && filter ? `&${option.param}=${encodeURIComponent(filter)}` : ''}`;
 
@@ -94,6 +105,14 @@ function ReportView({ kind, period, onPeriod }: { kind: string; period: Period; 
         if (!response.ok) throw new Error('Não foi possível exportar o relatório');
         blob = await response.blob();
       }
+      if (settings?.printing.companyHeaderOnReports) {
+        const company = settings.company;
+        const header = [company.tradeName || company.legalName, company.document, [company.address, company.number, company.district, company.city, company.state].filter(Boolean).join(', '), company.phone].filter(Boolean);
+        if (header.length > 0) {
+          const content = (await blob.text()).replace(/^\uFEFF/, '');
+          blob = new Blob([`\uFEFF${header.join('\r\n')}\r\n\r\n${content}`], { type: 'text/csv;charset=utf-8' });
+        }
+      }
       const link = document.createElement('a');
       link.href = URL.createObjectURL(blob); link.download = `relatorio-${kind}-${from}_${to}.csv`; link.click();
       URL.revokeObjectURL(link.href);
@@ -103,10 +122,14 @@ function ReportView({ kind, period, onPeriod }: { kind: string; period: Period; 
   const periodLabel = periodless.has(kind) ? 'Situação atual' : `${from.split('-').reverse().join('/')} a ${to.split('-').reverse().join('/')}`;
   return <div className="min-w-0 flex-1">
     <PageHeader title={item.title} subtitle={item.description} actions={<>
-      <button type="button" className={secondaryButtonClass} onClick={() => void exportCsv()} disabled={exporting || loading || (!loaded.table && !loaded.overview)}>{exporting ? 'Exportando…' : '⬇ Exportar CSV'}</button>
-      <button type="button" className={secondaryButtonClass} onClick={() => window.print()} disabled={loading}>🖨 Imprimir</button>
+      <button type="button" className={secondaryButtonClass} onClick={() => void exportCsv()} disabled={settingsLoading || exporting || loading || (!loaded.table && !loaded.overview)}>{exporting ? 'Exportando…' : '⬇ Exportar CSV'}</button>
+      <button type="button" className={secondaryButtonClass} onClick={() => window.print()} disabled={settingsLoading || loading}>🖨 Imprimir</button>
     </>} />
     {message && <Notice message={message} />}
+    {settings?.printing.companyHeaderOnReports && <div className="hidden text-center text-xs print:mb-4 print:block">
+      <strong>{settings.company.tradeName || settings.company.legalName}</strong>
+      {[settings.company.document, [settings.company.address, settings.company.number, settings.company.district, settings.company.city, settings.company.state].filter(Boolean).join(', '), settings.company.phone].filter(Boolean).map(line => <p key={line}>{line}</p>)}
+    </div>}
     <section className={`${panelClass} mb-4 print:hidden`} aria-label="Filtros">
       <form onSubmit={event => { event.preventDefault(); apply({ from, to }); }} className="flex flex-wrap items-end gap-3">
         {!periodless.has(kind) && <>

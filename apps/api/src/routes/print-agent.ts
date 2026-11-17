@@ -24,7 +24,8 @@ printAgentRoutes.get('/jobs/next', async (req, res, next) => {
     });
     const claimable = { OR: [{ status: PrintJobStatus.PENDING }, { status: PrintJobStatus.PRINTING, claimedAt: { lt: staleBefore } }] };
     const candidates = await prisma.printJob.findMany({
-      where: { tenantId, printerId: { not: null }, attempts: { lt: MAX_PRINT_ATTEMPTS }, ...unitScope, ...claimable },
+      // Printers bound to another agent (Windows printers) are left for that agent.
+      where: { tenantId, printerId: { not: null }, printer: { OR: [{ agentId: null }, { agentId }] }, attempts: { lt: MAX_PRINT_ATTEMPTS }, ...unitScope, ...claimable },
       orderBy: { createdAt: 'asc' }, take: limit, select: { id: true },
     });
     const items = [];
@@ -35,9 +36,20 @@ printAgentRoutes.get('/jobs/next', async (req, res, next) => {
       const job = await prisma.printJob.findUnique({ where: { id }, include: { printer: true } });
       if (!job?.printer) continue;
       const { printer } = job;
-      items.push({ id: job.id, claimId, kind: job.kind, content: job.content, attempts: job.attempts, printer: { connectionType: printer.connectionType, address: printer.address, port: printer.port, paperWidthMm: printer.paperWidthMm, autoCut: printer.autoCut, cashDrawer: printer.cashDrawer } });
+      items.push({ id: job.id, claimId, kind: job.kind, content: job.content, attempts: job.attempts, printer: { connectionType: printer.connectionType, name: printer.name, address: printer.address, port: printer.port, paperWidthMm: printer.paperWidthMm, autoCut: printer.autoCut, cashDrawer: printer.cashDrawer } });
     }
     return res.json({ items });
+  } catch (error) { return next(error); }
+});
+
+// The agent lists the printers installed on its computer so the panel can offer them in the printer form.
+const reportedPrinter = z.object({ name: z.string().trim().min(1).max(255), isDefault: z.boolean().optional(), driver: z.string().max(255).optional(), port: z.string().max(255).optional(), status: z.string().max(60).optional() });
+printAgentRoutes.post('/printers', async (req, res, next) => {
+  try {
+    const parsed = z.object({ printers: z.array(reportedPrinter).max(200) }).safeParse(req.body); if (!parsed.success) return res.status(400).json({ message: 'Validation failed' });
+    const unique = [...new Map(parsed.data.printers.map(item => [item.name, item])).values()].sort((a, b) => a.name.localeCompare(b.name, 'pt-BR'));
+    await prisma.printAgent.update({ where: { id: req.agent!.agentId }, data: { printers: unique, printersReportedAt: new Date() } });
+    return res.json({ received: unique.length });
   } catch (error) { return next(error); }
 });
 

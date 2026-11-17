@@ -1,0 +1,3 @@
+-- AlterTable
+ALTER TABLE "Product" ADD COLUMN     "allowNotes" BOOLEAN NOT NULL DEFAULT true,
+ADD COLUMN     "productType" TEXT NOT NULL DEFAULT 'FINISHED';

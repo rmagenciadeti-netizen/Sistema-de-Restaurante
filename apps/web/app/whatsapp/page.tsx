@@ -39,6 +39,7 @@ function WhatsappCenter() {
   const [session, setSession] = useState<WhatsappSession | null>(null);
   const [sessionError, setSessionError] = useState<string | null>(null);
   const [stats, setStats] = useState<WhatsappStats | null>(null);
+  const [serviceVersion, setServiceVersion] = useState('—');
   const [wa, setWa] = useState<WhatsappSettings | null>(null);
   const [role, setRole] = useState<string | undefined>();
   const [saving, setSaving] = useState(false);
@@ -57,6 +58,10 @@ function WhatsappCenter() {
     statsInFlight.current = true;
     try { setStats(await api<WhatsappStats>('/whatsapp/stats')); } catch { /* os cartões ficam com "—" */ } finally { statsInFlight.current = false; }
   }
+  async function loadVersion() {
+    try { setServiceVersion((await api<{ version: string }>('/health')).version); }
+    catch (e) { setServiceVersion('Indisponível'); setNotice({ text: friendlyError(e, 'Não foi possível consultar a versão do serviço'), kind: 'error' }); }
+  }
   async function loadSettings() {
     try {
       const result = await api<SettingsResponse>('/settings');
@@ -68,6 +73,7 @@ function WhatsappCenter() {
   const polling = tab === 'connection' && (session?.status === 'CONNECTING' || session?.status === 'QR_READY');
   useAutoLoad(loadSession, polling ? 2000 : 10000);
   useAutoLoad(loadStats, 15000);
+  useAutoLoad(loadVersion);
   useAutoLoad(loadSettings);
 
   async function saveWhatsapp(change: Partial<WhatsappSettings>, successText = 'Configuração salva.') {
@@ -98,13 +104,14 @@ function WhatsappCenter() {
   return <>
     <PageHeader title="WhatsApp e robô de atendimento" subtitle="Conecte o número do restaurante, acompanhe as conversas, ajuste as mensagens automáticas e ensine o robô." />
     {notice && <Notice message={notice.text} kind={notice.kind} />}
-    <div className="mb-4 grid grid-cols-2 gap-3 md:grid-cols-3 xl:grid-cols-6">
+    <div className="mb-4 grid grid-cols-2 gap-3 md:grid-cols-3 xl:grid-cols-7">
       <StatCard label="Conversas" value={count(stats?.conversations)} />
       <StatCard label="Recebidas hoje" value={count(stats?.inboundToday)} />
       <StatCard label="Respostas do robô hoje" value={count(stats?.botRepliesToday)} />
       <StatCard label="Aguardando atendente" value={count(stats?.handoffOpen)} tone={stats && stats.handoffOpen > 0 ? 'dark' : 'default'} />
       <StatCard label="Sem resposta" value={count(stats?.unanswered)} hint="perguntas que o robô não soube" />
       <StatCard label="Na fila de envio" value={count(stats?.outboundQueued)} />
+      <StatCard label="Versão do serviço" value={serviceVersion} hint="API usada pelo robô de atendimento" />
     </div>
     <GeneralSwitches settings={wa} saving={saving} canEdit={canEdit} aiConfigured={session?.aiConfigured} onChange={change => void saveWhatsapp(change)} />
     <Tabs tabs={[...tabs]} value={tab} onChange={changeTab} label="Seções do WhatsApp" />

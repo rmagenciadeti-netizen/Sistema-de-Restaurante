@@ -72,6 +72,7 @@ test('cash routes use authenticated database scope and atomic transactions', asy
         create: async (args: any) => { data = args.data; return { id: 'payment', ...data }; },
         aggregate: async ({ where }: any) => { aggregateWhere = where; return { _sum: { amount: new Prisma.Decimal('0.25') } }; },
       },
+      financialEntry: { findUnique: async () => null },
       auditLog: { create: async (args: any) => { audit = args.data; } },
     };
     const response = await post('/payments', { orderId, cashSessionId: sessionId, method: 'CASH', amount: 1.25 });

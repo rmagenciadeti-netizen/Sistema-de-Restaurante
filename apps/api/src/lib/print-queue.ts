@@ -1,5 +1,6 @@
 import { PrintJobKind, PrintJobStatus, Prisma } from '@prisma/client';
 import { renderProductionTicket, type TicketItem } from './ticket';
+import { loadSettings } from './settings';
 
 export type PrintableOrder = {
   id: string;
@@ -10,7 +11,7 @@ export type PrintableOrder = {
   tableLabel: string | null;
   customerName: string | null;
   createdAt: Date;
-  items: Array<{ quantity: number; weightKg?: Prisma.Decimal | null; notes: string | null; sectorId: string | null; status?: string; product: { name: string }; modifiers?: Array<{ name: string; quantity: number; sectorId: string | null }> }>;
+  items: Array<{ quantity: number | Prisma.Decimal; weightKg?: Prisma.Decimal | null; withPackaging?: boolean; notes: string | null; sectorId: string | null; status?: string; product: { name: string }; modifiers?: Array<{ name: string; quantity: number; sectorId: string | null }> }>;
 };
 
 type SectorWithPrinters = Prisma.ProductionSectorGetPayload<{ include: { printers: true } }>;
@@ -36,6 +37,10 @@ export async function enqueueProductionPrints(tx: Prisma.TransactionClient, orde
     where: { id: { in: sectorIds }, tenantId: order.tenantId, active: true, ...(options.onlyAutoPrint ? { autoPrint: true } : {}) },
     include: { printers: true },
   });
+  const settings = await loadSettings(tx, order.tenantId);
+  const companyHeader = settings.printing.companyHeaderOnProduction
+    ? [settings.company.tradeName || settings.company.legalName, settings.company.document, [settings.company.address, settings.company.number, settings.company.district, settings.company.city, settings.company.state].filter(Boolean).join(', '), settings.company.phone].filter(Boolean)
+    : undefined;
   const jobs = [];
   for (const sector of sectors) {
     const compatible = sectorMatchesUnit(sector, order.unitId);
@@ -45,8 +50,8 @@ export async function enqueueProductionPrints(tx: Prisma.TransactionClient, orde
     for (const item of live) {
       const mods = item.modifiers ?? [];
       const inline = mods.filter(modifier => modifier.sectorId === null || modifier.sectorId === item.sectorId);
-      if (item.sectorId === sector.id) lines.push({ quantity: item.quantity, name: item.weightKg ? `${item.product.name} (${item.weightKg.toFixed(3)} kg)` : item.product.name, notes: item.notes, extras: inline.map(modifier => `${modifier.quantity}x ${modifier.name}`) });
-      for (const modifier of mods.filter(candidate => candidate.sectorId === sector.id && candidate.sectorId !== item.sectorId)) lines.push({ quantity: modifier.quantity * item.quantity, name: modifier.name, notes: `para ${item.product.name}` });
+      if (item.sectorId === sector.id) lines.push({ quantity: Number(item.quantity), name: item.weightKg ? `${item.product.name} (${item.weightKg.toFixed(3)} kg)` : item.product.name, notes: item.notes, extras: [...(item.withPackaging ? ['Embalagem'] : []), ...inline.map(modifier => `${modifier.quantity}x ${modifier.name}`)] });
+      for (const modifier of mods.filter(candidate => candidate.sectorId === sector.id && candidate.sectorId !== item.sectorId)) lines.push({ quantity: modifier.quantity * Number(item.quantity), name: modifier.name, notes: `para ${item.product.name}` });
     }
     const content = renderProductionTicket({
       title: sector.name,
@@ -56,6 +61,7 @@ export async function enqueueProductionPrints(tx: Prisma.TransactionClient, orde
       customerName: order.customerName,
       createdAt: order.createdAt,
       items: lines,
+      companyHeader,
     }, printer?.paperWidthMm);
     jobs.push(await tx.printJob.create({
       data: {

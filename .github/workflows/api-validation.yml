@@ -44,7 +44,7 @@ jobs:
         env:
           RUN_DB_TESTS: '1'
       - run: npm run test --workspace apps/print-agent
-      - run: npm exec --workspace apps/web -- node --import tsx --test app/orders/page.test.mjs app/cash/page.test.mjs app/inventory/page.test.mjs app/purchasing/page.test.mjs app/reservations/page.test.mjs app/products/page.test.mjs app/delivery/page.test.mjs app/categories/page.test.mjs lib/settings-helpers.test.mjs lib/api.test.mjs lib/session-guard.test.mjs lib/product-templates.test.mjs
+      - run: npm exec --workspace apps/web -- node --import tsx --test app/orders/page.test.mjs app/cash/page.test.mjs app/inventory/page.test.mjs app/purchasing/page.test.mjs app/reservations/page.test.mjs app/products/page.test.mjs app/delivery/page.test.mjs app/monitor/page.test.mjs app/production/page.test.mjs app/categories/page.test.mjs lib/settings-helpers.test.mjs lib/api.test.mjs lib/session-guard.test.mjs lib/product-templates.test.mjs
       - run: npm run lint --workspace apps/web
       - run: npm run build --workspace apps/web
       - run: npm run build --workspace apps/admin

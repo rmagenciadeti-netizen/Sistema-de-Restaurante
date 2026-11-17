@@ -1,5 +1,5 @@
 import { OrderStatus, Prisma, PrintJobStatus } from '@prisma/client';
-import { reverseOrderInventory } from './order-inventory';
+import { reverseOrderInventory, reverseOrderProductStock } from './order-inventory';
 import { brl, enqueueAutoMessage, orderLabel } from './whatsapp-auto';
 
 type OrderForEffects = {
@@ -25,8 +25,12 @@ export async function applyStatusSideEffects(tx: Prisma.TransactionClient, order
     if (points > 0) await tx.customer.update({ where: { id: order.customerId }, data: { loyaltyPoints: { increment: points } } });
   }
   if (status === OrderStatus.CANCELLED) {
-    if (actorUserId) await reverseOrderInventory(tx, order, actorUserId);
+    if (actorUserId) {
+      await reverseOrderInventory(tx, order, actorUserId);
+      await reverseOrderProductStock(tx, order, actorUserId);
+    }
     if (order.couponId) await tx.coupon.updateMany({ where: { id: order.couponId, tenantId: order.tenantId, usedCount: { gt: 0 } }, data: { usedCount: { decrement: 1 } } });
     await tx.printJob.updateMany({ where: { orderId: order.id, tenantId: order.tenantId, status: PrintJobStatus.PENDING }, data: { status: PrintJobStatus.CANCELLED } });
+    await tx.financialEntry.updateMany({ where: { orderId: order.id, tenantId: order.tenantId, status: 'OPEN' }, data: { status: 'CANCELLED' } });
   }
 }

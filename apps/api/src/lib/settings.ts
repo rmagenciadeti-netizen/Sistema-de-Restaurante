@@ -9,6 +9,7 @@ export const SETTINGS_SECTIONS = {
   company: z.object({
     legalName: z.string().max(160).default(''), tradeName: z.string().max(160).default(''), document: z.string().max(20).default(''), activity: z.string().max(80).default(''),
     slogan: z.string().max(120).default(''), phone: z.string().max(30).default(''), whatsapp: z.string().max(30).default(''), zip: z.string().max(10).default(''),
+    dpoName: z.string().max(120).default(''), dpoEmail: z.string().trim().email().or(z.literal('')).default(''),
     sidebarLayout: z.enum(['CLASSIC', 'COMPACT']).default('CLASSIC'),
     state: z.string().max(2).default(''), city: z.string().max(80).default(''), district: z.string().max(80).default(''), address: z.string().max(160).default(''), number: z.string().max(10).default(''),
   }),
@@ -18,7 +19,7 @@ export const SETTINGS_SECTIONS = {
     weekly: z.array(slot).max(70).default([]),
   }),
   fulfillment: z.object({
-    allowPickup: z.boolean().default(true), allowDelivery: z.boolean().default(true), allowDineIn: z.boolean().default(false),
+    allowPickup: z.boolean().default(true), allowDelivery: z.boolean().default(true), allowDineIn: z.boolean().default(true),
     estimatedTime: z.boolean().default(false), pickupMinutes: z.number().int().min(0).max(600).default(30), deliveryMinutes: z.number().int().min(0).max(600).default(50),
     deliveryFeeMode: z.enum(['SINGLE', 'UNMAPPED', 'ZONES', 'DISTRICT']).default('ZONES'),
     singleFee: z.number().min(0).max(9999).default(0), minDelivery: z.number().min(0).max(99999).default(0), freeDeliveryMin: z.number().min(0).max(99999).default(0),
@@ -33,6 +34,7 @@ export const SETTINGS_SECTIONS = {
     orderMode: z.boolean().default(true), saleMode: z.boolean().default(true), whatsappNotify: z.boolean().default(true), autoRegisterCustomer: z.boolean().default(true),
     tableControl: z.enum(['TABLES', 'TABS', 'TABLES_AND_TABS', 'TABLES_AND_ORDERS']).default('TABLES_AND_TABS'),
     askSeller: z.boolean().default(false), serviceFeeName: z.string().max(40).default('Taxa de serviço'),
+    defaultOrderStatus: z.enum(['OPEN', 'PREPARING']).default('OPEN'),
     requireAdminPasswordOnline: z.boolean().default(false), showPixOnTerminal: z.boolean().default(false),
     // Reference rates for showing the total in foreign currency at the terminal: R$ per US$ and pesos per R$. 0 = off. Display only; orders are always in R$.
     usdRate: z.number().min(0).max(1000).default(0), pesoRate: z.number().min(0).max(1_000_000).default(0),

@@ -3,7 +3,7 @@ import type { Slot } from './settings';
 
 export type StoreProduct = {
   id: string; name: string; description?: string | null; price: string | number; promoPrice?: string | number | null;
-  isCombo?: boolean; soldByWeight?: boolean; favorite?: boolean; imageVersion?: number | null;
+  isCombo?: boolean; soldByWeight?: boolean; allowFractionalQuantity?: boolean; packagingEnabled?: boolean; packagingPrice?: string | number; favorite?: boolean; allowNotes?: boolean; imageVersion?: number | null;
   comboComponents?: { quantity: number; product: { name: string } }[]; modifierGroups?: ModifierGroupView[];
 };
 export type StoreCategory = { id: string | null; name: string; products: StoreProduct[] };
@@ -12,13 +12,15 @@ export type StorePaymentMethod = { id: string; name: string; equivalent: string;
 
 // GET /public/store/:slug
 export type StoreData = {
-  restaurant: { name: string; slug: string };
+  restaurant: { name: string; slug: string; logoVersion?: number | null; coverVersion?: number | null };
   open: boolean;
   hours: { timezone: string; mode: 'OPEN' | 'CLOSED' | 'SCHEDULE'; weekly: Slot[] };
-  fulfillment: { allowPickup: boolean; allowDelivery: boolean; estimatedTime: boolean; pickupMinutes: number; deliveryMinutes: number; deliveryFeeMode: 'SINGLE' | 'UNMAPPED' | 'ZONES' | 'DISTRICT'; singleFee: number; minDelivery: number; freeDeliveryMin: number };
+  fulfillment: { allowPickup: boolean; allowDelivery: boolean; allowDineIn?: boolean; estimatedTime: boolean; pickupMinutes: number; deliveryMinutes: number; deliveryFeeMode: 'SINGLE' | 'UNMAPPED' | 'ZONES' | 'DISTRICT'; singleFee: number; minDelivery: number; freeDeliveryMin: number };
   scheduling: { enabled: boolean; maxDaysAhead: number; leadTime: string; blockedFrom: string | null; blockedTo: string | null; slots: Slot[] };
   allowBuyWhenClosed: boolean;
   autoAccept: boolean;
+  storeMode: 'MENU' | 'ECOMMERCE';
+  minorControl: boolean;
   brandColor: string;
   metaPixelId: string | null;
   categories: StoreCategory[];

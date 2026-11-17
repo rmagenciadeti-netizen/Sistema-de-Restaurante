@@ -268,6 +268,11 @@ test('WhatsApp bot, QR session manager and panel API', { skip: !enabled }, async
   await t.test('order events queue automatic messages with the editable texts', async () => {
     await prisma.whatsappMessage.deleteMany({ where: { tenantId: tenant.id } });
     await saveSettingsSection(prisma, tenant.id, 'whatsapp', { botEnabled: true, autoMessagesEnabled: true });
+    await saveSettingsSection(prisma, tenant.id, 'pdv', { whatsappNotify: false });
+    const silentOrder = await call('POST', '/orders', admin, { unitId: unit.id, channel: 'TAKEAWAY', customerName: 'Rita Souza', customerPhone: '66988887777', items: [{ productId: burger.id, quantity: 1 }] });
+    assert.equal(silentOrder.status, 201);
+    assert.equal(await prisma.whatsappMessage.count({ where: { tenantId: tenant.id, template: 'order_received' } }), 0, 'PDV notification setting suppresses the automatic message');
+    await saveSettingsSection(prisma, tenant.id, 'pdv', { whatsappNotify: true });
     const order = await call('POST', '/orders', admin, { unitId: unit.id, channel: 'TAKEAWAY', customerName: 'Rita Souza', customerPhone: '66988887777', items: [{ productId: burger.id, quantity: 1 }] });
     assert.equal(order.status, 201);
     const received = await prisma.whatsappMessage.findFirstOrThrow({ where: { tenantId: tenant.id, template: 'order_received' } });

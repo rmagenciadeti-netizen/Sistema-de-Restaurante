@@ -190,13 +190,14 @@ fiscalRegistryRoutes.get('/xmls', async (req, res, next) => {
 });
 
 // ---- Contingência ----
-// Records that the company is operating in fiscal contingency and why; it does not switch the provider into offline mode.
+// Records the contingency period: while active, NFC-e communication failures are kept as CONTINGENCY documents for later transmission
+// (POST /fiscal/documents/transmit) and the provider is asked to use its offline modality.
 fiscalRegistryRoutes.get('/contingency', async (req, res, next) => {
   try {
     const tenantId = tenantOf(req);
     const [history, pending] = await Promise.all([
       prisma.fiscalContingency.findMany({ where: { tenantId }, orderBy: { startedAt: 'desc' }, take: 30 }),
-      prisma.fiscalDocument.findMany({ where: { tenantId, ...(req.auth!.unitId ? { unitId: req.auth!.unitId } : {}), status: { in: [FiscalStatus.PENDING, FiscalStatus.REJECTED] } }, select: { id: true, kind: true, status: true, error: true, createdAt: true, order: { select: { code: true, total: true } } }, orderBy: { createdAt: 'desc' }, take: 100 }),
+      prisma.fiscalDocument.findMany({ where: { tenantId, ...(req.auth!.unitId ? { unitId: req.auth!.unitId } : {}), status: { in: [FiscalStatus.PENDING, FiscalStatus.REJECTED, FiscalStatus.PROCESSING, FiscalStatus.CONTINGENCY] } }, select: { id: true, kind: true, status: true, error: true, createdAt: true, number: true, series: true, environment: true, protocol: true, contingency: true, lastAttemptAt: true, attempts: true, order: { select: { code: true, total: true, customerName: true } } }, orderBy: { createdAt: 'desc' }, take: 200 }),
     ]);
     return res.json({ active: history.find(item => item.endedAt === null) ?? null, history, pending });
   } catch (error) { return next(error); }

@@ -1,10 +1,12 @@
 import { DiscountType, OrderChannel, OrderStatus, Prisma } from '@prisma/client';
 import { randomInt } from 'node:crypto';
 import { enqueueProductionPrints } from './print-queue';
+import { applyStatusSideEffects } from './order-effects';
+import { consumeOrderInventory, consumeOrderProductStock } from './order-inventory';
 import { ORDER_INCLUDE } from './order-engine-shared';
 import { decideSchedule } from './scheduling';
 import { loadSettings, nextOrderNumber } from './settings';
-import { effectiveUnitPrice } from './promotions';
+import { effectiveUnitPrice, type ActivePromotion } from './promotions';
 import { brl, enqueueAutoMessage, orderLabel, scheduledSuffix } from './whatsapp-auto';
 
 export class OrderEngineError extends Error {
@@ -16,7 +18,8 @@ export type NewOrderInput = {
   unitId: string | null;
   actorUserId?: string | null;
   channel: OrderChannel;
-  items: Array<{ productId: string; quantity: number; weightKg?: number; notes?: string; modifiers?: Array<{ optionId: string; quantity?: number }> }>;
+  initialStatus?: OrderStatus;
+  items: Array<{ productId: string; quantity: number; weightKg?: number; unitPrice?: number; withPackaging?: boolean; notes?: string; modifiers?: Array<{ optionId: string; quantity?: number }> }>;
   // untrusted (anonymous QR-code) callers can create customers but never modify an existing customer record.
   customer?: { name: string; phone?: string; marketingConsent?: boolean; untrusted?: boolean };
   tableId?: string;
@@ -55,31 +58,49 @@ export function newOrderCode(): string {
 
 export { ORDER_INCLUDE };
 
-// Single entry point used by POS, waiter, QR-code table menu and every other sales channel.
-export async function createOrder(tx: Prisma.TransactionClient, input: NewOrderInput) {
-  const { tenantId, unitId } = input;
-  const ids = [...new Set(input.items.map(item => item.productId))];
+type OrderLineInput = NewOrderInput['items'][number];
+
+export function resolveOrderUnitPrice(
+  product: { id: string; price: Prisma.Decimal; allowFreePrice: boolean; soldByWeight: boolean },
+  override: number | undefined,
+  channel: OrderChannel,
+  promotions: ActivePromotion[],
+  now: Date,
+): Prisma.Decimal {
+  if (override === undefined) return effectiveUnitPrice(product.id, product.price, promotions, now);
+  if (channel !== OrderChannel.POS || !product.allowFreePrice || product.soldByWeight) throw new OrderEngineError('FREE_PRICE_NOT_ALLOWED');
+  const price = new Prisma.Decimal(override);
+  if (price.lt(0) || price.gt('9999999999.99') || price.decimalPlaces() > 2) throw new OrderEngineError('FREE_PRICE_INVALID');
+  return round2(price);
+}
+
+// Prices the cart lines (promotions, weight, modifiers, combos). Shared by order creation and order editing so both charge the same way.
+export async function priceOrderLines(tx: Prisma.TransactionClient, scope: { tenantId: string; unitId: string | null; channel: OrderChannel }, items: OrderLineInput[], now: Date) {
+  const { tenantId, unitId, channel } = scope;
+  const ids = [...new Set(items.map(item => item.productId))];
   const products = await tx.product.findMany({
     where: { id: { in: ids }, tenantId, active: true, ...(unitId ? { OR: [{ unitId }, { unitId: null }] } : {}) },
     include: { modifierGroups: { include: { group: { include: { options: true } } } }, comboComponents: { include: { product: true } } },
   });
   if (products.length !== ids.length) throw new OrderEngineError('PRODUCTS_UNAVAILABLE');
   const byId = new Map(products.map(product => [product.id, product]));
-  const now = new Date();
   const promotionRows = await tx.promotion.findMany({
     where: { tenantId, active: true, startsAt: { lte: now }, OR: [{ endsAt: null }, { endsAt: { gte: now } }], products: { some: { productId: { in: ids } } } },
     include: { products: { select: { productId: true } } },
   });
   const promotions = promotionRows.map(row => ({ type: row.type, value: row.value, startsAt: row.startsAt, endsAt: row.endsAt, active: row.active, productIds: row.products.map(link => link.productId) }));
-  const lines = input.items.map(line => {
+  const lines = items.map(line => {
     const product = byId.get(line.productId)!;
+    if (line.withPackaging && !product.packagingEnabled) throw new OrderEngineError('PACKAGING_NOT_ALLOWED');
+    if (!Number.isInteger(line.quantity) && (!product.allowFractionalQuantity || product.soldByWeight)) throw new OrderEngineError('FRACTIONAL_QUANTITY_NOT_ALLOWED');
     // Weighed products are sold by the kilo: price is per kg and the line must carry the weighed amount.
     if (product.soldByWeight) {
       if (product.isCombo || !line.weightKg || !(line.weightKg > 0) || line.weightKg > 999.999) throw new OrderEngineError('WEIGHT_REQUIRED');
     } else if (line.weightKg !== undefined) throw new OrderEngineError('WEIGHT_NOT_ALLOWED');
     const weightKg = line.weightKg === undefined ? null : new Prisma.Decimal(line.weightKg).toDecimalPlaces(3, Prisma.Decimal.ROUND_HALF_UP);
     if (weightKg && !weightKg.gt(0)) throw new OrderEngineError('WEIGHT_REQUIRED');
-    const unitPrice = effectiveUnitPrice(product.id, product.price, promotions, now);
+    const unitPrice = resolveOrderUnitPrice(product, line.unitPrice, channel, promotions, now);
+    const packagingPrice = line.withPackaging ? product.packagingPrice : new Prisma.Decimal(0);
     const groups = product.modifierGroups.map(link => link.group).filter(group => group.active);
     const chosen = new Map<string, number>();
     const selected = (line.modifiers ?? []).map(entry => {
@@ -98,9 +119,35 @@ export async function createOrder(tx: Prisma.TransactionClient, input: NewOrderI
     }
     const modifiersPerUnit = selected.reduce((sum, entry) => sum.add(entry.option.price.mul(entry.quantity)), new Prisma.Decimal(0));
     const baseTotal = weightKg ? round2(unitPrice.mul(weightKg)) : unitPrice;
-    return { ...line, product, selected, weightKg, unitPrice, total: baseTotal.add(modifiersPerUnit).mul(line.quantity) };
+    return { ...line, product, selected, weightKg, unitPrice, packagingPrice, withPackaging: Boolean(line.withPackaging), total: round2(baseTotal.add(modifiersPerUnit).add(packagingPrice).mul(line.quantity)) };
   });
   const subtotal = lines.reduce((sum, line) => sum.add(line.total), new Prisma.Decimal(0));
+  return { lines, subtotal };
+}
+
+type PricedLines = Awaited<ReturnType<typeof priceOrderLines>>['lines'];
+
+export async function insertOrderLines(tx: Prisma.TransactionClient, orderId: string, lines: PricedLines) {
+  for (const line of lines) {
+    const item = await tx.orderItem.create({
+      data: {
+        orderId: orderId, productId: line.product.id, quantity: line.quantity, weightKg: line.weightKg, unitPrice: line.unitPrice, total: line.total, withPackaging: line.withPackaging, packagingPrice: line.packagingPrice, notes: line.notes,
+        // A combo line is a billing wrapper; production happens on its component items.
+        sectorId: line.product.isCombo ? null : line.product.sectorId,
+        modifiers: { create: line.selected.map(entry => ({ optionId: entry.option.id, name: entry.option.name, price: entry.option.price, quantity: entry.quantity, sectorId: entry.option.sectorId, ingredientId: entry.option.ingredientId, ingredientQuantity: entry.option.ingredientQuantity })) },
+      },
+    });
+    if (line.product.comboComponents.length > 0) {
+      await tx.orderItem.createMany({ data: line.product.comboComponents.map(component => ({ orderId: orderId, parentItemId: item.id, productId: component.productId, quantity: new Prisma.Decimal(line.quantity).mul(component.quantity), unitPrice: 0, total: 0, sectorId: component.product.sectorId })) });
+    }
+  }
+}
+
+// Single entry point used by POS, waiter, QR-code table menu and every other sales channel.
+export async function createOrder(tx: Prisma.TransactionClient, input: NewOrderInput) {
+  const { tenantId, unitId } = input;
+  const now = new Date();
+  const { lines, subtotal } = await priceOrderLines(tx, { tenantId, unitId, channel: input.channel }, input.items, now);
 
   let tableLabel = input.tableLabel ?? null;
   let tableId: string | null = null;
@@ -198,30 +245,37 @@ export async function createOrder(tx: Prisma.TransactionClient, input: NewOrderI
   }
 
   const total = subtotal.sub(discount).add(serviceFee).add(deliveryFee).add(couvertFee);
+  const initialStatus = scheduling ? OrderStatus.OPEN : (input.initialStatus ?? OrderStatus.OPEN);
   const created = await tx.order.create({
     data: {
-      tenantId, unitId, code: newOrderCode(), number: await nextOrderNumber(tx, tenantId, now), channel: input.channel, status: OrderStatus.OPEN, createdByUserId: input.actorUserId ?? null,
+      tenantId, unitId, code: newOrderCode(), number: await nextOrderNumber(tx, tenantId, now), channel: input.channel, status: initialStatus, createdByUserId: input.actorUserId ?? null,
       customerName, customerId, tableId, tableLabel, couponId, deliveryZoneId,
       subtotal, discount, serviceFee, deliveryFee, couvertFee, total, ...(scheduling ?? {}),
     },
   });
-  for (const line of lines) {
-    const item = await tx.orderItem.create({
-      data: {
-        orderId: created.id, productId: line.product.id, quantity: line.quantity, weightKg: line.weightKg, unitPrice: line.unitPrice, total: line.total, notes: line.notes,
-        // A combo line is a billing wrapper; production happens on its component items.
-        sectorId: line.product.isCombo ? null : line.product.sectorId,
-        modifiers: { create: line.selected.map(entry => ({ optionId: entry.option.id, name: entry.option.name, price: entry.option.price, quantity: entry.quantity, sectorId: entry.option.sectorId, ingredientId: entry.option.ingredientId, ingredientQuantity: entry.option.ingredientQuantity })) },
+  await insertOrderLines(tx, created.id, lines);
+  if (initialStatus === OrderStatus.PREPARING) {
+    if (!input.actorUserId) throw new OrderEngineError('ACTOR_REQUIRED');
+    const inventoryOrder = await tx.order.findUniqueOrThrow({
+      where: { id: created.id },
+      include: {
+        ...ORDER_INCLUDE,
+        items: {
+          include: {
+            product: { include: { recipe: { include: { ingredients: { include: { ingredient: true } } } } } },
+            modifiers: true,
+          },
+        },
       },
     });
-    if (line.product.comboComponents.length > 0) {
-      await tx.orderItem.createMany({ data: line.product.comboComponents.map(component => ({ orderId: created.id, parentItemId: item.id, productId: component.productId, quantity: component.quantity * line.quantity, unitPrice: 0, total: 0, sectorId: component.product.sectorId })) });
-    }
+    await consumeOrderInventory(tx, inventoryOrder, input.actorUserId);
+    await applyStatusSideEffects(tx, inventoryOrder, initialStatus, input.actorUserId);
   }
   const order = await tx.order.findUniqueOrThrow({ where: { id: created.id }, include: ORDER_INCLUDE });
+  await consumeOrderProductStock(tx, order, input.actorUserId ?? null);
   // Orders waiting for their scheduled release must not reach the kitchen yet.
   if (!scheduling || scheduling.releasedAt) await enqueueProductionPrints(tx, order, { onlyAutoPrint: true });
-  await tx.auditLog.create({ data: { tenantId, actorUserId: input.actorUserId ?? null, action: 'ORDER_CREATED', entityType: 'Order', entityId: order.id, metadata: { channel: input.channel, scheduledFor: scheduling?.scheduledFor.toISOString() ?? null } } });
+  await tx.auditLog.create({ data: { tenantId, actorUserId: input.actorUserId ?? null, action: 'ORDER_CREATED', entityType: 'Order', entityId: order.id, metadata: { channel: input.channel, scheduledFor: scheduling?.scheduledFor.toISOString() ?? null, freePriceItems: input.items.filter(item => item.unitPrice !== undefined).map(item => ({ productId: item.productId, unitPrice: item.unitPrice })) } } });
   if (input.notifyCustomer !== false && customerPhone) {
     const settings = await loadSettings(tx, tenantId);
     await enqueueAutoMessage(tx, { tenantId, key: 'order_received', phone: customerPhone, orderId: order.id, vars: { orderCode: order.code, customerName: customerName ?? '', nome: (customerName ?? 'cliente').split(' ')[0], pedido: orderLabel(order), total: brl(order.total), agendado: scheduledSuffix(scheduling?.scheduledFor, settings.hours.timezone) } });

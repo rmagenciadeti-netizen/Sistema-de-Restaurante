@@ -1,4 +1,4 @@
-import { Ingredient, OrderStatus, Prisma, StockMovementType } from '@prisma/client';
+import { Ingredient, OrderStatus, Prisma, ProductStockMovementType, StockMovementType } from '@prisma/client';
 
 type RecipeOrder = {
   id: string;
@@ -6,7 +6,7 @@ type RecipeOrder = {
   tenantId: string;
   unitId: string | null;
   items: Array<{
-    quantity: number;
+    quantity: number | Prisma.Decimal;
     weightKg?: Prisma.Decimal | null;
     modifiers?: Array<{ quantity: number; ingredientId: string | null; ingredientQuantity: Prisma.Decimal | null }>;
     product: {
@@ -26,9 +26,69 @@ type RecipeOrder = {
 };
 
 const MAX_STOCK_QUANTITY = new Prisma.Decimal('99999999999.999');
+const MAX_PRODUCT_STOCK = new Prisma.Decimal('999999999.999');
+
+type ProductStockOrder = {
+  id: string;
+  code: string;
+  tenantId: string;
+  unitId: string | null;
+  items: Array<{
+    quantity: number | Prisma.Decimal;
+    parentItemId?: string | null;
+    product: { id: string; tenantId: string; unitId: string | null; stockControlled: boolean };
+  }>;
+};
+
+export async function consumeOrderProductStock(tx: Prisma.TransactionClient, order: ProductStockOrder, actorUserId: string | null): Promise<void> {
+  const requiredByProduct = new Map<string, { product: ProductStockOrder['items'][number]['product']; quantity: Prisma.Decimal }>();
+  for (const item of order.items) {
+    if (item.parentItemId || !item.product.stockControlled) continue;
+    const visibleToOrderUnit = order.unitId === null ? item.product.unitId === null : item.product.unitId === null || item.product.unitId === order.unitId;
+    const quantity = new Prisma.Decimal(item.quantity);
+    if (item.product.tenantId !== order.tenantId || !visibleToOrderUnit || !quantity.gt(0)) throw new OrderInventoryError('INVALID_PRODUCT_STOCK');
+    const total = (requiredByProduct.get(item.product.id)?.quantity ?? new Prisma.Decimal(0)).add(quantity);
+    if (total.gt(MAX_PRODUCT_STOCK)) throw new OrderInventoryError('INVALID_PRODUCT_STOCK');
+    requiredByProduct.set(item.product.id, { product: item.product, quantity: total });
+  }
+
+  for (const { product, quantity } of requiredByProduct.values()) {
+    const updated = await tx.product.updateMany({
+      where: { id: product.id, tenantId: order.tenantId, unitId: product.unitId, stockControlled: true, stockQuantity: { gte: quantity } },
+      data: { stockQuantity: { decrement: quantity } },
+    });
+    if (updated.count !== 1) throw new OrderInventoryError('INSUFFICIENT_STOCK');
+    await tx.productStockMovement.create({
+      data: { tenantId: order.tenantId, unitId: product.unitId, productId: product.id, type: ProductStockMovementType.ORDER_CONSUMPTION, quantity: quantity.negated(), reference: order.id, note: `Product stock reserved for order ${order.code}`, actorUserId },
+    });
+  }
+}
+
+export async function reverseOrderProductStock(tx: Prisma.TransactionClient, order: { id: string; code: string; tenantId: string }, actorUserId: string): Promise<void> {
+  const movements = await tx.productStockMovement.findMany({
+    where: { tenantId: order.tenantId, reference: order.id, type: { in: [ProductStockMovementType.ORDER_CONSUMPTION, ProductStockMovementType.ORDER_REVERSAL] } },
+  });
+  const net = new Map<string, { quantity: Prisma.Decimal; unitId: string | null }>();
+  for (const movement of movements) {
+    const entry = net.get(movement.productId) ?? { quantity: new Prisma.Decimal(0), unitId: movement.unitId };
+    net.set(movement.productId, { quantity: entry.quantity.add(movement.quantity), unitId: entry.unitId });
+  }
+  for (const [productId, { quantity, unitId }] of net) {
+    if (!quantity.lt(0)) continue;
+    const restore = quantity.negated();
+    const updated = await tx.product.updateMany({
+      where: { id: productId, tenantId: order.tenantId },
+      data: { stockQuantity: { increment: restore } },
+    });
+    if (updated.count !== 1) throw new OrderInventoryError('INVALID_PRODUCT_STOCK');
+    await tx.productStockMovement.create({
+      data: { tenantId: order.tenantId, unitId, productId, type: ProductStockMovementType.ORDER_REVERSAL, quantity: restore, reference: order.id, note: `Stock returned for cancelled or edited order ${order.code}`, actorUserId },
+    });
+  }
+}
 
 export class OrderInventoryError extends Error {
-  constructor(readonly reason: 'INSUFFICIENT_STOCK' | 'INVALID_RECIPE') {
+  constructor(readonly reason: 'INSUFFICIENT_STOCK' | 'INVALID_RECIPE' | 'INVALID_PRODUCT_STOCK') {
     super(reason);
   }
 }

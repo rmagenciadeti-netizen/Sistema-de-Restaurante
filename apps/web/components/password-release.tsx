@@ -7,7 +7,7 @@ import { releaseActionLabels, type ReleaseAction, type ReleaseResult } from '../
 import { buttonClass, inputClass, secondaryButtonClass } from './app-shell';
 import { textareaClass } from './ui';
 
-type Props = { open: boolean; action: ReleaseAction; orderId?: string; onAuthorized: (releaseId: string) => void; onCancel: () => void };
+type Props = { open: boolean; action: ReleaseAction; orderId?: string; defaultReason?: string; fixedReason?: boolean; onAuthorized: (releaseId: string) => void; onCancel: () => void };
 
 export function releaseErrorMessage(error: unknown): string {
   if (error instanceof ApiError) {
@@ -20,11 +20,11 @@ export function releaseErrorMessage(error: unknown): string {
 
 const focusable = 'button:not([disabled]), input:not([disabled]), textarea:not([disabled]), a[href]';
 
-export function PasswordReleaseDialog({ open, action, orderId, onAuthorized, onCancel }: Props) {
+export function PasswordReleaseDialog({ open, action, orderId, defaultReason, fixedReason = false, onAuthorized, onCancel }: Props) {
   const titleId = useId(); const errorId = useId();
   const dialogRef = useRef<HTMLDivElement>(null);
   const passwordRef = useRef<HTMLInputElement>(null);
-  const [password, setPassword] = useState(''); const [reason, setReason] = useState('');
+  const [password, setPassword] = useState(''); const [reason, setReason] = useState(defaultReason ?? '');
   const [error, setError] = useState(''); const [busy, setBusy] = useState(false);
 
   useEffect(() => {
@@ -70,7 +70,7 @@ export function PasswordReleaseDialog({ open, action, orderId, onAuthorized, onC
           <input ref={passwordRef} type="password" autoComplete="off" value={password} onChange={event => setPassword(event.target.value)} maxLength={60} aria-invalid={Boolean(error)} aria-describedby={error ? errorId : undefined} className={inputClass} />
         </label>
         <label className="mt-3 block text-sm font-medium text-slate-700">Motivo (opcional)
-          <textarea value={reason} onChange={event => setReason(event.target.value)} maxLength={300} rows={2} className={textareaClass} />
+          <textarea value={reason} onChange={event => setReason(event.target.value)} readOnly={fixedReason} maxLength={300} rows={2} className={textareaClass} />
         </label>
         {error && <p id={errorId} role="alert" className="mt-3 rounded-xl border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-800">{error}{' '}{error.includes('Configurações') && <Link href="/settings" className="font-semibold underline">Abrir configurações</Link>}</p>}
         <div className="mt-5 flex justify-end gap-2">

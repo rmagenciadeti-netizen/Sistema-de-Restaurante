@@ -96,7 +96,9 @@ export default function StorePage() {
           </dl>
           <p className="mt-4 rounded-xl bg-amber-50 px-3 py-2 text-xs text-amber-800">Os pedidos chegam como “Aberto” em Pedidos. O pagamento escolhido pelo cliente é apenas informativo: ele só é registrado quando você receber no caixa ou na entrega.</p>
           <div className="mt-4 flex flex-wrap gap-2">
-            <Link href="/settings" className={secondaryButtonClass}>⚙ Configurar loja e entrega</Link>
+            <Link href="/settings?tab=store" className={secondaryButtonClass}>⚙ Configurar loja</Link>
+            <Link href="/settings?tab=fulfillment" className={secondaryButtonClass}>🛵 Entrega e retirada</Link>
+            <Link href="/settings?tab=hours" className={secondaryButtonClass}>🕒 Horários</Link>
             <Link href="/schedule-settings" className={secondaryButtonClass}>⏰ Agendamento de pedidos</Link>
           </div>
         </section>}

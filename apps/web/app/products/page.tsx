@@ -3,6 +3,7 @@
 import { useEffect, useState } from 'react';
 import Link from 'next/link';
 import { api, formatMoney, ListResponse, ProductCategory, Sector } from '../../lib/api';
+import type { SettingsResponse } from '../../lib/settings';
 import type { CatalogProduct as Product, TaxRuleOption } from '../../lib/types-catalog';
 import { AppShell, buttonClass, Check, Field, Notice, panelClass, Select, secondaryButtonClass } from '../../components/app-shell';
 import { Badge, Tabs, textareaClass, Toggle } from '../../components/ui';
@@ -12,11 +13,13 @@ import { attachTemplateGroups, findTemplate, productTemplates } from '../../lib/
 const emptyForm = {
   name: '', code: '', price: '', cost: '', sectorId: '', categoryId: '', barcode: '', favorite: false, soldByWeight: false, active: true,
   sendToScale: false, scaleCode: '', scaleDepartment: '', shelfLifeDays: '', scaleNotes: '', ncm: '', cest: '', taxRuleId: '',
-  description: '', prepTimeMinutes: '', margin: '', gtin: '', measureUnit: 'UN', localOnly: false, isComponent: false,
+  description: '', prepTimeMinutes: '', margin: '', gtin: '', measureUnit: 'UN', localOnly: false, isComponent: false, allowNotes: true, allowFreePrice: false, alwaysShowDescription: false, allowFractionalQuantity: false, pickupTicket: false, packagingEnabled: false, packagingPrice: '', stockControlled: false, stockMin: '', initialStock: '', productType: 'FINISHED',
 };
 const measureUnits = [['UN', 'Unidade'], ['KG', 'Quilo'], ['G', 'Grama'], ['L', 'Litro'], ['ML', 'Mililitro'], ['CX', 'Caixa'], ['PCT', 'Pacote'], ['PORC', 'Porção']] as const;
-type FormTab = 'data' | 'photo' | 'scale' | 'tax';
-const formTabs: { key: FormTab; label: string }[] = [{ key: 'data', label: 'Dados' }, { key: 'photo', label: 'Foto' }, { key: 'scale', label: 'Balança' }, { key: 'tax', label: 'Fiscal' }];
+type FormTab = 'data' | 'groups' | 'photo' | 'scale' | 'tax';
+const formTabs: { key: FormTab; label: string }[] = [{ key: 'data', label: 'Dados' }, { key: 'groups', label: 'Adicionais' }, { key: 'photo', label: 'Foto' }, { key: 'scale', label: 'Balança' }, { key: 'tax', label: 'Fiscal' }];
+const productTypes = [['FINISHED', 'Produto acabado'], ['MERCHANDISE', 'Mercadoria para revenda'], ['RAW_MATERIAL', 'Matéria-prima'], ['PACKAGING', 'Embalagem'], ['IN_PROCESS', 'Produto em processo'], ['BY_PRODUCT', 'Subproduto'], ['CONSUMABLE', 'Uso e consumo'], ['SERVICE', 'Serviço'], ['OTHER', 'Outros']] as const;
+type ModifierGroupRow = { id: string; name: string; minSelect: number; maxSelect: number; active: boolean; options: { id: string }[]; products: { productId: string }[] };
 const optionalInt = (value: string) => (value.trim() === '' ? null : Number(value));
 
 export default function ProductsPage() {
@@ -28,9 +31,26 @@ export default function ProductsPage() {
   const [prices, setPrices] = useState<Record<string, string>>({}); const [savingPrices, setSavingPrices] = useState(false);
   const [percentage, setPercentage] = useState(''); const [priceDirection, setPriceDirection] = useState<'increase' | 'decrease'>('increase');
   const [templateKey, setTemplateKey] = useState('');
+  const [defaultMarginPercent, setDefaultMarginPercent] = useState(0);
+  const [groups, setGroups] = useState<ModifierGroupRow[]>([]); const [pickedGroups, setPickedGroups] = useState<string[]>([]); const [groupsBusy, setGroupsBusy] = useState(false);
   const [photo, setPhoto] = useState<string | null>(null); const [photoPending, setPhotoPending] = useState<string | null>(null); const [photoBusy, setPhotoBusy] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null); const [formTab, setFormTab] = useState<FormTab>('data'); const [taxRules, setTaxRules] = useState<TaxRuleOption[]>([]);
-  async function load(nextPage = page) { try { const [products, production, categoryList] = await Promise.all([api<ListResponse<Product>>(`/products?page=${nextPage}&pageSize=100`), api<ListResponse<Sector>>('/production/sectors'), api<ListResponse<ProductCategory>>('/products/categories')]); setItems(products.items); setTotal(products.total); setPage(nextPage); setPrices({}); setSectors(production.items); setCategories(categoryList.items); api<ListResponse<TaxRuleOption>>('/tax-rules').then(rules => setTaxRules(rules.items.filter(rule => rule.active !== false))).catch(() => setTaxRules([])); return true; } catch (e) { setMessage(e instanceof Error ? e.message : 'Erro ao carregar catálogo'); return false; } }
+  const [stockMovement, setStockMovement] = useState({ type: 'PURCHASE', action: 'ADD', quantity: '', note: '' }); const [stockBusy, setStockBusy] = useState(false);
+  async function load(nextPage = page) {
+    try {
+      const [products, production, categoryList] = await Promise.all([
+        api<ListResponse<Product>>(`/products?page=${nextPage}&pageSize=100`), api<ListResponse<Sector>>('/production/sectors'), api<ListResponse<ProductCategory>>('/products/categories'),
+      ]);
+      setItems(products.items); setTotal(products.total); setPage(nextPage); setPrices({}); setSectors(production.items); setCategories(categoryList.items);
+      api<SettingsResponse>('/settings').then(result => {
+        const margin = result.settings.products.defaultMarginPercent;
+        setDefaultMarginPercent(margin);
+        setForm(current => !editingId && current.margin === '' ? { ...current, margin: String(margin) } : current);
+      }).catch(e => setMessage(e instanceof Error ? e.message : 'Erro ao carregar a margem padrão'));
+      api<ListResponse<TaxRuleOption>>('/tax-rules').then(rules => setTaxRules(rules.items.filter(rule => rule.active !== false))).catch(() => setTaxRules([]));
+      return true;
+    } catch (e) { setMessage(e instanceof Error ? e.message : 'Erro ao carregar catálogo'); return false; }
+  }
   useEffect(() => { void load(); }, []);
   function startEdit(item: Product) {
     setForm({
@@ -39,13 +59,13 @@ export default function ProductsPage() {
       scaleCode: item.scaleCode == null ? '' : String(item.scaleCode), scaleDepartment: item.scaleDepartment == null ? '' : String(item.scaleDepartment), shelfLifeDays: item.shelfLifeDays == null ? '' : String(item.shelfLifeDays),
       scaleNotes: item.scaleNotes ?? '', ncm: item.ncm ?? '', cest: item.cest ?? '', taxRuleId: item.taxRuleId ?? '',
       description: item.description ?? '', prepTimeMinutes: item.prepTimeMinutes == null ? '' : String(item.prepTimeMinutes), margin: '',
-      gtin: item.gtin ?? '', measureUnit: item.measureUnit ?? 'UN', localOnly: Boolean(item.localOnly), isComponent: Boolean(item.isComponent),
+      gtin: item.gtin ?? '', measureUnit: item.measureUnit ?? 'UN', localOnly: Boolean(item.localOnly), isComponent: Boolean(item.isComponent), allowNotes: item.allowNotes !== false, allowFreePrice: Boolean(item.allowFreePrice), alwaysShowDescription: Boolean(item.alwaysShowDescription), allowFractionalQuantity: Boolean(item.allowFractionalQuantity), pickupTicket: Boolean(item.pickupTicket), packagingEnabled: Boolean(item.packagingEnabled), packagingPrice: String(item.packagingPrice ?? ''), stockControlled: Boolean(item.stockControlled), stockMin: item.stockMin == null ? '' : String(item.stockMin), initialStock: '', productType: item.productType ?? 'FINISHED',
     });
-    setEditingId(item.id); setFormTab('data'); setMessage(''); setPhoto(null); setPhotoPending(null);
+    setEditingId(item.id); setFormTab('data'); setMessage(''); setPhoto(null); setPhotoPending(null); void loadGroups(item.id);
     if (item.image) api<{ dataUrl: string }>(`/products/${item.id}/image`).then(result => setPhoto(result.dataUrl)).catch(() => undefined);
     document.getElementById('product-form')?.scrollIntoView?.({ behavior: 'smooth' });
   }
-  function cancelEdit() { setForm(emptyForm); setTemplateKey(''); setPhoto(null); setPhotoPending(null); setEditingId(null); setFormTab('data'); }
+  function cancelEdit() { setForm({ ...emptyForm, margin: String(defaultMarginPercent) }); setTemplateKey(''); setPhoto(null); setPhotoPending(null); setEditingId(null); setFormTab('data'); }
   async function submit(event: React.FormEvent) {
     event.preventDefault(); setMessage('');
     const ncm = form.ncm.replace(/\D/g, ''); const cest = form.cest.replace(/\D/g, '');
@@ -62,7 +82,7 @@ export default function ProductsPage() {
       scaleCode: optionalInt(form.scaleCode), scaleDepartment: optionalInt(form.scaleDepartment), shelfLifeDays: optionalInt(form.shelfLifeDays), scaleNotes: form.scaleNotes.trim() || null,
       ncm: ncm || null, cest: cest || null, taxRuleId: form.taxRuleId || null,
       description: form.description.trim() || null, prepTimeMinutes: optionalInt(form.prepTimeMinutes),
-      gtin: gtin || null, measureUnit: form.measureUnit, localOnly: form.localOnly, isComponent: form.isComponent,
+      gtin: gtin || null, measureUnit: form.measureUnit, localOnly: form.localOnly, isComponent: form.isComponent,       allowNotes: form.allowNotes, allowFreePrice: form.allowFreePrice, alwaysShowDescription: form.alwaysShowDescription, allowFractionalQuantity: form.allowFractionalQuantity && !form.soldByWeight, pickupTicket: form.pickupTicket, packagingEnabled: form.packagingEnabled, packagingPrice: form.packagingEnabled && form.packagingPrice !== '' ? Number(form.packagingPrice) : 0, stockControlled: form.stockControlled, stockMin: form.stockMin === '' ? null : Number(form.stockMin), ...(!editing ? { initialStock: form.stockControlled && form.initialStock !== '' ? Number(form.initialStock) : 0 } : {}), productType: form.productType,
     };
     const template = editing ? null : findTemplate(templateKey); const pendingPhoto = editing ? null : photoPending;
     try {
@@ -75,6 +95,29 @@ export default function ProductsPage() {
         catch (e) { setMessage(`Produto cadastrado, mas os grupos do modelo não foram vinculados: ${e instanceof Error ? e.message : 'erro desconhecido'}`); }
       } else setMessage(photoFailed ? 'Produto cadastrado, mas a foto não foi salva. Edite o produto e envie novamente.' : editing ? 'Produto atualizado.' : 'Produto cadastrado.');
     } catch (e) { setMessage(e instanceof Error ? e.message : editing ? 'Erro ao atualizar produto' : 'Erro ao cadastrar produto'); }
+  }
+  async function loadGroups(productId: string) {
+    try { const list = (await api<ListResponse<ModifierGroupRow>>('/catalog/modifier-groups')).items; setGroups(list); setPickedGroups(list.filter(group => group.products.some(link => link.productId === productId)).map(group => group.id)); }
+    catch { setGroups([]); }
+  }
+  async function saveGroups() {
+    if (!editingId) return;
+    setGroupsBusy(true); setMessage('');
+    try { await api(`/catalog/products/${editingId}/modifier-groups`, { method: 'PUT', body: JSON.stringify({ groupIds: pickedGroups }) }); setMessage('Grupos de adicionais atualizados.'); await loadGroups(editingId); }
+    catch (e) { setMessage(e instanceof Error ? e.message : 'Erro ao vincular os grupos'); } finally { setGroupsBusy(false); }
+  }
+  async function recordProductStock(event: React.FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    if (!editingId || !form.stockControlled || !stockMovement.quantity || Number(stockMovement.quantity) <= 0) {
+      setMessage('Informe uma quantidade positiva para movimentar o estoque.'); return;
+    }
+    setStockBusy(true); setMessage('');
+    try {
+      await api(`/products/${editingId}/stock-movements`, { method: 'POST', body: JSON.stringify({ type: stockMovement.type, action: stockMovement.action, quantity: Number(stockMovement.quantity), note: stockMovement.note || undefined }) });
+      setStockMovement(current => ({ ...current, quantity: '', note: '' }));
+      if (await load()) setMessage('Saldo do produto atualizado e movimentação registrada.');
+    } catch (e) { setMessage(e instanceof Error ? e.message : 'Erro ao movimentar saldo do produto'); }
+    finally { setStockBusy(false); }
   }
   async function choosePhoto(file: File | undefined) {
     if (!file) return;
@@ -150,7 +193,7 @@ export default function ProductsPage() {
   const visibleItems = items.filter(item => `${item.name} ${item.code ?? ''} ${item.barcode ?? ''} ${item.sector?.name ?? ''}`.toLocaleLowerCase('pt-BR').includes(term));
   const selectedItems = items.filter(item => Object.hasOwn(prices, item.id));
   return <AppShell title="Produtos e produção">
-    {message && <Notice message={message} kind={message.startsWith('Produto cadastrado com') || message.startsWith('Foto ') || message.includes('cadastrado') || message === 'Produto atualizado.' || message === 'Preços atualizados.' || message === 'Categoria atualizada.' ? 'success' : 'error'} />}
+    {message && <Notice message={message} kind={message.startsWith('Produto cadastrado com') || message.startsWith('Foto ') || message.startsWith('Grupos de adicionais atualizados') || message.includes('cadastrado') || message === 'Produto atualizado.' || message === 'Preços atualizados.' || message === 'Categoria atualizada.' ? 'success' : 'error'} />}
     <section id="product-form" className={`${panelClass} mb-6`}>
       <h2 className="mb-4 text-lg font-semibold">{editingId ? 'Editar produto' : 'Novo produto'}</h2>
       {!editingId && <div className="mb-4 max-w-md">
@@ -163,6 +206,7 @@ export default function ProductsPage() {
           <Field label="Nome" required value={form.name} onChange={e => setForm({ ...form, name: e.target.value })} />
           <Field label="Código" value={form.code} onChange={e => setForm({ ...form, code: e.target.value })} />
           <Field label="GTIN (EAN)" inputMode="numeric" maxLength={14} placeholder="8, 12, 13 ou 14 dígitos" value={form.gtin} onChange={e => setForm({ ...form, gtin: e.target.value })} />
+          <Select label="Tipo do produto" value={form.productType} onChange={e => setForm({ ...form, productType: e.target.value })}>{productTypes.map(([key, label]) => <option key={key} value={key}>{label}</option>)}</Select>
           <Select label="Unidade de medida" value={form.measureUnit} onChange={e => setForm({ ...form, measureUnit: e.target.value })}>{measureUnits.map(([key, label]) => <option key={key} value={key}>{label} ({key})</option>)}</Select>
           <Field label="Código de barras" inputMode="numeric" maxLength={40} value={form.barcode} onChange={e => setForm({ ...form, barcode: e.target.value })} />
           <Field label={form.soldByWeight ? 'Preço por kg (R$)' : 'Preço de venda (R$)'} type="number" min="0" step="0.01" required value={form.price} onChange={e => setForm({ ...form, price: e.target.value })} />
@@ -177,12 +221,31 @@ export default function ProductsPage() {
           <Select label="Categoria" value={form.categoryId} onChange={e => setForm({ ...form, categoryId: e.target.value })}><option value="">Sem categoria</option>{categories.map(category => <option key={category.id} value={category.id}>{category.name}</option>)}</Select>
           <div className="flex flex-col justify-end gap-2">
             <Check label="Favorito" checked={form.favorite} onChange={e => setForm({ ...form, favorite: e.target.checked })} />
+            <Check label="Permitir observações do cliente no item" checked={form.allowNotes} onChange={e => setForm({ ...form, allowNotes: e.target.checked })} />
+            <Check label="Sempre mostrar descrição no PDV" checked={form.alwaysShowDescription} onChange={e => setForm({ ...form, alwaysShowDescription: e.target.checked })} />
             <Check label="Somente atendimento local (fora da loja virtual e do robô)" checked={form.localOnly} onChange={e => setForm({ ...form, localOnly: e.target.checked })} />
             <Check label="Componente (não é vendido sozinho online)" checked={form.isComponent} onChange={e => setForm({ ...form, isComponent: e.target.checked })} />
             <Check label="Vendido por peso (preço por kg)" checked={form.soldByWeight} onChange={e => setForm({ ...form, soldByWeight: e.target.checked })} />
+            {!form.soldByWeight && <Check label="Fracionado (permite quantidades decimais)" checked={form.allowFractionalQuantity} onChange={e => setForm({ ...form, allowFractionalQuantity: e.target.checked })} />}
+            <Check label="Ticket de retirada para este produto" checked={form.pickupTicket} onChange={e => setForm({ ...form, pickupTicket: e.target.checked })} />
+            <Check label="Habilitar embalagem" checked={form.packagingEnabled} onChange={e => setForm({ ...form, packagingEnabled: e.target.checked })} />
+            <Check label="Preço livre (UN) — permite informar o preço no PDV" checked={form.allowFreePrice} onChange={e => setForm({ ...form, allowFreePrice: e.target.checked })} />
+            <Check label="Controlar saldo" checked={form.stockControlled} onChange={e => setForm({ ...form, stockControlled: e.target.checked })} />
             {editingId && <Check label="Produto ativo" checked={form.active} onChange={e => setForm({ ...form, active: e.target.checked })} />}
           </div>
+          {form.packagingEnabled && <div className="md:col-span-2 xl:col-span-3"><Field label="Preço da embalagem (R$)" type="number" min="0" max="9999999999.99" step="0.01" value={form.packagingPrice} onChange={e => setForm({ ...form, packagingPrice: e.target.value })} /><p className="mt-1 text-xs text-slate-500">A cobrança só é aplicada quando a embalagem for marcada no item do pedido.</p></div>}
+          {form.stockControlled && <div className="grid gap-3 rounded-xl border border-slate-200 bg-slate-50 p-3 md:col-span-2 xl:col-span-3 sm:grid-cols-2">
+            {!editingId && <Field label="Estoque inicial" type="number" min="0" max="999999999.999" step="0.001" value={form.initialStock} onChange={e => setForm({ ...form, initialStock: e.target.value })} />}
+            <Field label="Estoque mínimo (opcional)" type="number" min="0" max="999999999.999" step="0.001" value={form.stockMin} onChange={e => setForm({ ...form, stockMin: e.target.value })} />
+            <p className="text-xs text-slate-600 sm:col-span-2">O saldo é reservado quando o pedido é criado, devolvido se ele for cancelado e atualizado por movimentações registradas.</p>
+          </div>}
         </>}
+        {formTab === 'groups' && <div className="md:col-span-2 xl:col-span-3">
+          {!editingId ? <p className="text-sm text-slate-600">Salve o produto primeiro e depois edite-o para vincular grupos de adicionais (ou comece de um modelo acima, que já vincula os grupos).</p> : groups.length === 0 ? <p className="text-sm text-slate-600">Nenhum grupo de adicionais cadastrado. Crie em <Link href="/catalog" className="font-semibold text-brand-700 underline">Adicionais e combos</Link>.</p> : <>
+            <div className="grid gap-2 sm:grid-cols-2 xl:grid-cols-3">{groups.map(group => <Check key={group.id} label={`${group.name} (${group.minSelect > 0 ? `mín. ${group.minSelect}, ` : ''}até ${group.maxSelect} · ${group.options.length} opção(ões))${group.active ? '' : ' — inativo'}`} checked={pickedGroups.includes(group.id)} onChange={e => setPickedGroups(current => e.target.checked ? [...current, group.id] : current.filter(id => id !== group.id))} />)}</div>
+            <div className="mt-3 flex items-center gap-3"><button type="button" className={buttonClass} disabled={groupsBusy} onClick={() => void saveGroups()}>{groupsBusy ? 'Salvando...' : 'Salvar vínculos'}</button><Link href="/catalog" className="text-xs font-semibold text-brand-700 underline">Gerenciar grupos e combos</Link></div>
+          </>}
+        </div>}
         {formTab === 'photo' && <div className="md:col-span-2 xl:col-span-3">
           <div className="flex flex-wrap items-center gap-4">
             <div className="flex h-32 w-32 items-center justify-center overflow-hidden rounded-2xl border border-dashed border-slate-300 bg-slate-50 text-sm text-slate-400">
@@ -213,6 +276,16 @@ export default function ProductsPage() {
         <div className="flex items-end gap-2 md:col-span-2 xl:col-span-3"><button className={buttonClass}>{editingId ? 'Salvar alterações' : 'Adicionar produto'}</button>{editingId && <button type="button" className={secondaryButtonClass} onClick={cancelEdit}>Cancelar edição</button>}<Link href="/categories" className={secondaryButtonClass}>Categorias</Link></div>
       </form>
     </section>
+    {editingId && form.stockControlled && <section className={`${panelClass} mb-6`}>
+      <div className="mb-3"><h2 className="text-lg font-semibold">Saldo do produto</h2><p className="text-sm text-slate-600">Atual: <strong>{Number(items.find(item => item.id === editingId)?.stockQuantity ?? 0).toFixed(3)}</strong>{form.stockMin !== '' && Number(items.find(item => item.id === editingId)?.stockQuantity ?? 0) <= Number(form.stockMin) && <span className="ml-2 text-amber-700">Atingiu o estoque mínimo.</span>}</p></div>
+      <form onSubmit={recordProductStock} className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+        <Select label="Tipo" value={stockMovement.type} disabled={stockBusy} onChange={e => setStockMovement({ ...stockMovement, type: e.target.value, action: e.target.value === 'WASTE' ? 'REMOVE' : 'ADD' })}><option value="PURCHASE">Entrada / compra</option><option value="ADJUSTMENT">Ajuste</option><option value="WASTE">Perda / descarte</option></Select>
+        <Select label="Operação" value={stockMovement.action} disabled={stockBusy || stockMovement.type !== 'ADJUSTMENT'} onChange={e => setStockMovement({ ...stockMovement, action: e.target.value })}><option value="ADD">Adicionar saldo</option><option value="REMOVE">Retirar saldo</option></Select>
+        <Field label="Quantidade" type="number" min="0.001" max="999999999.999" step="0.001" required value={stockMovement.quantity} disabled={stockBusy} onChange={e => setStockMovement({ ...stockMovement, quantity: e.target.value })} />
+        <Field label="Observação (opcional)" maxLength={500} value={stockMovement.note} disabled={stockBusy} onChange={e => setStockMovement({ ...stockMovement, note: e.target.value })} />
+        <div className="sm:col-span-2 lg:col-span-4"><button className={buttonClass} disabled={stockBusy}>{stockBusy ? 'Salvando...' : 'Registrar movimentação'}</button></div>
+      </form>
+    </section>}
     {quality && <section className={`${panelClass} mb-6`} aria-label="Qualidade do cardápio">
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div><p className="text-xs font-semibold uppercase tracking-wider text-brand-700">Qualidade do cardápio</p><p className="mt-1 text-sm text-slate-600">Produtos ativos com foto, descrição e categoria vendem mais na loja virtual.</p></div>
@@ -227,9 +300,9 @@ export default function ProductsPage() {
         <thead className="border-b border-slate-200 bg-slate-50 text-slate-600"><tr><th className="p-3">Ajustar</th><th className="p-3">Produto</th><th className="p-3">Código</th><th className="p-3">Categoria</th><th className="p-3">Setor</th><th className="p-3">Preço</th><th className="p-3">Situação</th><th className="p-3">Estoque</th><th className="p-3">Ações</th></tr></thead>
         <tbody>{visibleItems.map(item => <tr key={item.id} className="border-b border-slate-200">
           <td className="p-3"><input type="checkbox" aria-label={`Selecionar ${item.name} para ajuste de preço`} checked={Object.hasOwn(prices, item.id)} disabled={savingPrices} onChange={event => selectPrice(item, event.target.checked)} /></td>
-          <td className="p-3 font-semibold">{item.favorite && <span aria-label="Favorito" title="Favorito" className="mr-1 text-brand-600">★</span>}{item.name}{item.localOnly && <> <Badge tone="amber">Só local</Badge></>}{item.isComponent && <> <Badge tone="neutral">Componente</Badge></>}{item.soldByWeight && <> <Badge tone="blue">Por kg</Badge></>}{item.sendToScale && <> <Badge tone="gold">Balança {item.scaleCode}</Badge></>}</td><td className="p-3">{item.code || '—'}</td>
+          <td className="p-3 font-semibold">{item.favorite && <span aria-label="Favorito" title="Favorito" className="mr-1 text-brand-600">★</span>}{item.name}{item.localOnly && <> <Badge tone="amber">Só local</Badge></>}{item.isComponent && <> <Badge tone="neutral">Componente</Badge></>}{item.soldByWeight && <> <Badge tone="blue">Por kg</Badge></>}{item.allowFractionalQuantity && <> <Badge tone="blue">Fracionado</Badge></>}{item.sendToScale && <> <Badge tone="gold">Balança {item.scaleCode}</Badge></>}</td><td className="p-3">{item.code || '—'}</td>
           <td className="p-3"><select aria-label={`Categoria de ${item.name}`} className="rounded-lg border border-slate-300 bg-white px-2 py-1.5" value={item.category?.id ?? ''} disabled={savingPrices || selectedItems.length > 0} onChange={event => void changeCategory(item, event.target.value)}><option value="">Sem categoria</option>{categories.map(category => <option key={category.id} value={category.id}>{category.name}</option>)}</select></td>
-          <td className="p-3">{item.sector?.name || '—'}</td><td className="p-3 font-semibold">{formatMoney(item.price)}{item.soldByWeight ? '/kg' : ''}</td><td className="p-3"><span className={`rounded-full px-2.5 py-1 text-xs font-medium ${item.active ? 'bg-emerald-100 text-emerald-800' : 'bg-slate-100 text-slate-700'}`}>{item.active ? 'Ativo' : 'Inativo'}</span></td><td className="p-3">{item.active && <Link href={`/inventory?productId=${encodeURIComponent(item.id)}#ficha-tecnica`} className={`${secondaryButtonClass} inline-block whitespace-nowrap`}>Ficha técnica</Link>}</td><td className="p-3"><button type="button" className={secondaryButtonClass} disabled={savingPrices} onClick={() => startEdit(item)}>Editar</button></td>
+          <td className="p-3">{item.sector?.name || '—'}</td><td className="p-3 font-semibold">{formatMoney(item.price)}{item.soldByWeight ? '/kg' : ''}</td><td className="p-3"><span className={`rounded-full px-2.5 py-1 text-xs font-medium ${item.active ? 'bg-emerald-100 text-emerald-800' : 'bg-slate-100 text-slate-700'}`}>{item.active ? 'Ativo' : 'Inativo'}</span></td><td className="p-3"><div className="flex flex-col items-start gap-1">{item.stockControlled ? <span className={`rounded-full px-2.5 py-1 text-xs font-medium ${item.stockMin != null && Number(item.stockQuantity ?? 0) <= Number(item.stockMin) ? 'bg-amber-100 text-amber-800' : 'bg-emerald-100 text-emerald-800'}`}>Saldo {Number(item.stockQuantity ?? 0).toFixed(3)}</span> : <span className="text-slate-400">Não controlado</span>}{item.active && <Link href={`/inventory?productId=${encodeURIComponent(item.id)}#ficha-tecnica`} className={`${secondaryButtonClass} inline-block whitespace-nowrap`}>Ficha técnica</Link>}</div></td><td className="p-3"><button type="button" className={secondaryButtonClass} disabled={savingPrices} onClick={() => startEdit(item)}>Editar</button></td>
         </tr>)}</tbody>
       </table></div>
       {visibleItems.length === 0 && <p className="p-4 text-sm text-slate-500">{items.length ? 'Nenhum produto encontrado.' : 'Nenhum produto cadastrado.'}</p>}

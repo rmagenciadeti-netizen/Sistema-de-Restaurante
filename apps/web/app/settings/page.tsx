@@ -3,7 +3,7 @@
 import { Suspense, useState } from 'react';
 import { useSearchParams } from 'next/navigation';
 import { AppShell, buttonClass, Notice, panelClass } from '../../components/app-shell';
-import { FinancialSection, FulfillmentSection, HoursSection, CompanySection, MenuLayoutSection, OrdersSection, PdvSection, PrintingSection, ProductsSection, ScaleSection, StoreSection, TicketSection } from '../../components/settings-sections';
+import { FinancialSection, FulfillmentSection, HoursSection, CompanySection, MenuLayoutSection, OrderStatusesSection, OrdersSection, PdvSection, PrintingSection, ProductsSection, ScaleSection, StoreSection, TicketSection } from '../../components/settings-sections';
 import { PageHeader, SideTabs } from '../../components/ui';
 import { api } from '../../lib/api';
 import type { SettingsSectionName } from '../../lib/settings';
@@ -23,6 +23,7 @@ const tabs: Tab[] = [
   { key: 'scale', label: 'Balança', icon: '⚖️', title: 'Balança' },
   { key: 'printing', label: 'Impressão', icon: '🖨️', title: 'Impressão' },
   { key: 'ticket', label: 'Ticket de retirada', icon: '🎫', title: 'Ticket de retirada' },
+  { key: 'orderStatuses', label: 'Status dos pedidos', icon: '🔖', title: 'Status dos pedidos' },
   { key: 'financial', label: 'Financeiro', icon: '💰', title: 'Financeiro' },
 ];
 
@@ -38,6 +39,7 @@ function SettingsContent() {
     if (tab === 'hours' && invalidSlots(draft.hours.weekly).length > 0) return 'Corrija as faixas de horário: o início deve ser anterior ao fim.';
     if (tab === 'store' && !/^#[0-9a-fA-F]{6}$/.test(draft.store.brandColor)) return 'Informe a cor da loja no formato #RRGGBB.';
     if (tab === 'store' && !/^(\d{8,20})?$/.test(draft.store.metaPixelId)) return 'O ID do Pixel deve ter de 8 a 20 dígitos.';
+    if (tab === 'orderStatuses' && draft.orderStatuses.items.some(item => !item.title.trim())) return 'Todos os status precisam de um título.';
     if (tab === 'scale') {
       if (!/^\d{1,2}$/.test(draft.scale.prefix)) return 'O prefixo da balança deve ter 1 ou 2 dígitos.';
       if (draft.scale.barcodeLength - draft.scale.prefix.length - draft.scale.codeLength - 1 < 1) return 'O formato do código de barras não deixa espaço para peso/preço.';
@@ -72,10 +74,11 @@ function SettingsContent() {
       case 'store': return <StoreSection value={draft.store} disabled={disabled} onChange={change => patch('store', change)} />;
       case 'products': return <ProductsSection value={draft.products} disabled={disabled} onChange={change => patch('products', change)} />;
       case 'orders': return <OrdersSection value={draft.orders} disabled={disabled} onChange={change => patch('orders', change)} />;
-      case 'pdv': return <PdvSection value={draft.pdv} disabled={disabled} onChange={change => patch('pdv', change)} password={{ hasPassword: hasAdminPassword, canManage: role === 'ADMIN', busy: passwordBusy, onSet: setAdminPassword }} />;
+      case 'pdv': return <PdvSection value={draft.pdv} disabled={disabled} onChange={change => patch('pdv', change)} orderStatuses={draft.orderStatuses} password={{ hasPassword: hasAdminPassword, canManage: role === 'ADMIN', busy: passwordBusy, onSet: setAdminPassword }} />;
       case 'scale': return <ScaleSection value={draft.scale} disabled={disabled} onChange={change => patch('scale', change)} />;
       case 'printing': return <PrintingSection value={draft.printing} disabled={disabled} onChange={change => patch('printing', change)} />;
       case 'ticket': return <TicketSection value={draft.ticket} disabled={disabled} onChange={change => patch('ticket', change)} />;
+      case 'orderStatuses': return <OrderStatusesSection value={draft.orderStatuses} disabled={disabled} onChange={change => patch('orderStatuses', change)} />;
       case 'financial': return <FinancialSection value={draft.financial} disabled={disabled} onChange={change => patch('financial', change)} />;
       default: return null;
     }

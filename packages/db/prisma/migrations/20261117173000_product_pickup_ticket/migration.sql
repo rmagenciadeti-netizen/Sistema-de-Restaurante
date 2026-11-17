@@ -1,0 +1,1 @@
+ALTER TABLE "Product" ADD COLUMN "pickupTicket" BOOLEAN NOT NULL DEFAULT false;

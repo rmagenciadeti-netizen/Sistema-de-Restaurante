@@ -76,6 +76,13 @@ cashRoutes.post('/payments', async (req, res, next) => {
       const amountPaid = (paid._sum.amount ?? new Prisma.Decimal(0)).add(input.data.amount);
       if (amountPaid.gt(order.total)) return { error: 'Payment exceeds the remaining order balance', status: 409 } as const;
       const payment = await tx.payment.create({ data: { tenantId: tenantId!, unitId: order.unitId, orderId: order.id, cashSessionId: input.data.cashSessionId, method: input.data.method, amount: input.data.amount, reference: input.data.reference } });
+      const promissory = await tx.financialEntry.findUnique({ where: { orderId: order.id } });
+      if (promissory && promissory.status !== 'CANCELLED') {
+        const received = await tx.payment.aggregate({ where: { tenantId: tenantId!, orderId: order.id, status: PaymentStatus.CONFIRMED, paidAt: { gte: promissory.createdAt } }, _sum: { amount: true } });
+        const paidAmount = received._sum.amount ?? new Prisma.Decimal(0);
+        const settled = paidAmount.gte(promissory.amount);
+        await tx.financialEntry.update({ where: { id: promissory.id }, data: { paidAmount: paidAmount.gt(promissory.amount) ? promissory.amount : paidAmount, status: settled ? 'PAID' : 'OPEN', settledAt: settled ? new Date() : null } });
+      }
       await tx.auditLog.create({ data: { tenantId: tenantId!, actorUserId: userId, action: 'PAYMENT_RECORDED', entityType: 'Payment', entityId: payment.id } });
       return { payment, amountPaid, orderTotal: order.total } as const;
     });
@@ -93,9 +100,23 @@ cashRoutes.get('/payments', async (req, res, next) => {
 cashRoutes.post('/payments/:id/refund', requireRoles(...FINANCE_ROLES), async (req, res, next) => {
   try {
     const { tenantId, unitId, userId } = req.auth!;
-    const updated = await prisma.payment.updateMany({ where: { id: req.params.id, tenantId: tenantId!, ...(unitId ? { unitId } : {}), status: PaymentStatus.CONFIRMED }, data: { status: PaymentStatus.REFUNDED } });
-    if (updated.count !== 1) return res.status(409).json({ message: 'Only confirmed payments of this tenant can be refunded' });
-    await prisma.auditLog.create({ data: { tenantId: tenantId!, actorUserId: userId, action: 'PAYMENT_REFUNDED', entityType: 'Payment', entityId: req.params.id } });
+    const refunded = await serializable(prisma, async tx => {
+      const payment = await tx.payment.findFirst({ where: { id: req.params.id, tenantId: tenantId!, ...(unitId ? { unitId } : {}), status: PaymentStatus.CONFIRMED } });
+      if (!payment) return false;
+      await tx.payment.update({ where: { id: payment.id }, data: { status: PaymentStatus.REFUNDED } });
+      if (payment.orderId) {
+        const promissory = await tx.financialEntry.findUnique({ where: { orderId: payment.orderId } });
+        if (promissory && promissory.status !== 'CANCELLED') {
+          const received = await tx.payment.aggregate({ where: { tenantId: tenantId!, orderId: payment.orderId, status: PaymentStatus.CONFIRMED, paidAt: { gte: promissory.createdAt } }, _sum: { amount: true } });
+          const paidAmount = received._sum.amount ?? new Prisma.Decimal(0);
+          const settled = paidAmount.gte(promissory.amount);
+          await tx.financialEntry.update({ where: { id: promissory.id }, data: { paidAmount: paidAmount.gt(promissory.amount) ? promissory.amount : paidAmount, status: settled ? 'PAID' : 'OPEN', settledAt: settled ? promissory.settledAt ?? new Date() : null } });
+        }
+      }
+      await tx.auditLog.create({ data: { tenantId: tenantId!, actorUserId: userId, action: 'PAYMENT_REFUNDED', entityType: 'Payment', entityId: payment.id } });
+      return true;
+    });
+    if (!refunded) return res.status(409).json({ message: 'Only confirmed payments of this tenant can be refunded' });
     return res.status(204).end();
   } catch (error) { return next(error); }
 });
