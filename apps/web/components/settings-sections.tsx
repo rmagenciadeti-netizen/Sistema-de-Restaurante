@@ -30,6 +30,8 @@ const Hint = ({ children }: { children: ReactNode }) => <p className="rounded-xl
 export function CompanySection({ value, onChange, disabled }: SectionProps<'company'>) {
   const text = (key: keyof TenantSettings['company'], label: string, extra: { maxLength?: number; placeholder?: string } = {}) => <Field label={label} value={value[key]} disabled={disabled} onChange={event => onChange({ [key]: event.target.value })} {...extra} />;
   return <div>
+    <Subtitle>Aparência do painel</Subtitle>
+    <Grid><Select label="Layout do menu lateral" value={value.sidebarLayout} disabled={disabled} onChange={event => onChange({ sidebarLayout: event.target.value as typeof value.sidebarLayout })}><option value="CLASSIC">Clássico (menu completo)</option><option value="COMPACT">Compacto (só ícones; expande pelo botão do menu)</option></Select></Grid>
     <Subtitle>Dados da empresa</Subtitle>
     <Grid>{text('tradeName', 'Nome fantasia', { maxLength: 160 })}{text('legalName', 'Razão social', { maxLength: 160 })}{text('document', 'CNPJ/CPF', { maxLength: 20 })}{text('activity', 'Ramo de atividade', { maxLength: 80, placeholder: 'Ex.: Restaurante' })}</Grid>
     <div className="mt-4">{text('slogan', 'Slogan / frase de destaque', { maxLength: 120 })}</div>

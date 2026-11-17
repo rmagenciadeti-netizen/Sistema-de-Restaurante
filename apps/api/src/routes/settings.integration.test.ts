@@ -53,6 +53,7 @@ test('settings, admin password and password releases', { skip: !enabled }, async
     assert.equal((await call('PUT', '/settings/store', admin, { brandColor: 'red' })).status, 400);
     assert.equal((await call('PUT', '/settings/store', admin, { metaPixelId: '123<script>' })).status, 400, 'pixel id is digits only');
     assert.equal((await call('PUT', '/settings/pdv', admin, { usdRate: -1 })).status, 400, 'rates cannot be negative');
+    assert.equal((await call('PUT', '/settings/company', admin, { sidebarLayout: 'WIDE' })).status, 400);
     const saved = await call('PUT', '/settings/hours', manager, { mode: 'CLOSED' });
     assert.equal(saved.status, 200);
     assert.equal(saved.body.section, 'hours');

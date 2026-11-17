@@ -56,7 +56,7 @@ export function AppShell({ title, children }: { title: string; children: React.R
     if (isAdminApp || stored.role === 'MASTER_ADMIN') { void api('/auth/me').catch(() => undefined); return; }
     let active = true;
     api<{ user: { tenant?: Me['tenant'] } }>('/auth/me').then(result => { if (active && result.user?.tenant) setUser(current => ({ ...current, tenant: result.user.tenant })); }).catch(() => undefined);
-    api<SettingsResponse>('/settings').then(result => { if (active) setSettings(result.settings); }).catch(() => undefined);
+    api<SettingsResponse>('/settings').then(result => { if (active) { setSettings(result.settings); if (result.settings.company.sidebarLayout === 'COMPACT') setCollapsed(true); } }).catch(() => undefined);
     return () => { active = false; };
   }, [router]);
 

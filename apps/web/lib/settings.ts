@@ -2,7 +2,7 @@
 export type Slot = { day: number; start: string; end: string };
 
 export type TenantSettings = {
-  company: { legalName: string; tradeName: string; document: string; activity: string; slogan: string; phone: string; whatsapp: string; zip: string; state: string; city: string; district: string; address: string; number: string };
+  company: { legalName: string; tradeName: string; document: string; activity: string; slogan: string; phone: string; whatsapp: string; zip: string; state: string; city: string; district: string; address: string; number: string; sidebarLayout: 'CLASSIC' | 'COMPACT' };
   hours: { timezone: string; mode: 'OPEN' | 'CLOSED' | 'SCHEDULE'; weekly: Slot[] };
   fulfillment: { allowPickup: boolean; allowDelivery: boolean; allowDineIn: boolean; estimatedTime: boolean; pickupMinutes: number; deliveryMinutes: number; deliveryFeeMode: 'SINGLE' | 'UNMAPPED' | 'ZONES' | 'DISTRICT'; singleFee: number; minDelivery: number; freeDeliveryMin: number };
   store: { allowBuyWhenClosed: boolean; autoAccept: boolean; brandColor: string; mode: 'MENU' | 'ECOMMERCE'; minorControl: boolean; metaPixelId: string };
