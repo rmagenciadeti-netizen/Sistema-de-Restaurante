@@ -49,7 +49,7 @@ fiscalRoutes.put('/settings', manage, async (req, res, next) => {
       const problems = [...new Set([...readinessProblems(next, 'NFCE', fiscalProviders.names()), ...readinessProblems(next, 'NFE', fiscalProviders.names())])].filter(problem => !problem.includes('CSC') || (next?.pdvMode ?? 'NON_FISCAL') !== 'NON_FISCAL');
       if (problems.length) return res.status(422).json({ message: `Complete a configuração antes de ativar produção: ${problems.join(' ')}`, problems });
     }
-    const saved = await prisma.fiscalSettings.upsert({ where: { tenantId }, create: { tenantId, ...(data as Prisma.FiscalSettingsUncheckedCreateInput) }, update: data });
+    const saved = await prisma.fiscalSettings.upsert({ where: { tenantId }, create: { ...(data as Prisma.FiscalSettingsUncheckedCreateInput), tenantId }, update: data });
     await audit(req, 'FISCAL_SETTINGS_UPDATED', 'FiscalSettings', saved.id, { environment: saved.environment, pdvMode: saved.pdvMode, fields: Object.keys(parsed.data) });
     return res.json(publicSettings(saved, fiscalProviders.names()));
   } catch (error) { return error instanceof FiscalConfigError ? res.status(error.status).json({ message: error.message }) : next(error); }
@@ -238,7 +238,7 @@ fiscalRoutes.post('/documents/:id/consult', finance, async (req, res, next) => {
     const document = await prisma.fiscalDocument.findFirst({ where: { id: req.params.id, tenantId: req.auth!.tenantId!, ...unitScope(req) } });
     if (!document) return res.status(404).json({ message: 'Documento não encontrado.' });
     const result = await consultDocument(actorOf(req), document);
-    return 'error' in result ? res.status(422).json({ message: result.error }) : res.json(result);
+    return 'failure' in result ? res.status(422).json({ message: result.failure }) : res.json(result);
   } catch (error) { return next(error); }
 });
 // Batch consultation (selected or every pending document of the current environment), sequential to respect the provider's limits.
@@ -247,7 +247,7 @@ fiscalRoutes.post('/documents/consult', finance, async (req, res, next) => {
     const parsed = idsSchema.safeParse(req.body); if (!parsed.success) return res.status(400).json(invalid(parsed.error));
     const documents = await pickDocuments(req, parsed.data.ids, [...pendingStatuses, FiscalStatus.AUTHORIZED]);
     const results = [];
-    for (const document of documents) { const result = await consultDocument(actorOf(req), document); results.push({ id: document.id, ...('error' in result ? { error: result.error } : { status: result.status }) }); }
+    for (const document of documents) { const result = await consultDocument(actorOf(req), document); results.push({ id: document.id, ...('failure' in result ? { error: result.failure } : { status: result.status }) }); }
     return res.json({ processed: results.length, results });
   } catch (error) { return next(error); }
 });
@@ -256,7 +256,7 @@ fiscalRoutes.post('/documents/transmit', finance, async (req, res, next) => {
     const parsed = idsSchema.safeParse(req.body); if (!parsed.success) return res.status(400).json(invalid(parsed.error));
     const documents = await pickDocuments(req, parsed.data.ids, pendingStatuses);
     const results = [];
-    for (const document of documents) { const result = await retransmit(actorOf(req), document); results.push({ id: document.id, ...('error' in result ? { error: result.error } : { status: result.status, message: result.error }) }); }
+    for (const document of documents) { const result = await retransmit(actorOf(req), document); results.push({ id: document.id, ...('failure' in result ? { error: result.failure } : { status: result.status, message: result.error }) }); }
     return res.json({ processed: results.length, results });
   } catch (error) { return next(error); }
 });

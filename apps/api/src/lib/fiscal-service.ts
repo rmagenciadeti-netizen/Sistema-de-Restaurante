@@ -186,26 +186,26 @@ export async function emitForOrder(actor: Actor, orderId: string, options: Emiss
 }
 
 // Re-sends a pending/contingency/rejected document using the snapshot stored at emission (the number never changes).
-export async function retransmit(actor: Actor, document: FiscalDocument): Promise<FiscalDocument | { error: string }> {
+export async function retransmit(actor: Actor, document: FiscalDocument): Promise<FiscalDocument | { failure: string }> {
   const provider = fiscalProviders.get(document.provider);
-  if (!provider) return { error: 'Provedor fiscal não configurado.' };
+  if (!provider) return { failure: 'Provedor fiscal não configurado.' };
   const stale = new Date(Date.now() - STALE_MS);
-  if (!RETRYABLE.includes(document.status) && !(document.status === FiscalStatus.PENDING && document.updatedAt < stale)) return { error: 'Documento não está pendente de transmissão.' };
-  if (!document.payload) return { error: 'Documento sem dados de emissão; reenvie pelo pedido.' };
+  if (!RETRYABLE.includes(document.status) && !(document.status === FiscalStatus.PENDING && document.updatedAt < stale)) return { failure: 'Documento não está pendente de transmissão.' };
+  if (!document.payload) return { failure: 'Documento sem dados de emissão; reenvie pelo pedido.' };
   const settings = await loadFiscalSettings(prisma, actor.tenantId);
-  if (environmentOf(settings) !== document.environment) return { error: 'O ambiente fiscal atual é diferente do ambiente do documento.' };
+  if (environmentOf(settings) !== document.environment) return { failure: 'O ambiente fiscal atual é diferente do ambiente do documento.' };
   const locked = await prisma.fiscalDocument.updateMany({ where: { id: document.id, updatedAt: document.updatedAt }, data: { status: FiscalStatus.PENDING } });
-  if (locked.count !== 1) return { error: 'Documento em processamento por outra operação.' };
+  if (locked.count !== 1) return { failure: 'Documento em processamento por outra operação.' };
   const payload = document.payload as unknown as FiscalOrder;
   return transmit(document, provider, { ...payload, issuedAt: new Date(payload.issuedAt) }, actor, fiscalContext(settings, { contingency: await contingencyActive(actor.tenantId) }), document.status);
 }
 
 // Asks the provider/SEFAZ for the real state of a document (lost return, async batch, contingency).
-export async function consultDocument(actor: Actor, document: FiscalDocument): Promise<FiscalDocument | { error: string }> {
+export async function consultDocument(actor: Actor, document: FiscalDocument): Promise<FiscalDocument | { failure: string }> {
   const provider = fiscalProviders.get(document.provider);
-  if (!provider?.consult) return { error: 'O provedor fiscal configurado não oferece consulta de situação.' };
+  if (!provider?.consult) return { failure: 'O provedor fiscal configurado não oferece consulta de situação.' };
   const settings = await loadFiscalSettings(prisma, actor.tenantId);
-  if (environmentOf(settings) !== document.environment) return { error: 'O ambiente fiscal atual é diferente do ambiente do documento.' };
+  if (environmentOf(settings) !== document.environment) return { failure: 'O ambiente fiscal atual é diferente do ambiente do documento.' };
   try {
     const found = await provider.consult({ ref: document.id, kind: document.kind, number: document.number, series: document.series, accessKey: document.accessKey }, fiscalContext(settings));
     if (found.status === 'NOT_FOUND') {
@@ -214,9 +214,9 @@ export async function consultDocument(actor: Actor, document: FiscalDocument): P
     }
     return applyResult(document, found, actor, 'CONSULT', document.status);
   } catch (error) {
-    if (error instanceof FiscalConfigError) return { error: error.message };
+    if (error instanceof FiscalConfigError) return { failure: error.message };
     await recordEvent({ tenantId: actor.tenantId, unitId: document.unitId, documentId: document.id, environment: document.environment, type: 'CONSULT', status: 'COMMUNICATION_FAILURE', kind: document.kind, message: 'Falha de comunicação na consulta', actorUserId: actor.userId });
-    return { error: 'Falha de comunicação ao consultar a SEFAZ; tente novamente.' };
+    return { failure: 'Falha de comunicação ao consultar a SEFAZ; tente novamente.' };
   }
 }
 

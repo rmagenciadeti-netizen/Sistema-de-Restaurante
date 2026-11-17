@@ -22,7 +22,7 @@ const digits = (length: number, label: string) => z.string().trim().nullish().tr
 const cst = (label: string) => z.string().trim().regex(/^\d{2,3}$/, `${label} deve ter 2 ou 3 dígitos`).nullish().transform(value => value || null);
 const rate = z.number().finite().min(0).max(100).multipleOf(0.001).nullish();
 
-const schema = z.object({
+const baseSchema = z.object({
   name: z.string().trim().min(2).max(120),
   ncm: digits(8, 'NCM'),
   cest: digits(7, 'CEST'),
@@ -42,7 +42,10 @@ const schema = z.object({
   ibsUfRate: rate, ibsMunRate: rate, cbsRate: rate, isRate: rate,
   validFrom: z.coerce.date().nullish(), validTo: z.coerce.date().nullish(),
   active: z.boolean().default(true),
-}).refine(value => !value.validFrom || !value.validTo || value.validFrom <= value.validTo, { message: 'A vigência final deve ser posterior à inicial', path: ['validTo'] });
+});
+const validPeriod = (value: { validFrom?: Date | null; validTo?: Date | null }) => !value.validFrom || !value.validTo || value.validFrom <= value.validTo;
+const periodIssue = { message: 'A vigência final deve ser posterior à inicial', path: ['validTo'] };
+const schema = baseSchema.refine(validPeriod, periodIssue);
 const conflict = { message: 'Já existe uma regra com esse nome.' };
 const idsSchema = z.object({ productIds: z.array(z.string().uuid()).min(1).max(500) });
 const ruleScope = (req: Parameters<typeof unitReadScope>[0], id: string) => ({ id, tenantId: req.auth!.tenantId! });
@@ -111,7 +114,7 @@ taxRuleRoutes.post('/:id/unassign', async (req, res, next) => {
 taxRuleRoutes.patch('/:id', async (req, res, next) => {
   try {
     if (!MANAGEMENT_ROLES.includes(req.auth!.role)) return res.status(403).json({ message: 'Insufficient permissions' });
-    const parsed = schema.innerType().partial().safeParse(req.body); if (!parsed.success) return res.status(400).json(validationError(parsed.error));
+    const parsed = baseSchema.partial().refine(validPeriod, periodIssue).safeParse(req.body); if (!parsed.success) return res.status(400).json(validationError(parsed.error));
     const tenantId = req.auth!.tenantId!;
     const current = await prisma.taxRule.findFirst({ where: ruleScope(req, req.params.id) }); if (!current) return res.status(404).json({ message: 'Regra não encontrada.' });
     if (parsed.data.name && await prisma.taxRule.findFirst({ where: { tenantId, id: { not: current.id }, name: { equals: parsed.data.name, mode: 'insensitive' } } })) return res.status(409).json(conflict);
