@@ -11,7 +11,7 @@ jobs:
   validate:
     runs-on: ubuntu-latest
     env:
-      DATABASE_URL: postgresql://postgres@postgres:5432/validation?schema=public
+      DATABASE_URL: postgresql://postgres@localhost:5432/validation?schema=public
     services:
       postgres:
         image: postgres:16
