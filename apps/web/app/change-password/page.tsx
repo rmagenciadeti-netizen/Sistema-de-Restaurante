@@ -2,7 +2,7 @@
 
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
-import { api, errorMessage, isAdminApp, tokenStorageKey, userStorageKey } from '../../lib/api';
+import { api, clearSessionCookie, errorMessage, isAdminApp, tokenStorageKey, userStorageKey } from '../../lib/api';
 import { buttonClass, Field, Notice } from '../../components/app-shell';
 
 export default function ChangePasswordPage() {
@@ -20,6 +20,7 @@ export default function ChangePasswordPage() {
     setBusy(true);
     try {
       await api('/auth/change-password', { method: 'POST', body: JSON.stringify({ currentPassword, newPassword }) });
+      clearSessionCookie();
       localStorage.removeItem(tokenStorageKey);
       localStorage.removeItem(userStorageKey);
       router.replace('/login');

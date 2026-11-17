@@ -174,6 +174,9 @@ async function recordUnanswered(db: Db, tenantId: string, text: string, now: Dat
   await db.whatsappUnanswered.upsert({ where: { tenantId_text: { tenantId, text: key } }, create: { tenantId, text: key, lastAskedAt: now }, update: { count: { increment: 1 }, lastAskedAt: now } });
 }
 
+const GREETING_TOKENS = new Set(['oi', 'ola', 'oie', 'eae', 'hey', 'hello', 'bom', 'boa', 'dia', 'tarde', 'noite', 'tudo', 'bem', 'td', 'menu', 'inicio', 'opcoes', 'ajuda', 'ai', 'ae', 'galera', 'pessoal', 'gente', 'tudo bem']);
+// A greeting counts as "just a greeting" only when nothing else is asked, so "oi, qual o cardápio?" is answered as a question.
+const isGreetingOnly = (normalized: string) => normalized.replace(/[#:/.,-]/g, ' ').split(' ').filter(Boolean).every(word => GREETING_TOKENS.has(word));
 const RESERVE_WORDS = ['reserva', 'reservar', 'reservas', 'agendar mesa'];
 const HANDOFF_WORDS = ['atendente', 'humano', 'gerente', 'responsavel', 'falar com alguem', 'falar com uma pessoa', 'falar com pessoa', 'reclamacao', 'reclamar'];
 
@@ -219,14 +222,15 @@ export async function respond(db: Db, env: BotEnv, input: BotInput, options: Bot
     return result('handoff', [renderTemplate(env.templates('handoff').body, { nome: name ?? 'cliente', restaurante: env.restaurant })], null, { handoff: true });
   }
 
-  if (input.greetDue && hasAny(normalized, ['oi', 'ola', 'bom dia', 'boa tarde', 'boa noite', 'menu', 'inicio', 'opcoes', 'ajuda', 'oie', 'eae', 'hey', 'hello']) && normalized.split(' ').length <= 4) {
+  const greeting = isGreetingOnly(normalized);
+  if (input.greetDue && greeting) {
     const replies: string[] = [];
     if (env.settings.whatsapp.autoMessagesEnabled && env.templates('welcome').enabled) replies.push(welcome(env, name));
     else replies.push(menuText(env));
     if (closedNote) replies.push(closedNote);
     return result('welcome', replies, null, { greeted: true });
   }
-  if (hasAny(normalized, ['oi', 'ola', 'bom dia', 'boa tarde', 'boa noite', 'menu', 'inicio', 'opcoes', 'ajuda']) && normalized.split(' ').length <= 3) return result('menu', [`Como posso ajudar, ${name ?? 'cliente'}?\n${menuText(env)}`], null, { greeted: true });
+  if (greeting) return result('menu', [`Como posso ajudar, ${name ?? 'cliente'}?\n${menuText(env)}`], null, { greeted: true });
 
   const custom = await knowledgeMatch(db, env.tenantId, text);
   if (custom) {

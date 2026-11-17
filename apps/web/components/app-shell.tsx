@@ -3,7 +3,7 @@
 import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
 import { useEffect, useMemo, useState } from 'react';
-import { api, isAdminApp, tokenStorageKey, userStorageKey } from '../lib/api';
+import { api, clearSessionCookie, isAdminApp, tokenStorageKey, userStorageKey } from '../lib/api';
 import { alwaysVisibleHrefs, flows, menuGroups, moduleIcon, moduleLabel, pathOf, topTabs, type MenuGroup } from '../lib/menu-catalog';
 import { isStoreOpen, type SettingsResponse, type TenantSettings } from '../lib/settings';
 
@@ -47,12 +47,13 @@ export function AppShell({ title, children }: { title: string; children: React.R
 
   useEffect(() => {
     const token = localStorage.getItem(tokenStorageKey);
-    if (!token) { router.replace('/login'); return; }
+    if (!token) { clearSessionCookie(); router.replace('/login'); return; }
     let stored: Me = {};
     try { stored = JSON.parse(localStorage.getItem(userStorageKey) ?? '{}'); } catch { /* keep empty */ }
     if (isAdminApp && stored.role !== 'MASTER_ADMIN') { router.replace('/login'); return; }
     setUser(stored);
-    if (isAdminApp || stored.role === 'MASTER_ADMIN') return;
+    // Validates the stored session on every protected screen; an expired/invalid token (HTTP 401) is handled by api() and redirects to /login.
+    if (isAdminApp || stored.role === 'MASTER_ADMIN') { void api('/auth/me').catch(() => undefined); return; }
     let active = true;
     api<{ user: { tenant?: Me['tenant'] } }>('/auth/me').then(result => { if (active && result.user?.tenant) setUser(current => ({ ...current, tenant: result.user.tenant })); }).catch(() => undefined);
     api<SettingsResponse>('/settings').then(result => { if (active) setSettings(result.settings); }).catch(() => undefined);
@@ -74,6 +75,7 @@ export function AppShell({ title, children }: { title: string; children: React.R
   function signOut() {
     localStorage.removeItem(tokenStorageKey);
     localStorage.removeItem(userStorageKey);
+    clearSessionCookie();
     router.replace('/login');
   }
 

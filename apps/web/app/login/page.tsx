@@ -1,8 +1,8 @@
 'use client';
 
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
-import { ApiError, isAdminApp, publicApi, tokenStorageKey, userStorageKey } from '../../lib/api';
+import { ApiError, dropStaleSession, isAdminApp, publicApi, setSessionCookie, tokenStorageKey, userStorageKey } from '../../lib/api';
 import { buttonClass, Field, Notice } from '../../components/app-shell';
 
 type LoginUser = { id: string; name: string; email: string; role: string; tenantId: string | null; unitId: string | null; mustChangePassword: boolean };
@@ -31,10 +31,12 @@ export default function LoginPage() {
   const [pendingPasswordChange, setPendingPasswordChange] = useState(false);
   const [message, setMessage] = useState('');
   const [loading, setLoading] = useState(false);
+  useEffect(() => { dropStaleSession(); }, []);
 
   function finishLogin(accessToken: string, user: LoginUser, mustChangePassword: boolean) {
     localStorage.setItem(userStorageKey, JSON.stringify(user));
     localStorage.setItem(tokenStorageKey, accessToken);
+    setSessionCookie(accessToken);
     router.replace(mustChangePassword ? '/change-password' : '/dashboard');
   }
 

@@ -55,6 +55,7 @@ test('WhatsApp bot, QR session manager and panel API', { skip: !enabled }, async
   };
   const admin = await mkToken(tenant.id, UserRole.ADMIN);
   const waiter = await mkToken(tenant.id, UserRole.WAITER);
+  const cashier = await mkToken(tenant.id, UserRole.CASHIER);
   const otherAdmin = await mkToken(other.id, UserRole.ADMIN);
   t.after(async () => {
     setAiProvider(undefined);
@@ -118,7 +119,7 @@ test('WhatsApp bot, QR session manager and panel API', { skip: !enabled }, async
     assert.equal(ai.intent, 'ai');
     assert.match(joined(ai), /Fazemos sim/);
     assert.match(received, /Hambúrguer Artesanal/); // grounded with the menu
-    const escalated = await say('aceitam casamento?', '5566777776666@s.whatsapp.net', '5566777776666', 'Ana');
+    const escalated = await say('vocês fazem casamento?', '5566777776666@s.whatsapp.net', '5566777776666', 'Ana');
     assert.ok(!joined(escalated).includes('[ATENDENTE]'));
     assert.equal((await prisma.whatsappConversation.findFirstOrThrow({ where: { tenantId: tenant.id, jid: '5566777776666@s.whatsapp.net' } })).handoff, true);
     setAiProvider(undefined);
@@ -166,8 +167,10 @@ test('WhatsApp bot, QR session manager and panel API', { skip: !enabled }, async
     t.after(() => manager.stop());
     await saveSettingsSection(prisma, tenant.id, 'whatsapp', { botEnabled: true, replyDelaySeconds: 0, humanizeTyping: false });
 
+    await prisma.whatsappManager.deleteMany();
     assert.equal((await call('GET', '/whatsapp/session', admin)).body.managerOnline, false);
-    assert.equal((await call('POST', '/whatsapp/session/connect', waiter)).status, 403);
+    assert.equal((await call('GET', '/whatsapp/session', waiter)).status, 403); // waiters have no access to the panel
+    assert.equal((await call('POST', '/whatsapp/session/connect', cashier)).status, 403);
     assert.equal((await call('POST', '/whatsapp/session/connect', admin)).status, 202);
     await manager.tick();
     assert.equal(transports.length, 1);
@@ -222,9 +225,9 @@ test('WhatsApp bot, QR session manager and panel API', { skip: !enabled }, async
 
   await t.test('panel API: auto messages, knowledge base, simulator, conversations, tenant isolation', async () => {
     await saveSettingsSection(prisma, tenant.id, 'whatsapp', { botEnabled: true });
-    const list = await call('GET', '/whatsapp/auto-messages', waiter);
+    const list = await call('GET', '/whatsapp/auto-messages', cashier);
     assert.equal(list.status, 200); assert.ok(list.body.items.some((item: any) => item.key === 'order_ready' && item.enabled));
-    assert.equal((await call('PUT', '/whatsapp/auto-messages/order_ready', waiter, { enabled: false, body: 'x' })).status, 403);
+    assert.equal((await call('PUT', '/whatsapp/auto-messages/order_ready', cashier, { enabled: false, body: 'x' })).status, 403);
     assert.equal((await call('PUT', '/whatsapp/auto-messages/order_ready', admin, { enabled: true, body: 'Oi {{segredo}}' })).status, 400);
     assert.equal((await call('PUT', '/whatsapp/auto-messages/nope', admin, { enabled: true, body: 'x' })).status, 404);
     const saved = await call('PUT', '/whatsapp/auto-messages/order_ready', admin, { enabled: true, body: '{{nome}}, pedido {{pedido}} pronto!' });
@@ -235,7 +238,7 @@ test('WhatsApp bot, QR session manager and panel API', { skip: !enabled }, async
     assert.equal(created.status, 201);
     assert.equal((await call('GET', '/whatsapp/knowledge', otherAdmin)).body.total, 0);
     assert.equal((await call('DELETE', `/whatsapp/knowledge/${created.body.id}`, otherAdmin)).status, 404);
-    assert.equal((await call('POST', '/whatsapp/knowledge', waiter, { title: 'x', keywords: ['x'], answer: 'x' })).status, 403);
+    assert.equal((await call('POST', '/whatsapp/knowledge', cashier, { title: 'x', keywords: ['x'], answer: 'x' })).status, 403);
     const sim = await call('POST', '/whatsapp/bot/simulate', admin, { text: 'tem wifi aí?' });
     assert.equal(sim.body.intent, 'knowledge'); assert.match(sim.body.replies[0], /cantina123/);
     const reserve = await call('POST', '/whatsapp/bot/simulate', admin, { text: 'quero reservar' });
@@ -245,20 +248,20 @@ test('WhatsApp bot, QR session manager and panel API', { skip: !enabled }, async
     assert.match(done.body.replies[0], /simulação/);
     assert.equal(await prisma.reservation.count({ where: { tenantId: tenant.id } }), before); // simulation writes nothing
 
-    const conversations = await call('GET', '/whatsapp/conversations?filter=all', waiter);
+    const conversations = await call('GET', '/whatsapp/conversations?filter=all', cashier);
     assert.ok(conversations.body.total > 3);
     assert.equal((await call('GET', '/whatsapp/conversations', otherAdmin)).body.total, 0);
     const maria = conversations.body.items.find((item: any) => item.phone === '5566999991111');
     assert.ok(maria.unread > 0);
-    const messages = await call('GET', `/whatsapp/conversations/${maria.id}/messages`, waiter);
-    assert.ok(messages.body.items.some((item: any) => item.direction === 'IN') && messages.body.items.some((item: any) => item.source === 'BOT'));
+    const messages = await call('GET', `/whatsapp/conversations/${maria.id}/messages`, cashier);
+    assert.ok(messages.body.items.some((item: any) => item.direction === 'IN') && messages.body.items.some((item: any) => item.source === 'AUTO'));
     assert.equal((await call('GET', `/whatsapp/conversations/${maria.id}/messages`, otherAdmin)).status, 404);
-    const sent = await call('POST', `/whatsapp/conversations/${maria.id}/messages`, waiter, { text: 'Oi Maria, tudo bem?' });
+    const sent = await call('POST', `/whatsapp/conversations/${maria.id}/messages`, cashier, { text: 'Oi Maria, tudo bem?' });
     assert.equal(sent.status, 202);
     const queued = await prisma.whatsappMessage.findFirstOrThrow({ where: { tenantId: tenant.id, template: 'free_text', toPhone: '5566999991111' } });
     assert.deepEqual(queued.payload, { text: 'Oi Maria, tudo bem?' });
-    assert.equal((await call('PATCH', `/whatsapp/conversations/${maria.id}`, waiter, { handoff: false })).body.handoff, false);
-    const stats = await call('GET', '/whatsapp/stats', waiter);
+    assert.equal((await call('PATCH', `/whatsapp/conversations/${maria.id}`, cashier, { handoff: false })).body.handoff, false);
+    const stats = await call('GET', '/whatsapp/stats', cashier);
     assert.ok(stats.body.conversations > 3 && stats.body.inboundToday > 5);
   });
 

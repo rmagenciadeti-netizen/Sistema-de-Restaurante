@@ -9,6 +9,30 @@ export class ApiError extends Error {
   constructor(message: string, status: number, payload: ApiError['payload'] = {}) { super(message); this.status = status; this.payload = payload; }
 }
 
+const PUBLIC_PATHS = ['/login', '/forgot-password', '/reset-password'];
+let redirecting = false;
+
+// The cookie mirrors the token so the Next proxy (lib/session-guard.ts) can redirect unauthenticated page requests on the server.
+export function setSessionCookie(token: string) {
+  document.cookie = `${tokenStorageKey}=${encodeURIComponent(token)}; Path=/; Max-Age=28800; SameSite=Lax${window.location.protocol === 'https:' ? '; Secure' : ''}`;
+}
+export function clearSessionCookie() { document.cookie = `${tokenStorageKey}=; Path=/; Max-Age=0; SameSite=Lax`; }
+export const hasSessionCookie = () => document.cookie.split('; ').some(entry => entry.startsWith(`${tokenStorageKey}=`) && entry.length > tokenStorageKey.length + 1);
+// A token in localStorage without the cookie is a leftover (the server already rejected it): forget it so /login does not loop.
+export function dropStaleSession() {
+  if (localStorage.getItem(tokenStorageKey) && !hasSessionCookie()) { localStorage.removeItem(tokenStorageKey); localStorage.removeItem(userStorageKey); }
+}
+
+export function endSession() {
+  if (typeof window === 'undefined') return;
+  localStorage.removeItem(tokenStorageKey);
+  localStorage.removeItem(userStorageKey);
+  clearSessionCookie();
+  if (redirecting || PUBLIC_PATHS.some(path => window.location.pathname.startsWith(path))) return;
+  redirecting = true;
+  window.location.replace('/login');
+}
+
 async function request<T>(path: string, options: RequestInit, withToken: boolean): Promise<T> {
   const token = withToken && typeof window !== 'undefined' ? localStorage.getItem(tokenStorageKey) : null;
   const response = await fetch(`${API_BASE}${path}`, {
@@ -21,6 +45,8 @@ async function request<T>(path: string, options: RequestInit, withToken: boolean
     cache: 'no-store',
   });
   if (response.status === 204) return undefined as T;
+  // A 401 on an authenticated call means the session is missing, expired or revoked: drop it and send the user to the login screen.
+  if (response.status === 401 && withToken) endSession();
   const payload = await response.json().catch(() => ({}));
   if (!response.ok) throw new ApiError(payload.message ?? payload.error ?? 'Falha ao comunicar com a API', response.status, payload);
   return payload as T;
