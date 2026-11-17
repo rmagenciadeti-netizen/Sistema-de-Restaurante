@@ -38,7 +38,7 @@ Para um banco que já contém dados ou tabelas, **não aplique cegamente** a mig
 
 - CRUD parcial/soft delete: atualizações em `/employees/:id`, `/products/:id` e `/units/:id`; registros operacionais usam status, preservando histórico.
 - Produção/KDS: `GET /production/kds?sectorId=...`, `PATCH /production/items/:id/status`.
-- Estoque e fichas: `GET|POST /inventory/ingredients`, `POST /inventory/ingredients/:id/movements`, `GET /inventory/movements`, `GET|PUT /inventory/recipes/:productId`. Ao avançar um pedido de `OPEN` para `PREPARING`, a API baixa atomicamente o estoque da receita e registra movimentações; sem receita, mantém o fluxo sem baixa. A transição exige saldo suficiente e não pode ser repetida ou revertida pelo fluxo de status.
+- Estoque e fichas: interface em `/inventory` e endpoints `GET|POST /inventory/ingredients`, `POST /inventory/ingredients/:id/movements`, `GET /inventory/movements`, `GET|PUT /inventory/recipes/:productId`. Ao avançar um pedido de `OPEN` para `PREPARING`, a API baixa atomicamente o estoque da receita e registra movimentações; sem receita, mantém o fluxo sem baixa. A transição exige saldo suficiente e não pode ser repetida ou revertida pelo fluxo de status.
 - Caixa/pagamentos: `POST|GET /cash/sessions`, `POST /cash/sessions/:id/close`, `POST|GET /cash/payments`.
 - Entrega: `GET|POST /delivery`, `PATCH /delivery/:id/status`.
 - WhatsApp: `POST|GET /whatsapp/outbox`. O endpoint apenas enfileira um registro auditável; envio real requer adaptador de provedor oficial e worker configurado.
@@ -48,6 +48,6 @@ Rotas privadas exigem token Bearer. Os escopos tenant/unidade vêm do usuário a
 
 ## Limitações relevantes
 
-A primeira versão de estoque exige ajustes manuais; consumo automático por ficha técnica ao confirmar pedido, compras, transferências e inventário guiado ainda devem ser desenvolvidos. Caixa e relatórios são gerenciais, não conciliação contábil. Não há integração fiscal, pagamento em cartão/PIX, WhatsApp oficial, impressão de produção ou delivery de terceiros sem adaptadores e homologações reais. Não exponha em produção antes de executar a validação Prisma/TypeScript, migrações, testes de integração e revisão de segurança, incluindo permissões por perfil e escopo de unidades.
+A primeira versão de estoque oferece cadastro de ingredientes, registro manual de movimentações e consumo automático por ficha técnica ao iniciar o preparo; compras, transferências entre unidades e inventário guiado ainda devem ser ampliados. Caixa e relatórios são gerenciais, não conciliação contábil. Não há integração fiscal, pagamento em cartão/PIX, WhatsApp oficial, impressão de produção ou delivery de terceiros sem adaptadores e homologações reais. Não exponha em produção antes de executar a validação Prisma/TypeScript, migrações, testes de integração e revisão de segurança, incluindo permissões por perfil e escopo de unidades.
 
 Antes de qualquer implantação, revise também `npm audit` e atualize dependências vulneráveis com testes de compatibilidade, configure HTTPS e segredos reais, verifique backups e restauração, e teste concorrência de caixa/pagamentos e isolamento entre tenants com um PostgreSQL real. Esta etapa é um endurecimento inicial, não uma certificação de prontidão para produção.

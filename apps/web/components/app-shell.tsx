@@ -10,6 +10,7 @@ const links = [
   { href: '/units', label: 'Unidades' },
   { href: '/employees', label: 'Funcionários' },
   { href: '/products', label: 'Produtos e produção' },
+  { href: '/inventory', label: 'Estoque e fichas' },
   { href: '/orders', label: 'Pedidos / PDV' },
 ];
 
