@@ -17,6 +17,7 @@ Na raiz do repositório, com Node.js 22:
 
 ```sh
 npm ci
+npm audit --audit-level=moderate
 DATABASE_URL=postgresql://localhost:5432/validation npm run db:validate
 DATABASE_URL=postgresql://localhost:5432/validation npm run db:generate
 npm run build --workspace apps/api
