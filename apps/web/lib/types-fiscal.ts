@@ -1,4 +1,9 @@
-export type OperationNature = { id: string; name: string; cfop: string; direction: 'IN' | 'OUT'; finality: 'NORMAL' | 'COMPLEMENTARY' | 'ADJUSTMENT' | 'RETURN'; description?: string | null; active: boolean };
+export type OperationNature = { id: string; name: string; cfop: string; direction: 'IN' | 'OUT'; finality: 'NORMAL' | 'COMPLEMENTARY' | 'ADJUSTMENT' | 'RETURN'; description?: string | null; active: boolean; operation?: NatureOperation; destination?: NatureDestination; ufOrigin?: string | null; ufDestination?: string | null; taxRegime?: FiscalIssuer['taxRegime'] | null; taxRuleId?: string | null };
+export type NatureOperation = 'SALE' | 'RETURN' | 'TRANSFER' | 'OTHER';
+export type NatureDestination = 'ANY' | 'INTERNAL' | 'INTERSTATE';
+export const operationLabel: Record<NatureOperation, string> = { SALE: 'Venda', RETURN: 'Devolução', TRANSFER: 'Transferência', OTHER: 'Outras' };
+export const destinationLabel: Record<NatureDestination, string> = { ANY: 'Qualquer destino', INTERNAL: 'Dentro do estado', INTERSTATE: 'Interestadual' };
+export type CfopDefaults = { saleInternal?: string; saleInterstate?: string; returnInternal?: string; returnInterstate?: string };
 export type CstCorrelation = { id: string; outCst: string; inCst: string; description?: string | null; active: boolean };
 export type InvoiceItem = { description: string; ncm?: string | null; cfop?: string | null; quantity: number; unitValue: number; totalValue: number };
 export type InvoiceStatus = 'RECEIVED' | 'ENTERED' | 'CANCELLED';
@@ -33,7 +38,7 @@ export type FiscalIssuer = { legalName: string; tradeName: string; cnpj: string;
 export type FiscalModelConfig = { nature: string; emissionType: 'NORMAL' | 'CONTINGENCY_OFFLINE' | 'EPEC' | 'FS_DA'; finality: '1' | '2' | '3' | '4'; defaultCfop: string; additionalInfo: string };
 export type FiscalSettingsView = {
   configured: boolean; environment: FiscalEnvironment; provider: string | null; providers: string[]; hasProviderToken: boolean; cscId: string; hasCscToken: boolean;
-  issuer: FiscalIssuer; crt: number; nfe: FiscalModelConfig; nfce: FiscalModelConfig; pdvMode: PdvMode; defaultTaxRuleId: string | null;
+  issuer: FiscalIssuer; crt: number; cfop: CfopDefaults; nfe: FiscalModelConfig; nfce: FiscalModelConfig; pdvMode: PdvMode; defaultTaxRuleId: string | null;
   certificate: { state: 'MISSING' | 'VALID' | 'EXPIRING' | 'EXPIRED'; daysLeft: number | null; subject?: string | null; cnpj?: string | null; validFrom?: string | null; validTo?: string | null; uploadedAt?: string | null };
   readiness: { NFCE: string[]; NFE: string[] };
 };

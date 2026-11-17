@@ -5,14 +5,14 @@ import { useEffect, useState } from 'react';
 import { buttonClass, Field, Notice, Select, secondaryButtonClass } from './app-shell';
 import { Badge, sectionTitleClass, Tabs, textareaClass } from './ui';
 import { api, ApiError, errorMessage, formatDateTime, type Unit } from '../lib/api';
-import { environmentLabel, type FiscalIssuer, type FiscalModelConfig, type FiscalSettingsView, type PdvMode } from '../lib/types-fiscal';
+import { environmentLabel, type CfopDefaults, type FiscalIssuer, type FiscalModelConfig, type FiscalSettingsView, type PdvMode } from '../lib/types-fiscal';
 
 type Section = 'environment' | 'issuer' | 'certificate' | 'provider' | 'nfce' | 'nfe' | 'tax' | 'pdv' | 'unit';
 const sections: { key: Section; label: string }[] = [
   { key: 'environment', label: 'Ambiente' }, { key: 'issuer', label: 'Emitente' }, { key: 'certificate', label: 'Certificado A1' }, { key: 'provider', label: 'Provedor' },
   { key: 'nfce', label: 'NFC-e (65)' }, { key: 'nfe', label: 'NF-e (55)' }, { key: 'tax', label: 'Tributação padrão' }, { key: 'pdv', label: 'Comportamento no PDV' }, { key: 'unit', label: 'Unidades fiscais' },
 ];
-type Draft = Pick<FiscalSettingsView, 'environment' | 'provider' | 'issuer' | 'nfe' | 'nfce' | 'cscId' | 'pdvMode' | 'defaultTaxRuleId'> & { providerToken: string; cscToken: string };
+type Draft = Pick<FiscalSettingsView, 'environment' | 'provider' | 'issuer' | 'nfe' | 'nfce' | 'cscId' | 'pdvMode' | 'defaultTaxRuleId' | 'cfop'> & { providerToken: string; cscToken: string };
 type Numbering = { items: { kind: string; series: string; nextNumber: number }[]; environment: string };
 type CertificateTest = { ok: boolean; message: string; subject?: string | null; cnpj?: string | null; validTo?: string | null; warnings?: string[] };
 type UnitFiscalView = { configured: boolean; issuer: FiscalIssuer; ownCertificate: boolean; certificate: { state: string; daysLeft: number | null; subject?: string | null; cnpj?: string | null; validFrom?: string | null; validTo?: string | null; uploadedAt?: string | null }; certificateWarnings?: string[] };
@@ -30,7 +30,7 @@ const pdvModes: { key: PdvMode; title: string; description: string }[] = [
   { key: 'ASK', title: 'Perguntar em cada venda', description: 'No fechamento é exibida a pergunta "DESEJA EMITIR DOCUMENTO FISCAL PARA ESTA VENDA?". A escolha é registrada com operador, data e hora.' },
 ];
 
-const toDraft = (view: FiscalSettingsView): Draft => ({ environment: view.environment, provider: view.provider, issuer: view.issuer, nfe: view.nfe, nfce: view.nfce, cscId: view.cscId, pdvMode: view.pdvMode, defaultTaxRuleId: view.defaultTaxRuleId, providerToken: '', cscToken: '' });
+const toDraft = (view: FiscalSettingsView): Draft => ({ environment: view.environment, provider: view.provider, issuer: view.issuer, nfe: view.nfe, nfce: view.nfce, cscId: view.cscId, pdvMode: view.pdvMode, defaultTaxRuleId: view.defaultTaxRuleId, cfop: view.cfop ?? {}, providerToken: '', cscToken: '' });
 
 function readBase64(file: File) {
   return new Promise<string>((resolve, reject) => {
@@ -275,6 +275,12 @@ export function FiscalSettingsPanel({ canEdit }: { canEdit: boolean }) {
       case 'tax': return <div className="grid gap-3">
         <Select label="Regra tributária padrão" value={draft.defaultTaxRuleId ?? ''} disabled={disabled} onChange={e => set({ defaultTaxRuleId: e.target.value || null })}><option value="">Nenhuma</option>{rules.filter(rule => rule.active || rule.id === draft.defaultTaxRuleId).map(rule => <option key={rule.id} value={rule.id}>{rule.name}{rule.active ? '' : ' (inativa)'}</option>)}</Select>
         <p className="text-sm text-slate-600">Aplicada aos produtos sem regra própria ou com regra fora da vigência. Gerencie as regras em <Link href="/tax-rules" className="font-semibold text-brand-700 underline">Fiscal / Tributos</Link>.</p>
+        <h5 className="mt-2 text-sm font-semibold text-slate-800">CFOP padrão por operação</h5>
+        <p className="text-xs text-slate-500">Usado quando a regra tributária do produto e a natureza de operação não definem o CFOP. A NFC-e é sempre dentro do estado; o CFOP interestadual vale apenas para NF-e.</p>
+        <div className="grid gap-4 md:grid-cols-4">
+          {([['saleInternal', 'Venda — no estado', '5102'], ['saleInterstate', 'Venda — interestadual', '6102'], ['returnInternal', 'Devolução — no estado', '1202'], ['returnInterstate', 'Devolução — interestadual', '2202']] as [keyof CfopDefaults, string, string][]).map(([key, label, example]) =>
+            <Field key={key} label={label} inputMode="numeric" maxLength={4} placeholder={example} value={draft.cfop[key] ?? ''} disabled={disabled} onChange={e => set({ cfop: { ...draft.cfop, [key]: e.target.value.replace(/\D/g, '') } })} />)}
+        </div>
       </div>;
       case 'pdv': return <fieldset disabled={disabled} className="grid gap-3"><legend className={`${sectionTitleClass} w-full`}>Comportamento fiscal do PDV</legend>
         {pdvModes.map(mode => <label key={mode.key} className={`flex cursor-pointer items-start gap-3 rounded-2xl border-2 p-4 transition ${draft.pdvMode === mode.key ? 'border-brand-500 bg-brand-50' : 'border-slate-200 hover:border-brand-300'}`}>

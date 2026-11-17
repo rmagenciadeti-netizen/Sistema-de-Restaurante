@@ -2,6 +2,7 @@ import { createCipheriv, createDecipheriv, randomBytes } from 'node:crypto';
 import { FiscalEnvironment, type FiscalSettings, type Prisma } from '@prisma/client';
 import { z } from 'zod';
 import type { FiscalContext } from './providers';
+import { cfopSettingsOf } from './fiscal-cfop';
 import { CertificateError, checkCertificate, parsePfx } from './fiscal-certificate';
 
 // ---- Secrets (provider token, CSC, A1 certificate and its password) ----
@@ -106,6 +107,15 @@ export function fiscalContext(settings: FiscalSettings | null, extra: Partial<Fi
   };
 }
 
+// The issuer that signs for an establishment: its own data when configured, otherwise the company's.
+export async function issuerForUnit(db: Pick<Prisma.TransactionClient, 'fiscalUnitConfig'>, settings: FiscalSettings | null, tenantId: string, unitId: string | null): Promise<FiscalIssuer> {
+  const company = issuerOf(settings);
+  if (!unitId) return company;
+  const unit = await db.fiscalUnitConfig.findFirst({ where: { tenantId, unitId }, select: { issuer: true } });
+  const issuer = unit ? issuerSchema.parse(unit.issuer) : null;
+  return issuer && (issuer.cnpj || issuer.legalName) ? issuer : company;
+}
+
 export async function fiscalContextForUnit(db: Pick<Prisma.TransactionClient, 'fiscalUnitConfig'>, settings: FiscalSettings | null, tenantId: string, unitId: string | null, extra: Partial<FiscalContext> = {}): Promise<FiscalContext> {
   const context = fiscalContext(settings, extra);
   if (!unitId) return context;
@@ -132,7 +142,7 @@ export function publicSettings(settings: FiscalSettings | null, registeredProvid
     configured: Boolean(settings), environment: environmentOf(settings), provider: settings?.provider ?? null, providers: registeredProviders,
     hasProviderToken: Boolean(settings?.providerTokenEnc), cscId: settings?.cscId ?? '', hasCscToken: Boolean(settings?.cscTokenEnc),
     issuer, crt: crtOf(issuer.taxRegime), nfe: modelOf(settings, 'NFE'), nfce: modelOf(settings, 'NFCE'),
-    pdvMode: (settings?.pdvMode ?? 'NON_FISCAL') as PdvMode, defaultTaxRuleId: settings?.defaultTaxRuleId ?? null,
+    cfop: cfopSettingsOf(settings?.cfop), pdvMode: (settings?.pdvMode ?? 'NON_FISCAL') as PdvMode, defaultTaxRuleId: settings?.defaultTaxRuleId ?? null,
     certificate: settings?.certPfxEnc ? { subject: settings.certSubject, cnpj: settings.certCnpj, validFrom: settings.certValidFrom, validTo: settings.certValidTo, uploadedAt: settings.certUploadedAt, ...certificateStatus(settings) } : { ...certificateStatus(settings) },
     readiness: { NFCE: readinessProblems(settings, 'NFCE', registeredProviders), NFE: readinessProblems(settings, 'NFE', registeredProviders) },
   };

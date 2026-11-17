@@ -28,6 +28,7 @@ const baseSchema = z.object({
   cest: digits(7, 'CEST'),
   origin: z.number().int().min(0).max(8).default(0),
   cfop: digits(4, 'CFOP'),
+  cfopInterstate: digits(4, 'CFOP interestadual'),
   icmsCst: cst('CST/CSOSN do ICMS'),
   icmsRate: rate,
   icmsReduction: rate,

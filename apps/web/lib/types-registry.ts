@@ -10,7 +10,7 @@ export type FinancialCategory = { id: string; type: FinancialCategoryType; name:
 export type CoverEvent = { id: string; description: string; amount: string | number; startsAt: string; endsAt: string; unitId?: string | null; active: boolean };
 
 export type TaxRule = {
-  id: string; name: string; ncm?: string | null; cest?: string | null; origin: number; cfop?: string | null;
+  id: string; name: string; ncm?: string | null; cest?: string | null; origin: number; cfop?: string | null; cfopInterstate?: string | null;
   icmsCst?: string | null; icmsRate?: string | number | null; icmsReduction?: string | number | null;
   pisCst?: string | null; pisRate?: string | number | null; cofinsCst?: string | null; cofinsRate?: string | number | null;
   active: boolean; _count?: { products: number };

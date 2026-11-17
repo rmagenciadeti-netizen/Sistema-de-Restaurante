@@ -171,6 +171,25 @@ test('fiscal module: settings, certificate, lost protocol, contingency, inutiliz
     assert.equal(emitted.body.fiscalMode, 'FISCAL'); assert.equal(emitted.body.document.status, 'AUTHORIZED');
   });
 
+  await t.test('CFOP follows the destination: rule interstate CFOP, operation nature and company defaults', async () => {
+    const order = await place();
+    const address = { street: 'Rua B', number: '2', district: 'Centro', city: 'São Paulo', cityIbge: '3550308', uf: 'SP', cep: '01001000' };
+    const recipient = { name: 'Cliente SP', document: '11144477735', address };
+    const cfopOf = async (body: object) => (await call('POST', `/fiscal/orders/${order.id}/preview`, admin, { kind: 'NFE', recipient, ...body })).body.document;
+    assert.equal((await cfopOf({})).items[0].tax.cfop, '5102', 'no interstate CFOP anywhere: the rule CFOP is kept');
+    assert.equal((await call('PUT', '/fiscal/settings', admin, { cfop: { saleInterstate: '6101' } })).body.cfop.saleInterstate, '6101');
+    const company = await cfopOf({}); assert.equal(company.items[0].tax.cfop, '6101'); assert.equal(company.destination, '2');
+    await prisma.operationNature.create({ data: { tenantId: A.tenant.id, name: 'Venda interestadual', cfop: '6108', destination: 'INTERSTATE', ufDestination: 'SP' } });
+    assert.equal((await cfopOf({ nature: 'Venda interestadual' })).items[0].tax.cfop, '6108', 'matching nature beats the company default');
+    await prisma.taxRule.update({ where: { id: rule.id }, data: { cfopInterstate: '6102' } });
+    assert.equal((await cfopOf({ nature: 'Venda interestadual' })).items[0].tax.cfop, '6102', 'rule interstate CFOP wins');
+    const inState = await call('POST', `/fiscal/orders/${order.id}/preview`, admin, { kind: 'NFE', recipient: { ...recipient, address: { ...address, uf: 'MT' } } });
+    assert.equal(inState.body.document.items[0].tax.cfop, '5102'); assert.equal(inState.body.document.destination, undefined);
+    assert.equal((await call('POST', '/fiscal-registry/natures', admin, { name: 'Inválida', cfop: '5102', taxRuleId: '00000000-0000-4000-8000-000000000000' })).status, 400);
+    await call('PUT', '/fiscal/settings', admin, { cfop: {} });
+    await prisma.taxRule.update({ where: { id: rule.id }, data: { cfopInterstate: null } });
+  });
+
   await t.test('NF-e with CC-e and cancellation; XML export returns the stored files in a ZIP', async () => {
     const order = await place();
     const preview = await call('POST', `/fiscal/orders/${order.id}/preview`, admin, { kind: 'NFE', items: [{ index: 0, cfop: '5405' }] });

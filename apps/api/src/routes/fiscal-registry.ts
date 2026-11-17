@@ -25,7 +25,16 @@ const cst = z.string().trim().regex(/^\d{2,3}$/, 'CST/CSOSN deve ter 2 ou 3 díg
 const natureSchema = z.object({
   name: z.string().trim().min(2).max(120), cfop, direction: z.enum(['IN', 'OUT']).default('OUT'),
   finality: z.enum(['NORMAL', 'COMPLEMENTARY', 'ADJUSTMENT', 'RETURN']).default('NORMAL'), description: optionalText(255), active: z.boolean().default(true),
+  // Operation rule: where this CFOP applies (ANY / null = no restriction) and an optional tax rule it brings along.
+  operation: z.enum(['SALE', 'RETURN', 'TRANSFER', 'OTHER']).default('SALE'), destination: z.enum(['ANY', 'INTERNAL', 'INTERSTATE']).default('ANY'),
+  ufOrigin: z.string().trim().toUpperCase().regex(/^([A-Z]{2})?$/, 'UF inválida').nullish().transform(value => value || null),
+  ufDestination: z.string().trim().toUpperCase().regex(/^([A-Z]{2})?$/, 'UF inválida').nullish().transform(value => value || null),
+  taxRegime: z.enum(['SIMPLES_NACIONAL', 'SIMPLES_EXCESSO', 'NORMAL', 'MEI']).nullish().transform(value => value || null),
+  taxRuleId: z.string().uuid().nullish().transform(value => value || null),
 });
+async function validTaxRule(tenantId: string, id: string | null | undefined) {
+  return !id || Boolean(await prisma.taxRule.findFirst({ where: { id, tenantId }, select: { id: true } }));
+}
 const natureConflict = { message: 'Já existe uma natureza de operação com esse nome.' };
 
 fiscalRegistryRoutes.get('/natures', async (req, res, next) => {
@@ -40,6 +49,7 @@ fiscalRegistryRoutes.post('/natures', manage, async (req, res, next) => {
   try {
     const parsed = natureSchema.safeParse(req.body); if (!parsed.success) return res.status(400).json(validationError(parsed.error));
     if (await prisma.operationNature.findFirst({ where: { tenantId: tenantOf(req), name: { equals: parsed.data.name, mode: 'insensitive' } }, select: { id: true } })) return res.status(409).json(natureConflict);
+    if (!await validTaxRule(tenantOf(req), parsed.data.taxRuleId)) return res.status(400).json({ message: 'Regra tributária inválida.' });
     const created = await prisma.operationNature.create({ data: { ...parsed.data, tenantId: tenantOf(req) } });
     await audit(req, 'OPERATION_NATURE_CREATED', 'OperationNature', created.id);
     return res.status(201).json(created);
@@ -50,6 +60,7 @@ fiscalRegistryRoutes.patch('/natures/:id', manage, async (req, res, next) => {
     const parsed = natureSchema.partial().safeParse(req.body); if (!parsed.success) return res.status(400).json(validationError(parsed.error));
     const current = await prisma.operationNature.findFirst({ where: { id: req.params.id, tenantId: tenantOf(req) }, select: { id: true } }); if (!current) return notFound(res, 'Natureza de operação');
     if (parsed.data.name && await prisma.operationNature.findFirst({ where: { tenantId: tenantOf(req), id: { not: current.id }, name: { equals: parsed.data.name, mode: 'insensitive' } }, select: { id: true } })) return res.status(409).json(natureConflict);
+    if (!await validTaxRule(tenantOf(req), parsed.data.taxRuleId)) return res.status(400).json({ message: 'Regra tributária inválida.' });
     const updated = await prisma.operationNature.update({ where: { id: current.id }, data: parsed.data });
     await audit(req, 'OPERATION_NATURE_UPDATED', 'OperationNature', current.id);
     return res.json(updated);

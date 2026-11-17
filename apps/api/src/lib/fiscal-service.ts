@@ -1,6 +1,7 @@
-import { FiscalEnvironment, FiscalKind, FiscalStatus, OrderStatus, Prisma, type FiscalDocument, type FiscalSettings, type TaxRule } from '@prisma/client';
+import { FiscalEnvironment, FiscalKind, FiscalStatus, OrderStatus, Prisma, type FiscalDocument, type FiscalSettings, type OperationNature, type TaxRule } from '@prisma/client';
 import { prisma } from './prisma';
-import { environmentOf, fiscalContextForUnit, FiscalConfigError, loadFiscalSettings, modelOf } from './fiscal-config';
+import { environmentOf, fiscalContextForUnit, FiscalConfigError, issuerForUnit, loadFiscalSettings, modelOf, type FiscalIssuer } from './fiscal-config';
+import { cfopSettingsOf, destinationOf, natureApplies, resolveCfop } from './fiscal-cfop';
 import { fiscalUnitKey, independentFiscalUnitIds, reserveFiscalNumber } from './fiscal-numbering';
 import { fiscalProviders, type FiscalContext, type FiscalEmission, type FiscalItemTax, type FiscalOrder, type FiscalProvider, type FiscalRecipient } from './providers';
 
@@ -53,9 +54,26 @@ async function loadOrder(actor: Actor, orderId: string) {
 }
 type LoadedOrder = NonNullable<Awaited<ReturnType<typeof loadOrder>>>;
 
+export type FiscalScope = { issuer: Pick<FiscalIssuer, 'uf' | 'taxRegime'>; nature?: (OperationNature & { taxRule: TaxRule | null }) | null };
+const natureName = (settings: FiscalSettings | null, options: EmissionOptions) => (options.nature ?? (settings ? modelOf(settings, options.kind).nature : '')).trim();
+
+// The operation nature named by the document (or by the company model) supplies CFOP/tax rule when its criteria match the operation.
+export async function loadNature(tenantId: string, settings: FiscalSettings | null, options: EmissionOptions) {
+  const name = natureName(settings, options);
+  return name ? prisma.operationNature.findFirst({ where: { tenantId, active: true, name: { equals: name, mode: 'insensitive' } }, include: { taxRule: true } }) : null;
+}
+export async function fiscalScope(tenantId: string, unitId: string | null, settings: FiscalSettings | null, options: EmissionOptions): Promise<FiscalScope> {
+  const [issuer, nature] = await Promise.all([issuerForUnit(prisma, settings, tenantId, unitId), loadNature(tenantId, settings, options)]);
+  return { issuer, nature };
+}
+
 // Builds the provider payload from the order, the product tax rules (or the company default rule) and the document-level options.
-export function buildFiscalOrder(order: LoadedOrder, settings: (FiscalSettings & { defaultTaxRule?: TaxRule | null }) | null, options: EmissionOptions, numbering: { series: string; number: string }, ref?: string): { fiscalOrder: FiscalOrder } | { untaxed: string[] } {
-  const fallback = ruleInForce(settings?.defaultTaxRule) ? settings!.defaultTaxRule! : null;
+export function buildFiscalOrder(order: LoadedOrder, settings: (FiscalSettings & { defaultTaxRule?: TaxRule | null }) | null, options: EmissionOptions, numbering: { series: string; number: string }, ref?: string, scope?: FiscalScope): { fiscalOrder: FiscalOrder } | { untaxed: string[] } {
+  const recipientUf = options.recipient?.address?.uf ?? null;
+  const destination = scope ? destinationOf(options.kind, scope.issuer.uf, recipientUf) : 'INTERNAL';
+  const nature = scope && natureApplies(scope.nature, { destination, issuerUf: scope.issuer.uf, recipientUf, taxRegime: scope.issuer.taxRegime }) ? scope.nature! : null;
+  const natureRule = ruleInForce(nature?.taxRule) ? nature!.taxRule! : null;
+  const fallback = ruleInForce(settings?.defaultTaxRule) ? settings!.defaultTaxRule! : natureRule;
   const ruleFor = (item: LoadedOrder['items'][number]) => (ruleInForce(item.product.taxRule) ? item.product.taxRule! : fallback);
   const untaxed = [...new Set(order.items.filter(item => !ruleFor(item)).map(item => item.product.name))];
   if (untaxed.length > 0) return { untaxed };
@@ -65,8 +83,10 @@ export function buildFiscalOrder(order: LoadedOrder, settings: (FiscalSettings &
   const fiscalOrder: FiscalOrder = {
     orderId: order.id, code: order.code, total: order.total.toFixed(2), issuedAt: new Date(), series: numbering.series, number: numbering.number, customer: recipient,
     items: order.items.map((item, index) => {
-      const tax = taxOf(ruleFor(item)!, item.product);
-      if (model.defaultCfop && !tax.cfop) tax.cfop = model.defaultCfop;
+      const rule = ruleFor(item)!;
+      const tax = taxOf(rule, item.product);
+      const cfop = resolveCfop({ ruleCfop: rule.cfop, ruleCfopInterstate: rule.cfopInterstate, natureCfop: nature?.cfop, settings: cfopSettingsOf(settings?.cfop), modelDefault: model.defaultCfop, destination, returning: options.finality === '4' });
+      if (cfop) tax.cfop = cfop;
       return { name: item.product.name, quantity: Number(item.quantity), unitPrice: item.unitPrice.toFixed(2), total: item.total.toFixed(2), tax: applyOverride(tax, overrides.get(index)), code: item.product.code ?? undefined, gtin: item.product.gtin, unit: item.product.measureUnit };
     }),
   };
@@ -76,6 +96,7 @@ export function buildFiscalOrder(order: LoadedOrder, settings: (FiscalSettings &
     freight: options.freight ? options.freight.toFixed(2) : undefined, otherExpenses: options.otherExpenses ? options.otherExpenses.toFixed(2) : undefined,
     discount: Number(order.discount) > 0 ? order.discount.toFixed(2) : undefined, additionalInfo: options.additionalInfo || (settings ? model.additionalInfo || undefined : undefined),
     payments: order.payments.length ? order.payments.map(payment => ({ method: payment.method, amount: payment.amount.toFixed(2) })) : undefined,
+    destination: destination === 'INTERSTATE' ? '2' : undefined,
   };
   for (const [key, value] of Object.entries(extras)) if (value !== undefined) (fiscalOrder as Record<string, unknown>)[key] = value;
   return { fiscalOrder };
@@ -151,7 +172,8 @@ export async function emitForOrder(actor: Actor, orderId: string, options: Emiss
   const order = await loadOrder(actor, orderId);
   if (!order) return { status: 404, body: { message: 'Order not found' } };
   if (order.status === OrderStatus.CANCELLED) return { status: 409, body: { message: 'Cancelled orders cannot be invoiced' } };
-  const probe = buildFiscalOrder(order, settings, options, { series: '', number: '' });
+  const scope = await fiscalScope(actor.tenantId, order.unitId, settings, options);
+  const probe = buildFiscalOrder(order, settings, options, { series: '', number: '' }, undefined, scope);
   if ('untaxed' in probe) return { status: 422, body: { message: `Vincule uma regra tributária ativa (Fiscal / Tributos) aos produtos: ${probe.untaxed.join(', ')}.` } };
   const environment = environmentOf(settings);
   const unitKey = await fiscalUnitKey(prisma, actor.tenantId, order.unitId);
@@ -178,7 +200,7 @@ export async function emitForOrder(actor: Actor, orderId: string, options: Emiss
     await tx.fiscalDocument.update({ where: { id: document.id }, data: next });
     return next;
   });
-  const built = buildFiscalOrder(order, settings, options, reserved, document.id) as { fiscalOrder: FiscalOrder };
+  const built = buildFiscalOrder(order, settings, options, reserved, document.id, scope) as { fiscalOrder: FiscalOrder };
   await prisma.fiscalDocument.update({ where: { id: document.id }, data: { payload: JSON.parse(JSON.stringify(built.fiscalOrder)) as Prisma.InputJsonValue } });
   const saved = await transmit({ ...document, ...reserved }, provider, built.fiscalOrder, actor, context, existing?.status ?? FiscalStatus.PENDING);
   await prisma.auditLog.create({ data: { tenantId: actor.tenantId, actorUserId: actor.userId, action: 'FISCAL_EMITTED', entityType: 'FiscalDocument', entityId: saved.id, metadata: { status: saved.status, environment } } });

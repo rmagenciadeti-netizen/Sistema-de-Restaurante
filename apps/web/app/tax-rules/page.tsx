@@ -21,7 +21,7 @@ type TaxRule = BaseTaxRule & {
 type TabKey = 'rules' | 'icms' | 'pis' | 'ibs' | 'products';
 const tabs: { key: TabKey; label: string }[] = [{ key: 'rules', label: 'Regras' }, { key: 'icms', label: 'Alíquotas ICMS e redução' }, { key: 'pis', label: 'PIS/COFINS' }, { key: 'ibs', label: 'IBS/CBS/IS (Reforma)' }, { key: 'products', label: 'Produtos vinculados' }];
 const originLabels = ['0 — Nacional', '1 — Estrangeira (importação direta)', '2 — Estrangeira (mercado interno)', '3 — Nacional (importação entre 40% e 70%)', '4 — Nacional (processos produtivos básicos)', '5 — Nacional (importação até 40%)', '6 — Estrangeira (importação direta, sem similar)', '7 — Estrangeira (mercado interno, sem similar)', '8 — Nacional (importação acima de 70%)'];
-const emptyForm = { name: '', ncm: '', cest: '', origin: '0', cfop: '', icmsCst: '', icmsRate: '', icmsReduction: '', pisCst: '', pisRate: '', cofinsCst: '', cofinsRate: '', active: true,
+const emptyForm = { name: '', ncm: '', cest: '', origin: '0', cfop: '', cfopInterstate: '', icmsCst: '', icmsRate: '', icmsReduction: '', pisCst: '', pisRate: '', cofinsCst: '', cofinsRate: '', active: true,
   icmsStMva: '', icmsStRate: '', icmsStReduction: '', fcpRate: '', fcpStRate: '', cBenef: '', ipiCst: '', ipiEnquadramento: '', ipiRate: '',
   ibsCbsCst: '', cClassTrib: '', ibsUfRate: '', ibsMunRate: '', cbsRate: '', isRate: '', validFrom: '', validTo: '' };
 const rateKeys = ['icmsStMva', 'icmsStRate', 'icmsStReduction', 'fcpRate', 'fcpStRate', 'ipiRate', 'ibsUfRate', 'ibsMunRate', 'cbsRate', 'isRate'] as const;
@@ -87,7 +87,7 @@ function TaxRulesContent() {
 
   function open(rule: TaxRule | 'new') {
     setNotice(null); setEditing(rule);
-    setForm(rule === 'new' ? emptyForm : { name: rule.name, ncm: text(rule.ncm), cest: text(rule.cest), origin: String(rule.origin), cfop: text(rule.cfop), icmsCst: text(rule.icmsCst), icmsRate: text(rule.icmsRate), icmsReduction: text(rule.icmsReduction), pisCst: text(rule.pisCst), pisRate: text(rule.pisRate), cofinsCst: text(rule.cofinsCst), cofinsRate: text(rule.cofinsRate), active: rule.active,
+    setForm(rule === 'new' ? emptyForm : { name: rule.name, ncm: text(rule.ncm), cest: text(rule.cest), origin: String(rule.origin), cfop: text(rule.cfop), cfopInterstate: text(rule.cfopInterstate), icmsCst: text(rule.icmsCst), icmsRate: text(rule.icmsRate), icmsReduction: text(rule.icmsReduction), pisCst: text(rule.pisCst), pisRate: text(rule.pisRate), cofinsCst: text(rule.cofinsCst), cofinsRate: text(rule.cofinsRate), active: rule.active,
       icmsStMva: text(rule.icmsStMva), icmsStRate: text(rule.icmsStRate), icmsStReduction: text(rule.icmsStReduction), fcpRate: text(rule.fcpRate), fcpStRate: text(rule.fcpStRate), cBenef: text(rule.cBenef),
       ipiCst: text(rule.ipiCst), ipiEnquadramento: text(rule.ipiEnquadramento), ipiRate: text(rule.ipiRate), ibsCbsCst: text(rule.ibsCbsCst), cClassTrib: text(rule.cClassTrib),
       ibsUfRate: text(rule.ibsUfRate), ibsMunRate: text(rule.ibsMunRate), cbsRate: text(rule.cbsRate), isRate: text(rule.isRate), validFrom: dateOnly(rule.validFrom), validTo: dateOnly(rule.validTo) });
@@ -101,7 +101,7 @@ function TaxRulesContent() {
       ...Object.fromEntries(codeKeys.map(key => [key, form[key].trim() || null])),
       validFrom: form.validFrom || null, validTo: form.validTo || null,
     };
-    const body = JSON.stringify({ ...extra, name: form.name, ncm: form.ncm || null, cest: form.cest || null, origin: Number(form.origin), cfop: form.cfop || null, icmsCst: form.icmsCst || null, icmsRate: optionalRate(form.icmsRate), icmsReduction: optionalRate(form.icmsReduction), pisCst: form.pisCst || null, pisRate: optionalRate(form.pisRate), cofinsCst: form.cofinsCst || null, cofinsRate: optionalRate(form.cofinsRate), active: form.active });
+    const body = JSON.stringify({ ...extra, name: form.name, ncm: form.ncm || null, cest: form.cest || null, origin: Number(form.origin), cfop: form.cfop || null, cfopInterstate: form.cfopInterstate || null, icmsCst: form.icmsCst || null, icmsRate: optionalRate(form.icmsRate), icmsReduction: optionalRate(form.icmsReduction), pisCst: form.pisCst || null, pisRate: optionalRate(form.pisRate), cofinsCst: form.cofinsCst || null, cofinsRate: optionalRate(form.cofinsRate), active: form.active });
     try {
       if (editing === 'new') await api('/tax-rules', { method: 'POST', body }); else await api(`/tax-rules/${editing!.id}`, { method: 'PATCH', body });
       ok('Regra salva.'); setEditing(null); await load();
@@ -143,7 +143,8 @@ function TaxRulesContent() {
         <Field label="NCM (8 dígitos)" inputMode="numeric" maxLength={10} placeholder="22021000" value={form.ncm} onChange={e => setForm({ ...form, ncm: e.target.value })} />
         <Field label="CEST (7 dígitos)" inputMode="numeric" maxLength={9} placeholder="0300100" value={form.cest} onChange={e => setForm({ ...form, cest: e.target.value })} />
         <Select label="Origem da mercadoria" value={form.origin} onChange={e => setForm({ ...form, origin: e.target.value })}>{originLabels.map((label, index) => <option key={label} value={index}>{label}</option>)}</Select>
-        <Field label="CFOP (4 dígitos)" inputMode="numeric" maxLength={4} placeholder="5102" value={form.cfop} onChange={e => setForm({ ...form, cfop: e.target.value })} />
+        <Field label="CFOP dentro do estado (4 dígitos)" inputMode="numeric" maxLength={4} placeholder="5102" value={form.cfop} onChange={e => setForm({ ...form, cfop: e.target.value })} />
+        <Field label="CFOP interestadual (NF-e)" inputMode="numeric" maxLength={4} placeholder="6102" value={form.cfopInterstate} onChange={e => setForm({ ...form, cfopInterstate: e.target.value })} />
       </div>
       <h4 className={groupTitle}>ICMS, ST, FCP e benefício fiscal</h4>
       <div className="grid gap-4 md:grid-cols-3">

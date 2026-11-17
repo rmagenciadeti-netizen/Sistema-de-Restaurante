@@ -5,9 +5,10 @@ import { prisma } from '../lib/prisma';
 import { requireAuth, requireTenant } from '../middleware/auth';
 import { CASH_ROLES, FINANCE_ROLES, MANAGEMENT_ROLES, requireRoles } from '../lib/permissions';
 import { fiscalProviders } from '../lib/providers';
+import { cfopSettingsSchema } from '../lib/fiscal-cfop';
 import { fiscalUnitKey, independentFiscalUnitIds, loadFiscalNumbering } from '../lib/fiscal-numbering';
 import { certificateStatus, environmentOf, fiscalContext, fiscalContextForUnit, FiscalConfigError, inspectCertificate, issuerSchema, loadFiscalSettings, modelSchema, PDV_MODES, publicSettings, readinessProblems, sealSecret } from '../lib/fiscal-config';
-import { buildFiscalOrder, consultDocument, emitForOrder, inutilize, recordEvent, retransmit, type Actor, type EmissionOptions } from '../lib/fiscal-service';
+import { buildFiscalOrder, consultDocument, emitForOrder, fiscalScope, inutilize, recordEvent, retransmit, type Actor, type EmissionOptions } from '../lib/fiscal-service';
 import { createZip } from '../lib/zip';
 
 export const fiscalRoutes = Router();
@@ -31,7 +32,7 @@ const settingsSchema = z.object({
   environment: z.nativeEnum(FiscalEnvironment).optional(), provider: z.string().trim().max(60).nullable().optional(), providerToken: optionalSecret,
   issuer: issuerSchema.optional(), nfe: modelSchema.optional(), nfce: modelSchema.optional(),
   cscId: z.string().trim().regex(/^\d{0,6}$/, 'ID do CSC deve ter até 6 dígitos').optional(), cscToken: optionalSecret,
-  pdvMode: z.enum(PDV_MODES).optional(), defaultTaxRuleId: z.string().uuid().nullable().optional(),
+  cfop: cfopSettingsSchema.optional(), pdvMode: z.enum(PDV_MODES).optional(), defaultTaxRuleId: z.string().uuid().nullable().optional(),
 });
 fiscalRoutes.put('/settings', manage, async (req, res, next) => {
   try {
@@ -264,7 +265,8 @@ fiscalRoutes.post('/orders/:orderId/preview', issuers, async (req, res, next) =>
     const environment = environmentOf(settings);
     const unitKey = await fiscalUnitKey(prisma, tenantId, order.unitId);
     const numbering = order.fiscalDocuments[0]?.number ? { series: order.fiscalDocuments[0].series ?? '1', number: order.fiscalDocuments[0].number } : (await loadFiscalNumbering(prisma, tenantId, environment, unitKey)).filter(item => item.kind === parsed.data.kind).map(item => ({ series: item.series, number: String(item.nextNumber) }))[0];
-    const built = buildFiscalOrder(order, settings, parsed.data as EmissionOptions, numbering);
+    const scope = await fiscalScope(tenantId, order.unitId, settings, parsed.data as EmissionOptions);
+    const built = buildFiscalOrder(order, settings, parsed.data as EmissionOptions, numbering, undefined, scope);
     if ('untaxed' in built) return res.status(422).json({ message: `Vincule uma regra tributária ativa (Fiscal / Tributos) aos produtos: ${built.untaxed.join(', ')}.` });
     const unitConfig = order.unitId ? await prisma.fiscalUnitConfig.findFirst({ where: { tenantId, unitId: order.unitId }, select: { issuer: true } }) : null;
     const configuredUnitIssuer = issuerSchema.parse(unitConfig?.issuer ?? {});
