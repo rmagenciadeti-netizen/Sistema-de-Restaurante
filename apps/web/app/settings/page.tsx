@@ -1,6 +1,7 @@
 'use client';
 
-import { useState } from 'react';
+import { Suspense, useState } from 'react';
+import { useSearchParams } from 'next/navigation';
 import { AppShell, buttonClass, Notice, panelClass } from '../../components/app-shell';
 import { FinancialSection, FulfillmentSection, HoursSection, CompanySection, MenuLayoutSection, OrdersSection, PdvSection, PrintingSection, ProductsSection, ScaleSection, StoreSection, TicketSection } from '../../components/settings-sections';
 import { PageHeader, SideTabs } from '../../components/ui';
@@ -25,9 +26,10 @@ const tabs: Tab[] = [
   { key: 'financial', label: 'Financeiro', icon: '💰', title: 'Financeiro' },
 ];
 
-export default function SettingsPage() {
+function SettingsContent() {
+  const initialTab = useSearchParams().get('tab');
   const { draft, hasAdminPassword, setHasAdminPassword, role, canEdit, notice, setNotice, saving, isDirty, patch, save } = useSettings();
-  const [tab, setTab] = useState<SettingsSectionName>('company');
+  const [tab, setTab] = useState<SettingsSectionName>(tabs.find(item => item.key === initialTab)?.key ?? 'company');
   const [passwordBusy, setPasswordBusy] = useState(false);
   const current = tabs.find(item => item.key === tab)!;
 
@@ -92,4 +94,8 @@ export default function SettingsPage() {
       </section>
     </div>
   </AppShell>;
+}
+
+export default function SettingsPage() {
+  return <Suspense fallback={null}><SettingsContent /></Suspense>;
 }

@@ -38,14 +38,14 @@ export const menuGroups: MenuGroup[] = [
     { href: '/inventory', label: 'Estoque e fichas', icon: '📦' },
   ] },
   { title: 'Controle de entrega', icon: '🛵', items: [
-    { href: '/delivery', label: 'Entregas e zonas', icon: '🛵' }, { href: '/couriers', label: 'Entregadores', icon: '🏍️' },
+    { href: '/delivery', label: 'Entregas e zonas', icon: '🛵' }, { href: '/couriers', label: 'Entregadores', icon: '🏍️' }, { href: '/settings?tab=fulfillment', label: 'Zonas não mapeadas e taxas', icon: '📍' },
   ] },
   { title: 'Gerenciamento financeiro', icon: '💵', items: [
     { href: '/cash', label: 'Caixa e pagamentos', icon: '💳' }, { href: '/payment-methods', label: 'Formas de pagamento', icon: '💶' },
     { href: '/financial', label: 'Contas a pagar e receber', icon: '💰' }, { href: '/financial-categories', label: 'Categorias de contas', icon: '🗂️' },
   ] },
   { title: 'Integração', icon: '🔗', items: [
-    { href: '/integrations', label: 'PIX, POS e marketplaces', icon: '🔌' }, { href: '/whatsapp', label: 'WhatsApp', icon: '💬' },
+    { href: '/integrations', label: 'Marketplaces', icon: '🔌' }, { href: '/integrations?tab=payments', label: 'PIX, POS e fiscal', icon: '💠' }, { href: '/settings?tab=store', label: 'Pixel da loja (Meta)', icon: '🎯' }, { href: '/whatsapp', label: 'WhatsApp', icon: '💬' },
   ] },
   { title: 'Comandas', icon: '🪑', items: [
     { href: '/tables', label: 'Mesas e QR Code', icon: '🪑' }, { href: '/comandas', label: 'Controle de comandas', icon: '📒' },

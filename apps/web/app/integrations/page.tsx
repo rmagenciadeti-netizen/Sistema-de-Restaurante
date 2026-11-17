@@ -1,6 +1,7 @@
 'use client';
 
-import { useState } from 'react';
+import { Suspense, useState } from 'react';
+import { useSearchParams } from 'next/navigation';
 import { API_BASE, api, errorMessage, formatDateTime, Integration, ListResponse, storedUser, Unit } from '../../lib/api';
 import { useAutoLoad } from '../../lib/use-auto-load';
 import { AppShell, buttonClass, Field, Notice, panelClass, secondaryButtonClass, Select } from '../../components/app-shell';
@@ -16,11 +17,12 @@ const example = `{
   ]
 }`;
 
-export default function IntegrationsPage() {
+function IntegrationsContent() {
+  const initialTab = useSearchParams().get('tab');
   const [items, setItems] = useState<Integration[]>([]); const [units, setUnits] = useState<Unit[]>([]); const [form, setForm] = useState({ provider: '', name: '', unitId: '' });
   const [created, setCreated] = useState<{ provider: string; name: string; key: string } | null>(null);
   const [origin, setOrigin] = useState('');
-  const [tab, setTab] = useState<'marketplaces' | 'payments'>('marketplaces');
+  const [tab, setTab] = useState<'marketplaces' | 'payments'>(initialTab === 'payments' ? 'payments' : 'marketplaces');
   const [providers, setProviders] = useState<{ payment: string[]; fiscal: string[]; email: string[] } | null>(null);
   const [notice, setNotice] = useState<{ text: string; kind: 'error' | 'success' } | null>(null);
   const ok = (text: string) => setNotice({ text, kind: 'success' });
@@ -86,4 +88,8 @@ export default function IntegrationsPage() {
       <pre className="mt-3 overflow-x-auto rounded-lg bg-slate-950 p-4 text-xs text-slate-200">{example}</pre></section>
     </>}
   </AppShell>;
+}
+
+export default function IntegrationsPage() {
+  return <Suspense fallback={null}><IntegrationsContent /></Suspense>;
 }

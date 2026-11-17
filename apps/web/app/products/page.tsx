@@ -6,10 +6,12 @@ import { api, formatMoney, ListResponse, ProductCategory, Sector } from '../../l
 import type { CatalogProduct as Product, TaxRuleOption } from '../../lib/types-catalog';
 import { AppShell, buttonClass, Check, Field, Notice, panelClass, Select, secondaryButtonClass } from '../../components/app-shell';
 import { Badge, Tabs, textareaClass, Toggle } from '../../components/ui';
+import { attachTemplateGroups, findTemplate, productTemplates } from '../../lib/product-templates';
 
 const emptyForm = {
   name: '', code: '', price: '', cost: '', sectorId: '', categoryId: '', barcode: '', favorite: false, soldByWeight: false, active: true,
   sendToScale: false, scaleCode: '', scaleDepartment: '', shelfLifeDays: '', scaleNotes: '', ncm: '', cest: '', taxRuleId: '',
+  description: '', prepTimeMinutes: '', margin: '',
 };
 type FormTab = 'data' | 'scale' | 'tax';
 const formTabs: { key: FormTab; label: string }[] = [{ key: 'data', label: 'Dados' }, { key: 'scale', label: 'Balança' }, { key: 'tax', label: 'Fiscal' }];
@@ -23,6 +25,7 @@ export default function ProductsPage() {
   const [page, setPage] = useState(1); const [total, setTotal] = useState(0);
   const [prices, setPrices] = useState<Record<string, string>>({}); const [savingPrices, setSavingPrices] = useState(false);
   const [percentage, setPercentage] = useState(''); const [priceDirection, setPriceDirection] = useState<'increase' | 'decrease'>('increase');
+  const [templateKey, setTemplateKey] = useState('');
   const [editingId, setEditingId] = useState<string | null>(null); const [formTab, setFormTab] = useState<FormTab>('data'); const [taxRules, setTaxRules] = useState<TaxRuleOption[]>([]);
   async function load(nextPage = page) { try { const [products, production, categoryList] = await Promise.all([api<ListResponse<Product>>(`/products?page=${nextPage}&pageSize=100`), api<ListResponse<Sector>>('/production/sectors'), api<ListResponse<ProductCategory>>('/products/categories')]); setItems(products.items); setTotal(products.total); setPage(nextPage); setPrices({}); setSectors(production.items); setCategories(categoryList.items); api<ListResponse<TaxRuleOption>>('/tax-rules').then(rules => setTaxRules(rules.items.filter(rule => rule.active !== false))).catch(() => setTaxRules([])); return true; } catch (e) { setMessage(e instanceof Error ? e.message : 'Erro ao carregar catálogo'); return false; } }
   useEffect(() => { void load(); }, []);
@@ -32,11 +35,12 @@ export default function ProductsPage() {
       barcode: item.barcode ?? '', favorite: Boolean(item.favorite), soldByWeight: Boolean(item.soldByWeight), active: item.active, sendToScale: Boolean(item.sendToScale),
       scaleCode: item.scaleCode == null ? '' : String(item.scaleCode), scaleDepartment: item.scaleDepartment == null ? '' : String(item.scaleDepartment), shelfLifeDays: item.shelfLifeDays == null ? '' : String(item.shelfLifeDays),
       scaleNotes: item.scaleNotes ?? '', ncm: item.ncm ?? '', cest: item.cest ?? '', taxRuleId: item.taxRuleId ?? '',
+      description: item.description ?? '', prepTimeMinutes: item.prepTimeMinutes == null ? '' : String(item.prepTimeMinutes), margin: '',
     });
     setEditingId(item.id); setFormTab('data'); setMessage('');
     document.getElementById('product-form')?.scrollIntoView?.({ behavior: 'smooth' });
   }
-  function cancelEdit() { setForm(emptyForm); setEditingId(null); setFormTab('data'); }
+  function cancelEdit() { setForm(emptyForm); setTemplateKey(''); setEditingId(null); setFormTab('data'); }
   async function submit(event: React.FormEvent) {
     event.preventDefault(); setMessage('');
     const ncm = form.ncm.replace(/\D/g, ''); const cest = form.cest.replace(/\D/g, '');
@@ -50,10 +54,16 @@ export default function ProductsPage() {
       barcode: form.barcode.trim() || null, favorite: form.favorite, soldByWeight: form.soldByWeight, sendToScale: form.sendToScale,
       scaleCode: optionalInt(form.scaleCode), scaleDepartment: optionalInt(form.scaleDepartment), shelfLifeDays: optionalInt(form.shelfLifeDays), scaleNotes: form.scaleNotes.trim() || null,
       ncm: ncm || null, cest: cest || null, taxRuleId: form.taxRuleId || null,
+      description: form.description.trim() || null, prepTimeMinutes: optionalInt(form.prepTimeMinutes),
     };
+    const template = editing ? null : findTemplate(templateKey);
     try {
-      await api(editing ? `/products/${editingId}` : '/products', { method: editing ? 'PATCH' : 'POST', body: JSON.stringify(body) });
-      cancelEdit(); setMessage(editing ? 'Produto atualizado.' : 'Produto cadastrado.'); await load();
+      const saved = await api<{ id: string }>(editing ? `/products/${editingId}` : '/products', { method: editing ? 'PATCH' : 'POST', body: JSON.stringify(body) });
+      cancelEdit(); await load();
+      if (template && template.groups.length > 0) {
+        try { await attachTemplateGroups(saved.id, template.groups); setMessage(`Produto cadastrado com os grupos do ${template.label.toLowerCase()}. Ajuste preços e opções em Adicionais e combos.`); }
+        catch (e) { setMessage(`Produto cadastrado, mas os grupos do modelo não foram vinculados: ${e instanceof Error ? e.message : 'erro desconhecido'}`); }
+      } else setMessage(editing ? 'Produto atualizado.' : 'Produto cadastrado.');
     } catch (e) { setMessage(e instanceof Error ? e.message : editing ? 'Erro ao atualizar produto' : 'Erro ao cadastrar produto'); }
   }
   async function changeCategory(item: Product, categoryId: string) {
@@ -102,13 +112,20 @@ export default function ProductsPage() {
     } catch (e) { setMessage(e instanceof Error ? e.message : 'Erro ao atualizar preços'); }
     finally { setSavingPrices(false); }
   }
+  const costValue = Number(form.cost); const marginValue = Number(form.margin);
+  // Price that leaves the wanted profit on top of the cost (markup over cost).
+  const suggestedPrice = form.cost !== '' && form.margin !== '' && costValue > 0 && marginValue >= 0 ? Math.round(costValue * (1 + marginValue / 100) * 100) / 100 : null;
   const term = search.trim().toLocaleLowerCase('pt-BR');
   const visibleItems = items.filter(item => `${item.name} ${item.code ?? ''} ${item.barcode ?? ''} ${item.sector?.name ?? ''}`.toLocaleLowerCase('pt-BR').includes(term));
   const selectedItems = items.filter(item => Object.hasOwn(prices, item.id));
   return <AppShell title="Produtos e produção">
-    {message && <Notice message={message} kind={message.includes('cadastrado') || message === 'Produto atualizado.' || message === 'Preços atualizados.' || message === 'Categoria atualizada.' ? 'success' : 'error'} />}
+    {message && <Notice message={message} kind={message.startsWith('Produto cadastrado com') || message.includes('cadastrado') || message === 'Produto atualizado.' || message === 'Preços atualizados.' || message === 'Categoria atualizada.' ? 'success' : 'error'} />}
     <section id="product-form" className={`${panelClass} mb-6`}>
       <h2 className="mb-4 text-lg font-semibold">{editingId ? 'Editar produto' : 'Novo produto'}</h2>
+      {!editingId && <div className="mb-4 max-w-md">
+        <Select label="Começar de um modelo" value={templateKey} onChange={e => setTemplateKey(e.target.value)}><option value="">Cadastro básico (sem modelo)</option>{productTemplates.map(template => <option key={template.key} value={template.key}>{template.icon} {template.label}</option>)}</Select>
+        {findTemplate(templateKey) && <p className="mt-2 text-xs text-slate-600">{findTemplate(templateKey)!.hint}{findTemplate(templateKey)!.groups.length > 0 && <> Ao salvar, vincula os grupos: <strong>{findTemplate(templateKey)!.groups.map(group => group.name).join(', ')}</strong> (grupos que já existem são reaproveitados).</>}</p>}
+      </div>}
       <Tabs tabs={formTabs} value={formTab} onChange={setFormTab} label="Seções do produto" />
       <form onSubmit={submit} className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
         {formTab === 'data' && <>
@@ -117,6 +134,12 @@ export default function ProductsPage() {
           <Field label="Código de barras" inputMode="numeric" maxLength={40} value={form.barcode} onChange={e => setForm({ ...form, barcode: e.target.value })} />
           <Field label={form.soldByWeight ? 'Preço por kg (R$)' : 'Preço de venda (R$)'} type="number" min="0" step="0.01" required value={form.price} onChange={e => setForm({ ...form, price: e.target.value })} />
           <Field label="Custo (R$)" type="number" min="0" step="0.01" value={form.cost} onChange={e => setForm({ ...form, cost: e.target.value })} />
+          <div>
+            <Field label="Margem que quero ganhar (%)" type="number" min="0" max="1000" step="0.1" value={form.margin} onChange={e => setForm({ ...form, margin: e.target.value })} />
+            {suggestedPrice !== null && <p className="mt-1 text-xs text-slate-600">Preço sugerido: <strong>{formatMoney(suggestedPrice)}</strong> <button type="button" className="font-semibold text-brand-700 underline" onClick={() => setForm({ ...form, price: suggestedPrice.toFixed(2) })}>usar</button></p>}
+          </div>
+          <Field label="Tempo de preparo (min)" type="number" min="0" max="1440" value={form.prepTimeMinutes} onChange={e => setForm({ ...form, prepTimeMinutes: e.target.value })} />
+          <label className="block text-sm font-medium text-slate-700 md:col-span-2 xl:col-span-3">Descrição<textarea className={textareaClass} rows={2} maxLength={2000} placeholder="Aparece no cardápio e na loja virtual" value={form.description} onChange={e => setForm({ ...form, description: e.target.value })} /></label>
           <Select label="Setor de produção" value={form.sectorId} onChange={e => setForm({ ...form, sectorId: e.target.value })}><option value="">Sem setor</option>{sectors.map(sector => <option key={sector.id} value={sector.id}>{sector.name}</option>)}</Select>
           <Select label="Categoria" value={form.categoryId} onChange={e => setForm({ ...form, categoryId: e.target.value })}><option value="">Sem categoria</option>{categories.map(category => <option key={category.id} value={category.id}>{category.name}</option>)}</Select>
           <div className="flex flex-col justify-end gap-2">
