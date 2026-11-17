@@ -2,6 +2,7 @@
 
 import { FormEvent, useEffect, useState } from 'react';
 import { ApiError, api, ListResponse, Product } from '../../lib/api';
+import { StockTransfer } from '../../components/stock-transfer';
 import { AppShell, buttonClass, Field, Notice, panelClass } from '../../components/app-shell';
 
 type Ingredient = {
@@ -218,6 +219,8 @@ export default function InventoryPage() {
           <div className="flex items-end"><button className={buttonClass} disabled={busy || !movementForm.ingredientId}>Registrar movimentação</button></div>
         </form>
       </section>
+
+      <StockTransfer ingredients={ingredients} onDone={load} onMessage={(text, kind) => setMessage({ text, kind })} />
 
       <section className={`${panelClass} xl:col-span-2`}>
         <h2 className="mb-4 text-lg font-semibold">Ficha técnica do produto</h2>

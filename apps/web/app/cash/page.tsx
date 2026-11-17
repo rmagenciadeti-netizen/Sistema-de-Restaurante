@@ -2,6 +2,7 @@
 
 import { FormEvent, useCallback, useEffect, useMemo, useState } from 'react';
 import { api, ListResponse, Order, Unit } from '../../lib/api';
+import { OnlineCharges } from '../../components/online-charges';
 import { AppShell, buttonClass, Field, Notice, panelClass } from '../../components/app-shell';
 
 type OrderWithPayments = Order & {
@@ -190,6 +191,17 @@ export default function CashPage() {
     }
   }
 
+  async function refund(payment: Payment) {
+    if (!window.confirm(`Estornar o pagamento de ${money(payment.amount)} do pedido ${payment.order?.code ?? ''}? O estorno é apenas contábil; a devolução do dinheiro deve ser feita fora do sistema.`)) return;
+    try {
+      await api(`/cash/payments/${payment.id}/refund`, { method: 'POST' });
+      setMessage({ text: 'Pagamento estornado.', kind: 'success' });
+      await load();
+    } catch (error) {
+      setMessage({ text: error instanceof Error ? error.message : 'Erro ao estornar pagamento', kind: 'error' });
+    }
+  }
+
   return <AppShell title="Caixa e pagamentos">
     {message && <Notice message={message.text} kind={message.kind} />}
 
@@ -225,6 +237,8 @@ export default function CashPage() {
         </form>
       </section>
 
+      <OnlineCharges key={orderId} orderId={orderId} onPaid={load} />
+
       <section className={`${panelClass} xl:col-span-2`}>
         <h2 className="mb-4 text-lg font-semibold">Pedidos recentes e saldos ({orders.length})</h2>
         <div className="overflow-x-auto"><table className="w-full text-left text-sm"><thead className="text-slate-400"><tr><th className="p-3">Pedido</th><th className="p-3">Estado</th><th className="p-3">Total</th><th className="p-3">Pago</th><th className="p-3">Pendente</th></tr></thead><tbody>{orders.map(order => <tr key={order.id} className="border-t border-slate-800"><td className="p-3">{order.code}</td><td className="p-3">{order.status}</td><td className="p-3">{money(order.total)}</td><td className="p-3">{money(paidAmount(order))}</td><td className="p-3">{money(Math.max(0, Number(order.total) - paidAmount(order)))}</td></tr>)}</tbody></table>{orders.length === 0 && <p className="p-4 text-slate-400">Nenhum pedido encontrado.</p>}</div>
@@ -232,7 +246,7 @@ export default function CashPage() {
 
       <section className={`${panelClass} xl:col-span-2`}>
         <h2 className="mb-4 text-lg font-semibold">Pagamentos recentes ({payments.length})</h2>
-        <div className="overflow-x-auto"><table className="w-full text-left text-sm"><thead className="text-slate-400"><tr><th className="p-3">Data</th><th className="p-3">Pedido</th><th className="p-3">Forma</th><th className="p-3">Valor</th><th className="p-3">Estado</th></tr></thead><tbody>{payments.map(payment => <tr key={payment.id} className="border-t border-slate-800"><td className="p-3">{new Date(payment.paidAt).toLocaleString('pt-BR')}</td><td className="p-3">{payment.order?.code ?? '—'}</td><td className="p-3">{paymentMethods.find(method => method.value === payment.method)?.label ?? payment.method}</td><td className="p-3">{money(payment.amount)}</td><td className="p-3">{payment.status}</td></tr>)}</tbody></table>{payments.length === 0 && <p className="p-4 text-slate-400">Nenhum pagamento registrado.</p>}</div>
+        <div className="overflow-x-auto"><table className="w-full text-left text-sm"><thead className="text-slate-400"><tr><th className="p-3">Data</th><th className="p-3">Pedido</th><th className="p-3">Forma</th><th className="p-3">Valor</th><th className="p-3">Estado</th><th className="p-3">Ações</th></tr></thead><tbody>{payments.map(payment => <tr key={payment.id} className="border-t border-slate-800"><td className="p-3">{new Date(payment.paidAt).toLocaleString('pt-BR')}</td><td className="p-3">{payment.order?.code ?? '—'}</td><td className="p-3">{paymentMethods.find(method => method.value === payment.method)?.label ?? payment.method}</td><td className="p-3">{money(payment.amount)}</td><td className="p-3">{payment.status}</td><td className="p-3">{payment.status === 'CONFIRMED' && <button className="rounded-lg border border-red-500/50 px-3 py-1 text-xs text-red-200 hover:bg-red-500/10" onClick={() => void refund(payment)}>Estornar</button>}</td></tr>)}</tbody></table>{payments.length === 0 && <p className="p-4 text-slate-400">Nenhum pagamento registrado.</p>}</div>
       </section>
     </div>
   </AppShell>;

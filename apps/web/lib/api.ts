@@ -1,8 +1,9 @@
-const API_BASE = process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:4000/api/v1';
+export const API_BASE = process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:4000/api/v1';
 
 export class ApiError extends Error {
   status: number;
-  constructor(message: string, status: number) { super(message); this.status = status; }
+  payload: { message?: string; error?: string | null } & Record<string, unknown>;
+  constructor(message: string, status: number, payload: ApiError['payload'] = {}) { super(message); this.status = status; this.payload = payload; }
 }
 
 async function request<T>(path: string, options: RequestInit, withToken: boolean): Promise<T> {
@@ -18,7 +19,7 @@ async function request<T>(path: string, options: RequestInit, withToken: boolean
   });
   if (response.status === 204) return undefined as T;
   const payload = await response.json().catch(() => ({}));
-  if (!response.ok) throw new ApiError(payload.message ?? 'Falha ao comunicar com a API', response.status);
+  if (!response.ok) throw new ApiError(payload.message ?? payload.error ?? 'Falha ao comunicar com a API', response.status, payload);
   return payload as T;
 }
 
@@ -35,7 +36,7 @@ export function storedUser(): { unitId?: string | null; role?: string } {
 }
 
 export type ListResponse<T> = { items: T[]; total: number; page?: number; pageSize?: number };
-export type Unit = { id: string; name: string; code?: string | null; address?: string | null; status: string };
+export type Unit = { id: string; name: string; code?: string | null; address?: string | null; status: string; serviceFeePercent?: string | number; waiterSharePercent?: string | number };
 export type Employee = { id: string; fullName: string; cpf?: string | null; phone?: string | null; email?: string | null; position?: string | null; status: string; unitId?: string | null };
 export type Sector = { id: string; name: string };
 export type Product = { id: string; name: string; isCombo?: boolean; code?: string | null; price: string | number; cost?: string | number | null; active: boolean; category?: { name: string } | null; sector?: Sector | null; unitId?: string | null };
@@ -55,14 +56,24 @@ export type Customer = { id: string; name: string; phone: string; email?: string
 export type Coupon = { id: string; code: string; type: 'PERCENT' | 'FIXED'; value: string | number; minOrder?: string | number | null; maxUses?: number | null; usedCount: number; validFrom?: string | null; validUntil?: string | null; active: boolean };
 export type Reservation = { id: string; unitId: string; tableId?: string | null; table?: { id: string; label: string } | null; customerName: string; phone?: string | null; partySize: number; reservedAt: string; status: 'PENDING' | 'CONFIRMED' | 'SEATED' | 'CANCELLED' | 'NO_SHOW'; notes?: string | null };
 export type Supplier = { id: string; name: string; document?: string | null; phone?: string | null; email?: string | null };
-export type Ingredient = { id: string; name: string; unitOfMeasure: string; currentStock: string | number; minimumStock?: string | number | null };
+export type Ingredient = { id: string; unitId?: string | null; name: string; unitOfMeasure: string; currentStock: string | number; minimumStock?: string | number | null };
 export type PurchaseOrder = { id: string; code: string; status: 'DRAFT' | 'RECEIVED' | 'CANCELLED'; total: string | number; dueAt?: string | null; createdAt: string; supplier: { id: string; name: string }; items: { id: string; quantity: string | number; unitCost: string | number; ingredient: { id: string; name: string; unitOfMeasure: string } }[] };
 export type InventoryAdjustment = { ingredientId: string; name: string; previous: string | number; counted: string | number; difference: string | number };
 export type DeliveryZone = { id: string; name: string; fee: string | number; minOrder?: string | number | null; active: boolean };
 export type DeliveryJob = { id: string; orderId: string; courierName?: string | null; courierPhone?: string | null; address?: string | null; status: 'PENDING' | 'ASSIGNED' | 'PICKED_UP' | 'DELIVERED' | 'CANCELLED'; provider?: string | null; createdAt: string; order?: Order };
 
-export type ModifierOption = { id: string; name: string; price: string | number; active?: boolean; sectorId?: string | null };
+export type ModifierOption = { id: string; name: string; price: string | number; active?: boolean; sectorId?: string | null; ingredientId?: string | null; ingredientQuantity?: string | number | null };
 export type ModifierGroupView = { id: string; name: string; minSelect: number; maxSelect: number; options: ModifierOption[] };
 export type ModifierGroup = ModifierGroupView & { active: boolean; products?: { productId: string }[] };
 export type ProductComposition = { id: string; name: string; isCombo: boolean; comboComponents: { quantity: number; product: { id: string; name: string } }[]; modifierGroups: { groupId: string }[] };
 export type PublicProduct = { id: string; name: string; description?: string | null; price: string | number; isCombo?: boolean; comboComponents?: { quantity: number; product: { name: string } }[]; modifierGroups?: ModifierGroupView[] };
+
+export type AppUser = { id: string; name: string; email: string; role: string; status: 'ACTIVE' | 'INACTIVE' | 'BLOCKED'; unitId?: string | null; commissionPercent?: string | number | null; createdAt: string };
+export type Shift = { id: string; employeeId: string; unitId: string; startsAt: string; endsAt: string; position?: string | null; notes?: string | null; employee?: { id: string; fullName: string; position?: string | null } };
+export type PaymentCharge = { id: string; orderId: string; provider: string; method: string; amount: string | number; status: 'PENDING' | 'PAID' | 'FAILED' | 'EXPIRED' | 'REFUNDED'; qrPayload?: string | null; error?: string | null; createdAt: string; paidAt?: string | null };
+export type FiscalDocument = { id: string; orderId: string; provider: string; kind: 'NFCE' | 'NFE'; status: 'PENDING' | 'AUTHORIZED' | 'REJECTED' | 'CANCELLED'; number?: string | null; accessKey?: string | null; documentUrl?: string | null; error?: string | null; createdAt: string; order?: { code: string; total: string | number } };
+export type Integration = { id: string; provider: string; name: string; unitId?: string | null; active: boolean; lastUsedAt?: string | null; createdAt: string };
+export type ReportOverview = { period: { from: string; to: string }; orders: number; totals: { subtotal: string | null; serviceFee: string | null; deliveryFee: string | null; discount: string | null; total: string | null }; paidExpenses: string | number; paymentsByMethod: { method: string; _count: number; _sum: { amount: string | null } }[]; bestSellers: { productId: string; name: string; quantity: number | null; sales: string | null }[] };
+export type WaiterReportRow = { userId: string | null; name: string; orders: number; sales: string | null; serviceFee: string | null; total: string | null };
+export type ServiceFeeDistribution = { period: { from: string; to: string }; items: { userId: string | null; name: string; serviceFeeCollected: string; waiterAmount: string; poolAmount: string; commission: string }[]; totals: { serviceFeeCollected: string; waiterAmount: string; poolAmount: string; commission: string } };
+export type WhatsappMessage = { id: string; orderId?: string | null; toPhone: string; template: string; status: 'QUEUED' | 'SENT' | 'FAILED'; error?: string | null; createdAt: string; sentAt?: string | null };

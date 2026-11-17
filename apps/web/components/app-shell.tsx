@@ -10,6 +10,8 @@ const links = [
   { href: '/units', label: 'Unidades' },
   { href: '/employees', label: 'Funcionários' },
   { href: '/products', label: 'Produtos e produção' },
+  { href: '/users', label: 'Usuários e permissões' },
+  { href: '/shifts', label: 'Escalas' },
   { href: '/inventory', label: 'Estoque e fichas' },
   { href: '/catalog', label: 'Adicionais e combos' },
   { href: '/orders', label: 'Pedidos / PDV' },
@@ -22,6 +24,10 @@ const links = [
   { href: '/coupons', label: 'Cupons e promoções' },
   { href: '/purchasing', label: 'Compras e fornecedores' },
   { href: '/cash', label: 'Caixa e pagamentos' },
+  { href: '/fiscal', label: 'Documentos fiscais' },
+  { href: '/reports', label: 'Relatórios' },
+  { href: '/integrations', label: 'Integrações' },
+  { href: '/whatsapp', label: 'WhatsApp' },
 ];
 
 export function AppShell({ title, children }: { title: string; children: React.ReactNode }) {
