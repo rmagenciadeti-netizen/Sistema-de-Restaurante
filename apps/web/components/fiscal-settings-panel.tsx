@@ -4,17 +4,18 @@ import Link from 'next/link';
 import { useEffect, useState } from 'react';
 import { buttonClass, Field, Notice, Select, secondaryButtonClass } from './app-shell';
 import { Badge, sectionTitleClass, Tabs, textareaClass } from './ui';
-import { api, ApiError, errorMessage, formatDateTime } from '../lib/api';
+import { api, ApiError, errorMessage, formatDateTime, type Unit } from '../lib/api';
 import { environmentLabel, type FiscalIssuer, type FiscalModelConfig, type FiscalSettingsView, type PdvMode } from '../lib/types-fiscal';
 
-type Section = 'environment' | 'issuer' | 'certificate' | 'provider' | 'nfce' | 'nfe' | 'tax' | 'pdv';
+type Section = 'environment' | 'issuer' | 'certificate' | 'provider' | 'nfce' | 'nfe' | 'tax' | 'pdv' | 'unit';
 const sections: { key: Section; label: string }[] = [
   { key: 'environment', label: 'Ambiente' }, { key: 'issuer', label: 'Emitente' }, { key: 'certificate', label: 'Certificado A1' }, { key: 'provider', label: 'Provedor' },
-  { key: 'nfce', label: 'NFC-e (65)' }, { key: 'nfe', label: 'NF-e (55)' }, { key: 'tax', label: 'Tributação padrão' }, { key: 'pdv', label: 'Comportamento no PDV' },
+  { key: 'nfce', label: 'NFC-e (65)' }, { key: 'nfe', label: 'NF-e (55)' }, { key: 'tax', label: 'Tributação padrão' }, { key: 'pdv', label: 'Comportamento no PDV' }, { key: 'unit', label: 'Unidades fiscais' },
 ];
 type Draft = Pick<FiscalSettingsView, 'environment' | 'provider' | 'issuer' | 'nfe' | 'nfce' | 'cscId' | 'pdvMode' | 'defaultTaxRuleId'> & { providerToken: string; cscToken: string };
 type Numbering = { items: { kind: string; series: string; nextNumber: number }[]; environment: string };
-type CertificateTest = { ok: boolean; message: string; subject?: string | null; cnpj?: string | null; validTo?: string | null };
+type CertificateTest = { ok: boolean; message: string; subject?: string | null; cnpj?: string | null; validTo?: string | null; warnings?: string[] };
+type UnitFiscalView = { configured: boolean; issuer: FiscalIssuer; ownCertificate: boolean; certificate: { state: string; daysLeft: number | null; subject?: string | null; cnpj?: string | null; validFrom?: string | null; validTo?: string | null; uploadedAt?: string | null }; certificateWarnings?: string[] };
 type Message = { text: string; kind: 'error' | 'success'; problems?: string[] };
 
 const regimeLabel: Record<FiscalIssuer['taxRegime'], string> = { SIMPLES_NACIONAL: 'Simples Nacional', SIMPLES_EXCESSO: 'Simples Nacional — excesso de sublimite', NORMAL: 'Regime Normal (Lucro Presumido/Real)', MEI: 'MEI — Microempreendedor Individual' };
@@ -50,6 +51,9 @@ export function FiscalSettingsPanel({ canEdit }: { canEdit: boolean }) {
   const [view, setView] = useState<FiscalSettingsView | null>(null);
   const [draft, setDraft] = useState<Draft | null>(null);
   const [rules, setRules] = useState<{ id: string; name: string; active: boolean }[]>([]);
+  const [units, setUnits] = useState<Unit[]>([]);
+  const [unitId, setUnitId] = useState('');
+  const [unitView, setUnitView] = useState<UnitFiscalView | null>(null);
   const [numbering, setNumbering] = useState<Numbering | null>(null);
   const [section, setSection] = useState<Section>('environment');
   const [message, setMessage] = useState<Message | null>(null);
@@ -57,6 +61,9 @@ export function FiscalSettingsPanel({ canEdit }: { canEdit: boolean }) {
   const [certFile, setCertFile] = useState<File | null>(null);
   const [certPassword, setCertPassword] = useState('');
   const [fileKey, setFileKey] = useState(0);
+  const [unitCertFile, setUnitCertFile] = useState<File | null>(null);
+  const [unitCertPassword, setUnitCertPassword] = useState('');
+  const [unitFileKey, setUnitFileKey] = useState(0);
 
   function apply(next: FiscalSettingsView) { setView(next); setDraft(toDraft(next)); }
 
@@ -72,15 +79,36 @@ export function FiscalSettingsPanel({ canEdit }: { canEdit: boolean }) {
         api<Numbering>('/fiscal/numbering').catch(() => null),
       ]);
       if (alive) { setRules(ruleList.items); setNumbering(numbers); }
+      if (canEdit) {
+        try {
+          const unitList = await api<{ items: Unit[] }>('/units');
+          if (alive) {
+            const activeUnits = unitList.items.filter(unit => unit.status === 'ACTIVE');
+            setUnits(activeUnits);
+            setUnitId(current => current || (activeUnits.length === 1 ? activeUnits[0].id : ''));
+          }
+        } catch (error) { if (alive) setMessage(failure(error, 'Erro ao carregar as unidades')); }
+      }
     })();
     return () => { alive = false; };
-  }, []);
+  }, [canEdit]);
+
+  useEffect(() => {
+    if (!unitId) { setUnitView(null); return; }
+    let alive = true;
+    void api<UnitFiscalView>(`/fiscal/settings/units/${unitId}`)
+      .then(result => { if (alive) setUnitView(result); })
+      .catch(error => { if (alive) { setUnitView(null); setMessage(failure(error, 'Erro ao carregar a configuração fiscal da unidade')); } });
+    return () => { alive = false; };
+  }, [unitId]);
 
   if (!draft || !view) return <>{message ? <Notice message={message.text} kind={message.kind} /> : <p className="text-sm text-slate-500">Carregando configurações fiscais…</p>}</>;
 
   const disabled = !canEdit || Boolean(busy);
+  const visibleSections = canEdit ? sections : sections.filter(item => item.key !== 'unit');
   const set = (change: Partial<Draft>) => setDraft(current => current && { ...current, ...change });
   const setIssuer = (change: Partial<FiscalIssuer>) => setDraft(current => current && { ...current, issuer: { ...current.issuer, ...change } });
+  const setUnitIssuer = (change: Partial<FiscalIssuer>) => setUnitView(current => current && { ...current, issuer: { ...current.issuer, ...change } });
   const setModel = (model: 'nfe' | 'nfce', change: Partial<FiscalModelConfig>) => setDraft(current => current && { ...current, [model]: { ...current[model], ...change } });
   const issuer = draft.issuer;
   const series = (kind: 'NFCE' | 'NFE') => numbering?.items.find(item => item.kind === kind);
@@ -91,6 +119,14 @@ export function FiscalSettingsPanel({ canEdit }: { canEdit: boolean }) {
   }
 
   const save = () => run('save', async () => {
+    if (section === 'unit') {
+      if (!unitId || !unitView) { setMessage({ text: 'Selecione uma unidade para salvar.', kind: 'error' }); return; }
+      try {
+        const next = await api<UnitFiscalView>(`/fiscal/settings/units/${unitId}`, { method: 'PUT', body: JSON.stringify({ issuer: unitView.issuer }) });
+        setUnitView(next); setMessage({ text: 'Emitente fiscal da unidade salvo.', kind: 'success' });
+      } catch (error) { setMessage(failure(error, 'Erro ao salvar o emitente fiscal da unidade')); }
+      return;
+    }
     if (!draft) return;
     const { providerToken, cscToken, ...rest } = draft;
     const body = { ...rest, ...(providerToken.trim() ? { providerToken: providerToken.trim() } : {}), ...(cscToken.trim() ? { cscToken: cscToken.trim() } : {}) };
@@ -100,14 +136,24 @@ export function FiscalSettingsPanel({ canEdit }: { canEdit: boolean }) {
     } catch (error) { setMessage(failure(error, 'Erro ao salvar as configurações fiscais')); }
   });
 
+  const uploadUnitCertificate = () => run('unit-cert', async () => {
+    if (!unitId || !unitCertFile) { setMessage({ text: 'Selecione o arquivo .pfx/.p12 do certificado.', kind: 'error' }); return; }
+    try {
+      const pfxBase64 = await readBase64(unitCertFile);
+      const next = await api<UnitFiscalView>(`/fiscal/settings/units/${unitId}/certificate`, { method: 'POST', body: JSON.stringify({ pfxBase64, password: unitCertPassword }) });
+      setUnitView(next); setUnitCertFile(null); setUnitCertPassword(''); setUnitFileKey(key => key + 1);
+      setMessage({ text: `Certificado da unidade armazenado de forma criptografada.${next.certificateWarnings?.length ? ` Avisos: ${next.certificateWarnings.join(' ')}` : ''}`, kind: 'success' });
+    } catch (error) { setUnitCertPassword(''); setMessage(failure(error, 'Erro ao importar o certificado da unidade')); }
+  });
+
   const uploadCertificate = () => run('cert', async () => {
     if (!certFile) { setMessage({ text: 'Selecione o arquivo .pfx/.p12 do certificado.', kind: 'error' }); return; }
     try {
       const pfxBase64 = await readBase64(certFile);
-      const next = await api<FiscalSettingsView>('/fiscal/settings/certificate', { method: 'POST', body: JSON.stringify({ pfxBase64, password: certPassword }) });
+      const next = await api<FiscalSettingsView & { certificateWarnings?: string[] }>('/fiscal/settings/certificate', { method: 'POST', body: JSON.stringify({ pfxBase64, password: certPassword }) });
       setView(next); setDraft(current => current && { ...current, issuer: next.issuer });
       setCertFile(null); setCertPassword(''); setFileKey(key => key + 1);
-      setMessage({ text: 'Certificado importado e armazenado de forma criptografada.', kind: 'success' });
+      setMessage({ text: `Certificado importado e armazenado de forma criptografada.${next.certificateWarnings?.length ? ` Avisos: ${next.certificateWarnings.join(' ')}` : ''}`, kind: 'success' });
     } catch (error) { setCertPassword(''); setMessage(failure(error, 'Erro ao importar o certificado')); }
   });
 
@@ -115,7 +161,7 @@ export function FiscalSettingsPanel({ canEdit }: { canEdit: boolean }) {
     try {
       const result = await api<CertificateTest>('/fiscal/settings/certificate/test', { method: 'POST' });
       const details = [result.subject, result.cnpj ? `CNPJ ${result.cnpj}` : '', result.validTo ? `válido até ${formatDateTime(result.validTo)}` : ''].filter(Boolean).join(' · ');
-      setMessage({ text: `${result.message}${details ? ` (${details})` : ''}`, kind: result.ok ? 'success' : 'error' });
+      setMessage({ text: `${result.message}${details ? ` (${details})` : ''}${result.warnings?.length ? ` Avisos: ${result.warnings.join(' ')}` : ''}`, kind: result.ok ? 'success' : 'error' });
     } catch (error) { setMessage(failure(error, 'Erro ao testar o certificado')); }
   });
 
@@ -237,18 +283,58 @@ export function FiscalSettingsPanel({ canEdit }: { canEdit: boolean }) {
         </label>)}
         <p className="text-xs text-slate-500">A alteração vale apenas para as próximas vendas; vendas já registradas não são afetadas.</p>
       </fieldset>;
+      case 'unit': return <div className="grid gap-4">
+        <Select label="Unidade" value={unitId} disabled={disabled || units.length === 0} onChange={e => setUnitId(e.target.value)}>
+          <option value="">Selecione uma unidade</option>{units.map(unit => <option key={unit.id} value={unit.id}>{unit.name}</option>)}
+        </Select>
+        {!unitId ? <p className="text-sm text-slate-600">{units.length ? 'Selecione a unidade para configurar seu emitente e certificado.' : 'Nenhuma unidade ativa disponível.'}</p> : !unitView ? <p className="text-sm text-slate-500">Carregando configuração da unidade…</p> : <>
+          <p className="rounded-xl border border-blue-200 bg-blue-50 px-4 py-3 text-sm text-blue-900">A unidade usa a configuração da empresa até você cadastrar um emitente próprio. Certificado próprio é opcional quando o certificado da empresa pertence à mesma raiz de CNPJ.</p>
+          <div className="grid gap-4 md:grid-cols-3">
+            <div className="md:col-span-2"><Field label="Razão social" value={unitView.issuer.legalName} disabled={disabled} onChange={e => setUnitIssuer({ legalName: e.target.value })} /></div>
+            <Field label="Nome fantasia" value={unitView.issuer.tradeName} disabled={disabled} onChange={e => setUnitIssuer({ tradeName: e.target.value })} />
+            <Field label="CNPJ" inputMode="numeric" maxLength={18} value={unitView.issuer.cnpj} disabled={disabled} onChange={e => setUnitIssuer({ cnpj: e.target.value })} />
+            <Field label="Inscrição estadual (IE)" value={unitView.issuer.stateRegistration} disabled={disabled} onChange={e => setUnitIssuer({ stateRegistration: e.target.value })} />
+            <Field label="Inscrição municipal (IM)" value={unitView.issuer.municipalRegistration} disabled={disabled} onChange={e => setUnitIssuer({ municipalRegistration: e.target.value })} />
+            <Field label="CNAE" inputMode="numeric" maxLength={9} value={unitView.issuer.cnae} disabled={disabled} onChange={e => setUnitIssuer({ cnae: e.target.value })} />
+            <Select label="Regime tributário" value={unitView.issuer.taxRegime} disabled={disabled} onChange={e => setUnitIssuer({ taxRegime: e.target.value as FiscalIssuer['taxRegime'] })}>{(Object.keys(regimeLabel) as FiscalIssuer['taxRegime'][]).map(key => <option key={key} value={key}>{regimeLabel[key]}</option>)}</Select>
+            <div className="text-sm text-slate-700">CRT (derivado)<p className="mt-1 rounded-xl border border-slate-200 bg-slate-50 px-3 py-2.5 font-semibold">{regimeCrt[unitView.issuer.taxRegime]}</p></div>
+            <div className="md:col-span-2"><Field label="Logradouro" value={unitView.issuer.street} disabled={disabled} onChange={e => setUnitIssuer({ street: e.target.value })} /></div>
+            <Field label="Número" value={unitView.issuer.number} disabled={disabled} onChange={e => setUnitIssuer({ number: e.target.value })} />
+            <Field label="Complemento" value={unitView.issuer.complement} disabled={disabled} onChange={e => setUnitIssuer({ complement: e.target.value })} />
+            <Field label="Bairro" value={unitView.issuer.district} disabled={disabled} onChange={e => setUnitIssuer({ district: e.target.value })} />
+            <Field label="Município" value={unitView.issuer.city} disabled={disabled} onChange={e => setUnitIssuer({ city: e.target.value })} />
+            <Field label="Código IBGE do município" inputMode="numeric" maxLength={7} value={unitView.issuer.cityIbge} disabled={disabled} onChange={e => setUnitIssuer({ cityIbge: e.target.value.replace(/\D/g, '') })} />
+            <Field label="UF" maxLength={2} value={unitView.issuer.uf} disabled={disabled} onChange={e => setUnitIssuer({ uf: e.target.value.toUpperCase() })} />
+            <Field label="CEP" inputMode="numeric" maxLength={9} value={unitView.issuer.cep} disabled={disabled} onChange={e => setUnitIssuer({ cep: e.target.value })} />
+            <Field label="País" value={unitView.issuer.country} disabled={disabled} onChange={e => setUnitIssuer({ country: e.target.value })} />
+            <Field label="Código do país (BACEN)" inputMode="numeric" maxLength={4} value={unitView.issuer.countryCode} disabled={disabled} onChange={e => setUnitIssuer({ countryCode: e.target.value.replace(/\D/g, '') })} />
+            <Field label="Telefone" inputMode="tel" value={unitView.issuer.phone} disabled={disabled} onChange={e => setUnitIssuer({ phone: e.target.value })} />
+            <Select label="Indicador de contribuinte (IE)" value={unitView.issuer.contributorIndicator} disabled={disabled} onChange={e => setUnitIssuer({ contributorIndicator: e.target.value as FiscalIssuer['contributorIndicator'] })}>{(Object.keys(contributorLabel) as FiscalIssuer['contributorIndicator'][]).map(key => <option key={key} value={key}>{contributorLabel[key]}</option>)}</Select>
+          </div>
+          <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4 text-sm">
+            <div className="flex items-center justify-between gap-2"><p className="font-semibold text-slate-900">Certificado da unidade</p>{unitView.certificate.state === 'VALID' ? <Badge tone="green">Válido</Badge> : unitView.certificate.state === 'EXPIRING' ? <Badge tone="amber">Vence em {unitView.certificate.daysLeft ?? 0} dias</Badge> : unitView.certificate.state === 'EXPIRED' ? <Badge tone="red">Vencido</Badge> : <Badge>Não importado</Badge>}</div>
+            <p className="mt-2 text-slate-600">{unitView.ownCertificate ? `Certificado próprio: ${unitView.certificate.subject ?? 'A1'}` : 'Usando o certificado da empresa, se compatível com a raiz do CNPJ.'}</p>
+            {unitView.certificate.validTo && <p className="mt-1 text-slate-600">CNPJ {unitView.certificate.cnpj ?? '—'} · válido até {formatDateTime(unitView.certificate.validTo)}</p>}
+          </div>
+          <div className="grid gap-4 md:grid-cols-2">
+            <label className="block text-sm font-medium text-slate-700">Arquivo do certificado (.pfx/.p12)<input key={unitFileKey} type="file" accept=".pfx,.p12,application/x-pkcs12" disabled={disabled} onChange={e => setUnitCertFile(e.target.files?.[0] ?? null)} className="mt-1 block w-full text-sm text-slate-700 file:mr-3 file:rounded-lg file:border-0 file:bg-neutral-950 file:px-3 file:py-2 file:text-brand-300" /></label>
+            <Field label="Senha do certificado" type="password" autoComplete="new-password" value={unitCertPassword} disabled={disabled} onChange={e => setUnitCertPassword(e.target.value)} />
+          </div>
+          <button type="button" className={secondaryButtonClass} disabled={disabled || !unitCertFile || !unitCertPassword} onClick={() => void uploadUnitCertificate()}>{busy === 'unit-cert' ? 'Importando…' : unitView.ownCertificate ? 'Substituir certificado da unidade' : 'Importar certificado da unidade'}</button>
+        </>}
+      </div>;
       default: return null;
     }
   };
 
   return <div>
     {message && <div><Notice message={message.text} kind={message.kind} />{message.problems && message.problems.length > 0 && <ul className="-mt-2 mb-4 list-disc space-y-1 rounded-xl border border-red-200 bg-red-50 py-3 pl-9 pr-4 text-sm text-red-800">{message.problems.map(item => <li key={item}>{item}</li>)}</ul>}</div>}
-    <Tabs tabs={sections} value={section} onChange={setSection} label="Seções fiscais" />
-    <h4 className={sectionTitleClass}>{sections.find(item => item.key === section)?.label}</h4>
+    <Tabs tabs={visibleSections} value={section} onChange={setSection} label="Seções fiscais" />
+    <h4 className={sectionTitleClass}>{visibleSections.find(item => item.key === section)?.label}</h4>
     {body()}
     <div className="mt-6 flex flex-wrap items-center justify-end gap-3 border-t border-slate-200 pt-4">
       {!canEdit && <span className="text-sm text-slate-500">Somente administradores e gerentes podem alterar.</span>}
-      <button type="button" className={buttonClass} disabled={disabled} onClick={() => void save()}>{busy === 'save' ? 'Salvando…' : 'Salvar configurações fiscais'}</button>
+      <button type="button" className={buttonClass} disabled={disabled || (section === 'unit' && (!unitId || !unitView))} onClick={() => void save()}>{busy === 'save' ? 'Salvando…' : section === 'unit' ? 'Salvar unidade fiscal' : 'Salvar configurações fiscais'}</button>
     </div>
   </div>;
 }

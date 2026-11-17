@@ -1,7 +1,7 @@
 import { FiscalEnvironment, FiscalKind, FiscalStatus, OrderStatus, Prisma, type FiscalDocument, type FiscalSettings, type TaxRule } from '@prisma/client';
 import { prisma } from './prisma';
-import { environmentOf, fiscalContext, FiscalConfigError, loadFiscalSettings, modelOf } from './fiscal-config';
-import { reserveFiscalNumber } from './fiscal-numbering';
+import { environmentOf, fiscalContextForUnit, FiscalConfigError, loadFiscalSettings, modelOf } from './fiscal-config';
+import { fiscalUnitKey, independentFiscalUnitIds, reserveFiscalNumber } from './fiscal-numbering';
 import { fiscalProviders, type FiscalContext, type FiscalEmission, type FiscalItemTax, type FiscalOrder, type FiscalProvider, type FiscalRecipient } from './providers';
 
 export type Actor = { tenantId: string; userId: string; unitId: string | null };
@@ -154,8 +154,9 @@ export async function emitForOrder(actor: Actor, orderId: string, options: Emiss
   const probe = buildFiscalOrder(order, settings, options, { series: '', number: '' });
   if ('untaxed' in probe) return { status: 422, body: { message: `Vincule uma regra tributária ativa (Fiscal / Tributos) aos produtos: ${probe.untaxed.join(', ')}.` } };
   const environment = environmentOf(settings);
+  const unitKey = await fiscalUnitKey(prisma, actor.tenantId, order.unitId);
   let context: FiscalContext;
-  try { context = fiscalContext(settings, { contingency: await contingencyActive(actor.tenantId) }); } catch (error) { if (error instanceof FiscalConfigError) return { status: error.status, body: { message: error.message } }; throw error; }
+  try { context = await fiscalContextForUnit(prisma, settings, actor.tenantId, order.unitId, { contingency: await contingencyActive(actor.tenantId) }); } catch (error) { if (error instanceof FiscalConfigError) return { status: error.status, body: { message: error.message } }; throw error; }
 
   const existing = await prisma.fiscalDocument.findUnique({ where: { orderId_kind: { orderId: order.id, kind: options.kind } } });
   if (existing && existing.environment !== environment) return { status: 409, body: { message: `Este pedido já possui ${options.kind === 'NFE' ? 'NF-e' : 'NFC-e'} em ${existing.environment === 'PRODUCTION' ? 'produção' : 'homologação'}; não é possível emitir outra no ambiente atual.` } };
@@ -167,13 +168,13 @@ export async function emitForOrder(actor: Actor, orderId: string, options: Emiss
   const document = existing
     ? (await prisma.fiscalDocument.updateMany({ where: { id: existing.id, updatedAt: existing.updatedAt }, data: { status: FiscalStatus.PENDING, provider: provider.name, error: null, issuedById: actor.userId } })).count === 1 ? existing : null
     : await prisma.$transaction(async tx => {
-      const { series, number } = await reserveFiscalNumber(tx, actor.tenantId, options.kind, environment);
+      const { series, number } = await reserveFiscalNumber(tx, actor.tenantId, options.kind, environment, unitKey);
       return tx.fiscalDocument.create({ data: { tenantId: actor.tenantId, unitId: order.unitId, orderId: order.id, provider: provider.name, kind: options.kind, series, number, environment, issuedById: actor.userId } });
     }).catch(() => null);
   if (!document) return { status: 409, body: { message: 'Emission already in progress' } };
   // Documents created before numbering existed have no reserved number yet.
   const reserved = document.number && document.series ? { series: document.series, number: document.number } : await prisma.$transaction(async tx => {
-    const next = await reserveFiscalNumber(tx, actor.tenantId, options.kind, environment);
+    const next = await reserveFiscalNumber(tx, actor.tenantId, options.kind, environment, unitKey);
     await tx.fiscalDocument.update({ where: { id: document.id }, data: next });
     return next;
   });
@@ -197,7 +198,7 @@ export async function retransmit(actor: Actor, document: FiscalDocument): Promis
   const locked = await prisma.fiscalDocument.updateMany({ where: { id: document.id, updatedAt: document.updatedAt }, data: { status: FiscalStatus.PENDING } });
   if (locked.count !== 1) return { failure: 'Documento em processamento por outra operação.' };
   const payload = document.payload as unknown as FiscalOrder;
-  return transmit(document, provider, { ...payload, issuedAt: new Date(payload.issuedAt) }, actor, fiscalContext(settings, { contingency: await contingencyActive(actor.tenantId) }), document.status);
+  return transmit(document, provider, { ...payload, issuedAt: new Date(payload.issuedAt) }, actor, await fiscalContextForUnit(prisma, settings, actor.tenantId, document.unitId, { contingency: await contingencyActive(actor.tenantId) }), document.status);
 }
 
 // Asks the provider/SEFAZ for the real state of a document (lost return, async batch, contingency).
@@ -207,7 +208,7 @@ export async function consultDocument(actor: Actor, document: FiscalDocument): P
   const settings = await loadFiscalSettings(prisma, actor.tenantId);
   if (environmentOf(settings) !== document.environment) return { failure: 'O ambiente fiscal atual é diferente do ambiente do documento.' };
   try {
-    const found = await provider.consult({ ref: document.id, kind: document.kind, number: document.number, series: document.series, accessKey: document.accessKey }, fiscalContext(settings));
+    const found = await provider.consult({ ref: document.id, kind: document.kind, number: document.number, series: document.series, accessKey: document.accessKey }, await fiscalContextForUnit(prisma, settings, actor.tenantId, document.unitId));
     if (found.status === 'NOT_FOUND') {
       await recordEvent({ tenantId: actor.tenantId, unitId: document.unitId, documentId: document.id, environment: document.environment, type: 'CONSULT', status: 'NOT_FOUND', kind: document.kind, message: found.error ?? 'Documento não localizado', actorUserId: actor.userId });
       return prisma.fiscalDocument.update({ where: { id: document.id }, data: { error: 'Documento não localizado na SEFAZ/provedor; pode ser reenviado.' } });
@@ -225,20 +226,25 @@ export type InutilizationRequest = { kind: FiscalKind; series: string; numberFro
 export async function inutilize(actor: Actor, request: InutilizationRequest): Promise<ServiceResult> {
   const settings = await loadFiscalSettings(prisma, actor.tenantId);
   const environment = environmentOf(settings);
+  const unitKey = await fiscalUnitKey(prisma, actor.tenantId, actor.unitId);
   const provider = settings?.provider ? fiscalProviders.get(settings.provider) : fiscalProviders.get(fiscalProviders.names()[0] ?? '');
   if (!provider?.inutilize) return { status: 501, body: { message: 'O provedor fiscal configurado não oferece inutilização de numeração.' } };
   const { kind, series, numberFrom, numberTo, justification } = request;
-  const [{ count }] = await prisma.$queryRaw<{ count: bigint }[]>`SELECT count(*)::bigint AS count FROM "FiscalDocument" WHERE "tenantId" = ${actor.tenantId} AND "kind" = ${kind}::"FiscalKind" AND "environment" = ${environment}::"FiscalEnvironment" AND "series" = ${series} AND "number" ~ '^[0-9]{1,9}$' AND "number"::int BETWEEN ${numberFrom} AND ${numberTo}`;
+  // Company-scope inutilization ignores establishments with their own CNPJ: their numbers live in a separate space.
+  const independents = unitKey ? [] : await independentFiscalUnitIds(prisma, actor.tenantId);
+  const unitFilter = unitKey ? Prisma.sql`AND "unitId" = ${unitKey}` : independents.length ? Prisma.sql`AND ("unitId" IS NULL OR "unitId" NOT IN (${Prisma.join(independents)}))` : Prisma.empty;
+  const [{ count }] = await prisma.$queryRaw<{ count: bigint }[]>`SELECT count(*)::bigint AS count FROM "FiscalDocument" WHERE "tenantId" = ${actor.tenantId} AND "kind" = ${kind}::"FiscalKind" AND "environment" = ${environment}::"FiscalEnvironment" AND "series" = ${series} ${unitFilter} AND "number" ~ '^[0-9]{1,9}$' AND "number"::int BETWEEN ${numberFrom} AND ${numberTo}`;
   if (Number(count) > 0) return { status: 409, body: { message: `Há ${count} documento(s) com números nessa faixa (autorizados, pendentes, rejeitados ou cancelados). Consulte-os antes; números utilizados não podem ser inutilizados.` } };
-  const overlap = await prisma.fiscalEvent.findFirst({ where: { tenantId: actor.tenantId, type: 'INUTILIZATION', status: 'REGISTERED', environment, kind, series, numberFrom: { lte: numberTo }, numberTo: { gte: numberFrom } } });
+  const eventScope = unitKey ? { unitId: unitKey } : independents.length ? { OR: [{ unitId: null }, { unitId: { notIn: independents } }] } : {};
+  const overlap = await prisma.fiscalEvent.findFirst({ where: { tenantId: actor.tenantId, ...eventScope, type: 'INUTILIZATION', status: 'REGISTERED', environment, kind, series, numberFrom: { lte: numberTo }, numberTo: { gte: numberFrom } } });
   if (overlap) return { status: 409, body: { message: `A faixa ${overlap.numberFrom}–${overlap.numberTo} já foi inutilizada (protocolo ${overlap.protocol ?? '—'}).` } };
   // Numbers at or beyond the next sequential number are moved past the range first, so no emission can take them meanwhile.
   await prisma.$transaction(async tx => {
-    await tx.fiscalNumbering.createMany({ data: [{ tenantId: actor.tenantId, kind, environment }], skipDuplicates: true });
-    await tx.fiscalNumbering.updateMany({ where: { tenantId: actor.tenantId, kind, environment, series, nextNumber: { gte: numberFrom, lte: numberTo } }, data: { nextNumber: numberTo + 1 } });
+    await tx.fiscalNumbering.createMany({ data: [{ tenantId: actor.tenantId, kind, environment, unitKey }], skipDuplicates: true });
+    await tx.fiscalNumbering.updateMany({ where: { tenantId: actor.tenantId, kind, environment, unitKey, series, nextNumber: { gte: numberFrom, lte: numberTo } }, data: { nextNumber: numberTo + 1 } });
   });
   let context: FiscalContext;
-  try { context = fiscalContext(settings); } catch (error) { if (error instanceof FiscalConfigError) return { status: error.status, body: { message: error.message } }; throw error; }
+  try { context = await fiscalContextForUnit(prisma, settings, actor.tenantId, actor.unitId); } catch (error) { if (error instanceof FiscalConfigError) return { status: error.status, body: { message: error.message } }; throw error; }
   const result = await provider.inutilize({ kind, series, numberFrom, numberTo, year: new Date().getFullYear(), justification }, context).catch(error => ({ status: 'REJECTED' as const, error: error instanceof FiscalConfigError ? error.message : 'Falha de comunicação com o provedor fiscal.', protocol: undefined, xml: undefined }));
   const event = await recordEvent({ tenantId: actor.tenantId, unitId: actor.unitId, environment, type: 'INUTILIZATION', status: result.status, kind, series, numberFrom, numberTo, justification, protocol: result.protocol, message: result.error ?? null, xml: result.xml, actorUserId: actor.userId });
   await prisma.auditLog.create({ data: { tenantId: actor.tenantId, actorUserId: actor.userId, action: 'FISCAL_INUTILIZATION', entityType: 'FiscalEvent', entityId: event.id, metadata: { kind, series, numberFrom, numberTo, status: result.status } } });

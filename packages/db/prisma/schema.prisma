@@ -70,6 +70,7 @@ model Tenant {
   storeImages           StoreImage[]
   fiscalNumbering       FiscalNumbering[]
   fiscalSettings        FiscalSettings?
+  fiscalUnitConfigs     FiscalUnitConfig[]
   fiscalEvents          FiscalEvent[]
   whatsappSession       WhatsappSession?
   whatsappConversations WhatsappConversation[]
@@ -113,6 +114,7 @@ model Unit {
   waiterSharePercent    Decimal                @default(100) @db.Decimal(5, 2)
   shifts                Shift[]
   paymentCharges        PaymentCharge[]
+  fiscalConfig          FiscalUnitConfig?
   fiscalDocuments       FiscalDocument[]
   receivedInvoices      ReceivedInvoice[]
   posDevices            PosDevice[]
@@ -920,10 +922,12 @@ model FiscalNumbering {
   series      String            @default("1")
   nextNumber  Int               @default(1)
   environment FiscalEnvironment @default(PRODUCTION)
+  // '' = company numbering; a unit id when that establishment issues with its own CNPJ.
+  unitKey     String            @default("")
   updatedAt   DateTime          @updatedAt
   tenant      Tenant            @relation(fields: [tenantId], references: [id], onDelete: Cascade)
 
-  @@unique([tenantId, kind, environment])
+  @@unique([tenantId, unitKey, kind, environment])
 }
 
 enum FiscalEnvironment {
@@ -950,12 +954,41 @@ model FiscalSettings {
   certValidFrom    DateTime?
   certValidTo      DateTime?
   certUploadedAt   DateTime?
+  certIssuer       String?
+  certSerial       String?
+  // A1 today; A3 (token/smart card) needs a local signing agent and is not available yet.
+  certType         String            @default("A1")
+  // Default CFOPs by operation and destination (saleInternal, saleInterstate, returnInternal, ...).
+  cfop             Json              @default("{}")
   // FISCAL: every PDV sale is invoiced; NON_FISCAL: never; ASK: the operator decides at checkout.
   pdvMode          String            @default("NON_FISCAL")
   defaultTaxRuleId String?
   updatedAt        DateTime          @updatedAt
   tenant           Tenant            @relation(fields: [tenantId], references: [id], onDelete: Cascade)
   defaultTaxRule   TaxRule?          @relation(fields: [defaultTaxRuleId], references: [id], onDelete: SetNull)
+}
+
+// Establishment-specific fiscal data: its own issuer (CNPJ/IE/address) and A1 certificate. Falls back to the company settings.
+model FiscalUnitConfig {
+  id              String    @id @default(uuid())
+  tenantId        String
+  unitId          String    @unique
+  issuer          Json      @default("{}")
+  certType        String    @default("A1")
+  certPfxEnc      String?
+  certPasswordEnc String?
+  certSubject     String?
+  certCnpj        String?
+  certIssuer      String?
+  certSerial      String?
+  certValidFrom   DateTime?
+  certValidTo     DateTime?
+  certUploadedAt  DateTime?
+  updatedAt       DateTime  @updatedAt
+  tenant          Tenant    @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  unit            Unit      @relation(fields: [unitId], references: [id], onDelete: Cascade)
+
+  @@index([tenantId])
 }
 
 // Fiscal history: emissions, consultations, cancellations, CC-e, inutilizations and certificate changes, with request/response XML.
@@ -1466,42 +1499,45 @@ model PasswordRelease {
 
 // Tax parameters per product group. Stored for the fiscal provider; the API does not compute or transmit taxes by itself.
 model TaxRule {
-  id               String           @id @default(uuid())
+  id               String            @id @default(uuid())
   tenantId         String
   name             String
   ncm              String?
   cest             String?
-  origin           Int              @default(0)
+  origin           Int               @default(0)
   cfop             String?
   icmsCst          String?
-  icmsRate         Decimal?         @db.Decimal(6, 3)
-  icmsReduction    Decimal?         @db.Decimal(6, 3)
+  icmsRate         Decimal?          @db.Decimal(6, 3)
+  icmsReduction    Decimal?          @db.Decimal(6, 3)
   pisCst           String?
-  pisRate          Decimal?         @db.Decimal(6, 3)
+  pisRate          Decimal?          @db.Decimal(6, 3)
   cofinsCst        String?
-  cofinsRate       Decimal?         @db.Decimal(6, 3)
-  icmsStMva        Decimal?         @db.Decimal(6, 3)
-  icmsStRate       Decimal?         @db.Decimal(6, 3)
-  icmsStReduction  Decimal?         @db.Decimal(6, 3)
-  fcpRate          Decimal?         @db.Decimal(6, 3)
-  fcpStRate        Decimal?         @db.Decimal(6, 3)
+  cofinsRate       Decimal?          @db.Decimal(6, 3)
+  // CFOP for interstate sales (cfop is used inside the state).
+  cfopInterstate   String?
+  icmsStMva        Decimal?          @db.Decimal(6, 3)
+  icmsStRate       Decimal?          @db.Decimal(6, 3)
+  icmsStReduction  Decimal?          @db.Decimal(6, 3)
+  fcpRate          Decimal?          @db.Decimal(6, 3)
+  fcpStRate        Decimal?          @db.Decimal(6, 3)
   cBenef           String?
   ipiCst           String?
   ipiEnquadramento String?
-  ipiRate          Decimal?         @db.Decimal(6, 3)
+  ipiRate          Decimal?          @db.Decimal(6, 3)
   ibsCbsCst        String?
   cClassTrib       String?
-  ibsUfRate        Decimal?         @db.Decimal(6, 3)
-  ibsMunRate       Decimal?         @db.Decimal(6, 3)
-  cbsRate          Decimal?         @db.Decimal(6, 3)
-  isRate           Decimal?         @db.Decimal(6, 3)
+  ibsUfRate        Decimal?          @db.Decimal(6, 3)
+  ibsMunRate       Decimal?          @db.Decimal(6, 3)
+  cbsRate          Decimal?          @db.Decimal(6, 3)
+  isRate           Decimal?          @db.Decimal(6, 3)
   validFrom        DateTime?
   validTo          DateTime?
-  active           Boolean          @default(true)
-  createdAt        DateTime         @default(now())
-  tenant           Tenant           @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  active           Boolean           @default(true)
+  createdAt        DateTime          @default(now())
+  tenant           Tenant            @relation(fields: [tenantId], references: [id], onDelete: Cascade)
   products         Product[]
   fiscalDefaults   FiscalSettings[]
+  natures          OperationNature[]
 
   @@unique([tenantId, name])
 }
@@ -1607,17 +1643,25 @@ model WhatsappManager {
 
 // Fiscal registries: they store parameters and documents received by the company; nothing is transmitted to the SEFAZ from here.
 model OperationNature {
-  id          String            @id @default(uuid())
-  tenantId    String
-  name        String
-  cfop        String
-  direction   String            @default("OUT")
-  finality    String            @default("NORMAL")
-  description String?
-  active      Boolean           @default(true)
-  createdAt   DateTime          @default(now())
-  tenant      Tenant            @relation(fields: [tenantId], references: [id], onDelete: Cascade)
-  invoices    ReceivedInvoice[]
+  id            String            @id @default(uuid())
+  tenantId      String
+  name          String
+  cfop          String
+  direction     String            @default("OUT")
+  finality      String            @default("NORMAL")
+  // Operation rule: operation/destination/UF/regime this CFOP applies to (null = any), optionally with its own tax rule.
+  operation     String            @default("SALE")
+  destination   String            @default("ANY")
+  ufOrigin      String?
+  ufDestination String?
+  taxRegime     String?
+  taxRuleId     String?
+  taxRule       TaxRule?          @relation(fields: [taxRuleId], references: [id], onDelete: SetNull)
+  description   String?
+  active        Boolean           @default(true)
+  createdAt     DateTime          @default(now())
+  tenant        Tenant            @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  invoices      ReceivedInvoice[]
 
   @@unique([tenantId, name])
 }

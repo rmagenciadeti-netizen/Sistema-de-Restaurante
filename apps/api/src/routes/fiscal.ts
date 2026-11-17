@@ -5,8 +5,8 @@ import { prisma } from '../lib/prisma';
 import { requireAuth, requireTenant } from '../middleware/auth';
 import { CASH_ROLES, FINANCE_ROLES, MANAGEMENT_ROLES, requireRoles } from '../lib/permissions';
 import { fiscalProviders } from '../lib/providers';
-import { loadFiscalNumbering } from '../lib/fiscal-numbering';
-import { environmentOf, fiscalContext, FiscalConfigError, inspectCertificate, issuerSchema, loadFiscalSettings, modelSchema, PDV_MODES, publicSettings, readinessProblems, sealSecret } from '../lib/fiscal-config';
+import { fiscalUnitKey, independentFiscalUnitIds, loadFiscalNumbering } from '../lib/fiscal-numbering';
+import { certificateStatus, environmentOf, fiscalContext, fiscalContextForUnit, FiscalConfigError, inspectCertificate, issuerSchema, loadFiscalSettings, modelSchema, PDV_MODES, publicSettings, readinessProblems, sealSecret } from '../lib/fiscal-config';
 import { buildFiscalOrder, consultDocument, emitForOrder, inutilize, recordEvent, retransmit, type Actor, type EmissionOptions } from '../lib/fiscal-service';
 import { createZip } from '../lib/zip';
 
@@ -59,16 +59,15 @@ fiscalRoutes.post('/settings/certificate', manage, async (req, res, next) => {
   try {
     const parsed = z.object({ pfxBase64: z.string().min(100).max(60_000), password: z.string().min(1).max(200) }).safeParse(req.body); if (!parsed.success) return res.status(400).json({ message: 'Envie o arquivo .pfx/.p12 e a senha.' });
     const tenantId = req.auth!.tenantId!; const pfx = Buffer.from(parsed.data.pfxBase64, 'base64');
-    const info = inspectCertificate(pfx, parsed.data.password);
-    if (info.validTo < new Date()) return res.status(422).json({ message: `Certificado vencido em ${info.validTo.toLocaleDateString('pt-BR')}.` });
     const current = await loadFiscalSettings(prisma, tenantId);
-    const issuerCnpj = (current?.issuer as { cnpj?: string } | null)?.cnpj;
-    if (issuerCnpj && info.cnpj && issuerCnpj !== info.cnpj) return res.status(422).json({ message: `O certificado pertence ao CNPJ ${info.cnpj}, diferente do emitente (${issuerCnpj}).` });
+    const issuerCnpj = (current?.issuer as { cnpj?: string } | null)?.cnpj ?? null;
+    const info = inspectCertificate(pfx, parsed.data.password, issuerCnpj);
+    if (info.validTo < new Date()) return res.status(422).json({ message: `Certificado vencido em ${info.validTo.toLocaleDateString('pt-BR')}.` });
     const data = { certPfxEnc: sealSecret(pfx), certPasswordEnc: sealSecret(parsed.data.password), certSubject: info.subject, certCnpj: info.cnpj, certValidFrom: info.validFrom, certValidTo: info.validTo, certUploadedAt: new Date() };
     const saved = await prisma.fiscalSettings.upsert({ where: { tenantId }, create: { tenantId, ...data }, update: data });
     await recordEvent({ tenantId, environment: saved.environment, type: 'CERTIFICATE', status: current?.certPfxEnc ? 'REPLACED' : 'IMPORTED', message: `${info.subject} — válido até ${info.validTo.toISOString().slice(0, 10)}`, actorUserId: req.auth!.userId });
     await audit(req, 'FISCAL_CERTIFICATE_IMPORTED', 'FiscalSettings', saved.id, { cnpj: info.cnpj, validTo: info.validTo.toISOString() });
-    return res.status(201).json(publicSettings(saved, fiscalProviders.names()));
+    return res.status(201).json({ ...publicSettings(saved, fiscalProviders.names()), certificateWarnings: info.warnings });
   } catch (error) { return error instanceof FiscalConfigError ? res.status(error.status).json({ message: error.message }) : next(error); }
 });
 fiscalRoutes.post('/settings/certificate/test', manage, async (req, res, next) => {
@@ -76,9 +75,72 @@ fiscalRoutes.post('/settings/certificate/test', manage, async (req, res, next) =
     const settings = await loadFiscalSettings(prisma, req.auth!.tenantId!);
     const context = fiscalContext(settings);
     if (!context.certificate) return res.status(404).json({ message: 'Nenhum certificado cadastrado.' });
-    const info = inspectCertificate(Buffer.from(context.certificate.pfxBase64, 'base64'), context.certificate.password);
+    const issuerCnpj = (settings?.issuer as { cnpj?: string } | null)?.cnpj ?? null;
+    const info = inspectCertificate(Buffer.from(context.certificate.pfxBase64, 'base64'), context.certificate.password, issuerCnpj);
     const expired = info.validTo < new Date();
-    return res.json({ ok: !expired, message: expired ? 'Certificado vencido.' : `Certificado válido até ${info.validTo.toLocaleDateString('pt-BR')}.`, subject: info.subject, cnpj: info.cnpj, validTo: info.validTo });
+    return res.json({ ok: !expired, message: expired ? 'Certificado vencido.' : `Certificado válido até ${info.validTo.toLocaleDateString('pt-BR')}.`, subject: info.subject, cnpj: info.cnpj, validTo: info.validTo, warnings: info.warnings });
+  } catch (error) { return error instanceof FiscalConfigError ? res.status(error.status).json({ message: error.message }) : next(error); }
+});
+
+const fiscalUnitParams = z.object({ unitId: z.string().uuid() });
+// Users bound to one establishment only manage that establishment's fiscal data; company-level users manage all of them.
+const getFiscalUnit = async (req: Request, unitId: string) => {
+  if (req.auth!.unitId && req.auth!.unitId !== unitId) return null;
+  return prisma.unit.findFirst({ where: { id: unitId, tenantId: req.auth!.tenantId! }, select: { id: true } });
+};
+fiscalRoutes.get('/settings/units/:unitId', issuers, async (req, res, next) => {
+  try {
+    const params = fiscalUnitParams.safeParse(req.params);
+    if (!params.success) return res.status(400).json(invalid(params.error));
+    const tenantId = req.auth!.tenantId!; const { unitId } = params.data;
+    if (!await getFiscalUnit(req, unitId)) return res.status(404).json({ message: 'Unidade não encontrada.' });
+    const [company, config] = await Promise.all([
+      loadFiscalSettings(prisma, tenantId),
+      prisma.fiscalUnitConfig.findFirst({ where: { tenantId, unitId } }),
+    ]);
+    const unitIssuer = issuerSchema.parse(config?.issuer ?? {});
+    const issuer = unitIssuer.cnpj || unitIssuer.legalName ? unitIssuer : issuerSchema.parse(company?.issuer ?? {});
+    const certificate = config?.certPfxEnc ? config : company;
+    return res.json({
+      configured: Boolean(config), issuer, ownCertificate: Boolean(config?.certPfxEnc),
+      certificate: certificate?.certPfxEnc
+        ? { subject: certificate.certSubject, cnpj: certificate.certCnpj, validFrom: certificate.certValidFrom, validTo: certificate.certValidTo, uploadedAt: certificate.certUploadedAt, ...certificateStatus(certificate) }
+        : certificateStatus(certificate),
+    });
+  } catch (error) { return next(error); }
+});
+fiscalRoutes.put('/settings/units/:unitId', manage, async (req, res, next) => {
+  try {
+    const params = fiscalUnitParams.safeParse(req.params); const parsed = z.object({ issuer: issuerSchema }).safeParse(req.body);
+    if (!params.success) return res.status(400).json(invalid(params.error));
+    if (!parsed.success) return res.status(400).json(invalid(parsed.error));
+    const tenantId = req.auth!.tenantId!; const { unitId } = params.data;
+    if (!await getFiscalUnit(req, unitId)) return res.status(404).json({ message: 'Unidade não encontrada.' });
+    const current = await prisma.fiscalUnitConfig.findFirst({ where: { tenantId, unitId }, select: { certCnpj: true } });
+    if (current?.certCnpj && parsed.data.issuer.cnpj && current.certCnpj.slice(0, 8) !== parsed.data.issuer.cnpj.slice(0, 8)) return res.status(422).json({ message: 'O certificado cadastrado pertence a outra empresa. Substitua-o antes de alterar o CNPJ desta unidade.' });
+    const saved = await prisma.fiscalUnitConfig.upsert({ where: { unitId }, create: { tenantId, unitId, issuer: parsed.data.issuer }, update: { issuer: parsed.data.issuer } });
+    await audit(req, 'FISCAL_UNIT_SETTINGS_UPDATED', 'FiscalUnitConfig', saved.id, { unitId, cnpj: parsed.data.issuer.cnpj });
+    return res.json({ configured: true, issuer: issuerSchema.parse(saved.issuer), ownCertificate: Boolean(saved.certPfxEnc), certificate: saved.certPfxEnc ? { subject: saved.certSubject, cnpj: saved.certCnpj, validFrom: saved.certValidFrom, validTo: saved.certValidTo, uploadedAt: saved.certUploadedAt, ...certificateStatus(saved) } : certificateStatus(saved) });
+  } catch (error) { return next(error); }
+});
+fiscalRoutes.post('/settings/units/:unitId/certificate', manage, async (req, res, next) => {
+  try {
+    const params = fiscalUnitParams.safeParse(req.params);
+    const parsed = z.object({ pfxBase64: z.string().min(100).max(60_000), password: z.string().min(1).max(200) }).safeParse(req.body);
+    if (!params.success) return res.status(400).json(invalid(params.error));
+    if (!parsed.success) return res.status(400).json({ message: 'Envie o arquivo .pfx/.p12 e a senha.' });
+    const tenantId = req.auth!.tenantId!; const { unitId } = params.data;
+    if (!await getFiscalUnit(req, unitId)) return res.status(404).json({ message: 'Unidade não encontrada.' });
+    const current = await prisma.fiscalUnitConfig.findFirst({ where: { tenantId, unitId } });
+    const issuer = issuerSchema.parse(current?.issuer ?? (await loadFiscalSettings(prisma, tenantId))?.issuer ?? {});
+    const pfx = Buffer.from(parsed.data.pfxBase64, 'base64');
+    const info = inspectCertificate(pfx, parsed.data.password, issuer.cnpj || null);
+    if (info.validTo < new Date()) return res.status(422).json({ message: `Certificado vencido em ${info.validTo.toLocaleDateString('pt-BR')}.` });
+    const data = { certPfxEnc: sealSecret(pfx), certPasswordEnc: sealSecret(parsed.data.password), certSubject: info.subject, certCnpj: info.cnpj, certIssuer: info.issuer, certSerial: info.serial, certValidFrom: info.validFrom, certValidTo: info.validTo, certUploadedAt: new Date() };
+    const saved = await prisma.fiscalUnitConfig.upsert({ where: { unitId }, create: { tenantId, unitId, issuer, ...data }, update: data });
+    await recordEvent({ tenantId, unitId, environment: await currentEnvironment(tenantId), type: 'CERTIFICATE', status: current?.certPfxEnc ? 'REPLACED' : 'IMPORTED', message: `${info.subject} — válido até ${info.validTo.toISOString().slice(0, 10)}`, actorUserId: req.auth!.userId });
+    await audit(req, 'FISCAL_UNIT_CERTIFICATE_IMPORTED', 'FiscalUnitConfig', saved.id, { unitId, cnpj: info.cnpj, validTo: info.validTo.toISOString() });
+    return res.status(201).json({ configured: true, issuer: issuerSchema.parse(saved.issuer), ownCertificate: true, certificate: { subject: saved.certSubject, cnpj: saved.certCnpj, validFrom: saved.certValidFrom, validTo: saved.certValidTo, uploadedAt: saved.certUploadedAt, ...certificateStatus(saved) }, certificateWarnings: info.warnings });
   } catch (error) { return error instanceof FiscalConfigError ? res.status(error.status).json({ message: error.message }) : next(error); }
 });
 fiscalRoutes.post('/settings/test-connection', manage, async (req, res, next) => {
@@ -96,7 +158,7 @@ fiscalRoutes.post('/settings/test-connection', manage, async (req, res, next) =>
 // ---------------- Numeração ----------------
 fiscalRoutes.get('/providers', issuers, (_req, res) => res.json({ items: fiscalProviders.names() }));
 fiscalRoutes.get('/numbering', finance, async (req, res, next) => {
-  try { const environment = await currentEnvironment(req.auth!.tenantId!); const items = await loadFiscalNumbering(prisma, req.auth!.tenantId!, environment); return res.json({ items, total: items.length, environment }); }
+  try { const tenantId = req.auth!.tenantId!; const environment = await currentEnvironment(tenantId); const unitKey = await fiscalUnitKey(prisma, tenantId, req.auth!.unitId ?? null); const items = await loadFiscalNumbering(prisma, tenantId, environment, unitKey); return res.json({ items, total: items.length, environment }); }
   catch (error) { return next(error); }
 });
 // Sets the series and the next number of the current environment. A series can only move forward so a number is never issued twice.
@@ -104,13 +166,17 @@ fiscalRoutes.put('/numbering', manage, async (req, res, next) => {
   try {
     const parsed = z.object({ kind: z.nativeEnum(FiscalKind).default(FiscalKind.NFCE), series: z.string().trim().regex(/^\d{1,3}$/, 'A série deve ter de 1 a 3 dígitos'), nextNumber: z.number().int().min(1).max(999_999_999) }).safeParse(req.body);
     if (!parsed.success) return res.status(400).json({ message: 'Validation failed', errors: parsed.error.flatten() });
-    const tenantId = req.auth!.tenantId!; const { kind, series, nextNumber } = parsed.data;
+    const tenantId = req.auth!.tenantId!; const { kind, series, nextNumber } = parsed.data; const unitKey = await fiscalUnitKey(prisma, tenantId, req.auth!.unitId ?? null);
     const environment = await currentEnvironment(tenantId);
     const saved = await prisma.$transaction(async tx => {
-      await tx.fiscalNumbering.createMany({ data: [{ tenantId, kind, environment }], skipDuplicates: true });
-      const current = await tx.fiscalNumbering.findUniqueOrThrow({ where: { tenantId_kind_environment: { tenantId, kind, environment } } });
-      const [{ max }] = await tx.$queryRaw<{ max: number | null }[]>`SELECT max("number"::int) AS max FROM "FiscalDocument" WHERE "tenantId" = ${tenantId} AND "kind" = ${kind}::"FiscalKind" AND "environment" = ${environment}::"FiscalEnvironment" AND "series" = ${series} AND "number" ~ '^[0-9]{1,9}$'`;
-      const inutilized = await tx.fiscalEvent.aggregate({ where: { tenantId, kind, environment, series, type: 'INUTILIZATION', status: 'REGISTERED' }, _max: { numberTo: true } });
+      await tx.fiscalNumbering.createMany({ data: [{ tenantId, kind, environment, unitKey }], skipDuplicates: true });
+      const current = await tx.fiscalNumbering.findUniqueOrThrow({ where: { tenantId_unitKey_kind_environment: { tenantId, unitKey, kind, environment } } });
+      // Company numbering ignores establishments that issue with their own CNPJ (they own a separate number space).
+      const independents = unitKey ? [] : await independentFiscalUnitIds(tx, tenantId);
+      const unitFilter = unitKey ? Prisma.sql`AND "unitId" = ${unitKey}` : independents.length ? Prisma.sql`AND ("unitId" IS NULL OR "unitId" NOT IN (${Prisma.join(independents)}))` : Prisma.empty;
+      const [{ max }] = await tx.$queryRaw<{ max: number | null }[]>`SELECT max("number"::int) AS max FROM "FiscalDocument" WHERE "tenantId" = ${tenantId} AND "kind" = ${kind}::"FiscalKind" AND "environment" = ${environment}::"FiscalEnvironment" AND "series" = ${series} ${unitFilter} AND "number" ~ '^[0-9]{1,9}$'`;
+      const eventScope = unitKey ? { unitId: unitKey } : independents.length ? { OR: [{ unitId: null }, { unitId: { notIn: independents } }] } : {};
+      const inutilized = await tx.fiscalEvent.aggregate({ where: { tenantId, ...eventScope, kind, environment, series, type: 'INUTILIZATION', status: 'REGISTERED' }, _max: { numberTo: true } });
       const highest = Math.max(max ?? 0, inutilized._max.numberTo ?? 0, series === current.series ? current.nextNumber - 1 : 0);
       if (nextNumber <= highest) return { conflict: highest } as const;
       const row = await tx.fiscalNumbering.update({ where: { id: current.id }, data: { series, nextNumber } });
@@ -153,7 +219,8 @@ fiscalRoutes.get('/documents/:id', finance, async (req, res, next) => {
     return res.json(document);
   } catch (error) { return next(error); }
 });
-fiscalRoutes.get('/documents/:id/xml', finance, async (req, res, next) => {
+// Counter staff print the DANFE of documents they are allowed to emit; the XML read keeps the unit scope.
+fiscalRoutes.get('/documents/:id/xml', issuers, async (req, res, next) => {
   try {
     const document = await prisma.fiscalDocument.findFirst({ where: { id: req.params.id, tenantId: req.auth!.tenantId!, ...unitScope(req) }, select: { xml: true, accessKey: true, number: true, kind: true } });
     if (!document?.xml) return res.status(404).json({ message: 'XML não disponível para este documento.' });
@@ -195,10 +262,15 @@ fiscalRoutes.post('/orders/:orderId/preview', issuers, async (req, res, next) =>
     const order = await prisma.order.findFirst({ where: { id: req.params.orderId, tenantId, ...unitScope(req) }, include: { items: { where: { parentItemId: null }, include: { product: { select: { name: true, code: true, gtin: true, measureUnit: true, ncm: true, cest: true, taxRule: true } } } }, customer: { select: { name: true, document: true, email: true } }, payments: { where: { status: 'CONFIRMED' }, select: { method: true, amount: true } }, fiscalDocuments: { where: { kind: parsed.data.kind }, select: { series: true, number: true } } } });
     if (!order) return res.status(404).json({ message: 'Order not found' });
     const environment = environmentOf(settings);
-    const numbering = order.fiscalDocuments[0]?.number ? { series: order.fiscalDocuments[0].series ?? '1', number: order.fiscalDocuments[0].number } : (await loadFiscalNumbering(prisma, tenantId, environment)).filter(item => item.kind === parsed.data.kind).map(item => ({ series: item.series, number: String(item.nextNumber) }))[0];
+    const unitKey = await fiscalUnitKey(prisma, tenantId, order.unitId);
+    const numbering = order.fiscalDocuments[0]?.number ? { series: order.fiscalDocuments[0].series ?? '1', number: order.fiscalDocuments[0].number } : (await loadFiscalNumbering(prisma, tenantId, environment, unitKey)).filter(item => item.kind === parsed.data.kind).map(item => ({ series: item.series, number: String(item.nextNumber) }))[0];
     const built = buildFiscalOrder(order, settings, parsed.data as EmissionOptions, numbering);
     if ('untaxed' in built) return res.status(422).json({ message: `Vincule uma regra tributária ativa (Fiscal / Tributos) aos produtos: ${built.untaxed.join(', ')}.` });
-    return res.json({ preview: true, environment, kind: parsed.data.kind, issuer: publicSettings(settings, []).issuer, document: built.fiscalOrder, subtotal: order.subtotal, discount: order.discount, total: order.total });
+    const unitConfig = order.unitId ? await prisma.fiscalUnitConfig.findFirst({ where: { tenantId, unitId: order.unitId }, select: { issuer: true } }) : null;
+    const configuredUnitIssuer = issuerSchema.parse(unitConfig?.issuer ?? {});
+    const companyIssuer = publicSettings(settings, []).issuer;
+    const issuer = configuredUnitIssuer.cnpj || configuredUnitIssuer.legalName ? configuredUnitIssuer : companyIssuer;
+    return res.json({ preview: true, environment, kind: parsed.data.kind, issuer, document: built.fiscalOrder, subtotal: order.subtotal, discount: order.discount, total: order.total });
   } catch (error) { return next(error); }
 });
 
@@ -268,7 +340,7 @@ fiscalRoutes.post('/documents/:id/cancel', finance, async (req, res, next) => {
     const provider = fiscalProviders.get(document.provider);
     if (!provider) return res.status(501).json({ message: 'Fiscal provider is not configured' });
     const settings = await loadFiscalSettings(prisma, document.tenantId);
-    const context = settings ? fiscalContext(settings) : undefined;
+    const context = settings ? await fiscalContextForUnit(prisma, settings, req.auth!.tenantId!, document.unitId) : undefined;
     const result = await provider.cancel({ number: document.number, accessKey: document.accessKey, ref: document.id, kind: document.kind }, parsed.data.reason, context).catch(error => ({ cancelled: false, error: error instanceof FiscalConfigError ? error.message : 'PROVIDER_ERROR', protocol: undefined, xml: undefined }));
     await recordEvent({ tenantId: document.tenantId, unitId: document.unitId, documentId: document.id, environment: document.environment, type: 'CANCEL', status: result.cancelled ? 'REGISTERED' : 'REJECTED', kind: document.kind, justification: parsed.data.reason, protocol: result.protocol, message: result.error ?? null, xml: result.xml, actorUserId: req.auth!.userId });
     if (!result.cancelled) return res.status(422).json({ message: result.error ?? 'Provider refused the cancellation' });
@@ -288,7 +360,8 @@ fiscalRoutes.post('/documents/:id/correction', finance, async (req, res, next) =
     const sequence = await prisma.fiscalEvent.count({ where: { documentId: document.id, type: 'CORRECTION', status: 'REGISTERED' } }) + 1;
     if (sequence > 20) return res.status(409).json({ message: 'Limite de 20 cartas de correção atingido.' });
     const settings = await loadFiscalSettings(prisma, document.tenantId);
-    const result = await provider.correct({ ref: document.id, kind: document.kind, number: document.number, series: document.series, accessKey: document.accessKey }, parsed.data.text, sequence, fiscalContext(settings)).catch(error => ({ status: 'REJECTED' as const, error: error instanceof FiscalConfigError ? error.message : 'Falha de comunicação com o provedor fiscal.', protocol: undefined, xml: undefined }));
+    const context = await fiscalContextForUnit(prisma, settings, req.auth!.tenantId!, document.unitId);
+    const result = await provider.correct({ ref: document.id, kind: document.kind, number: document.number, series: document.series, accessKey: document.accessKey }, parsed.data.text, sequence, context).catch(error => ({ status: 'REJECTED' as const, error: error instanceof FiscalConfigError ? error.message : 'Falha de comunicação com o provedor fiscal.', protocol: undefined, xml: undefined }));
     const event = await recordEvent({ tenantId: document.tenantId, unitId: document.unitId, documentId: document.id, environment: document.environment, type: 'CORRECTION', status: result.status, kind: document.kind, sequence, justification: parsed.data.text, protocol: result.protocol, message: result.error ?? null, xml: result.xml, actorUserId: req.auth!.userId });
     return res.status(result.status === 'REGISTERED' ? 201 : 422).json({ ...event, xml: undefined, message: result.error });
   } catch (error) { return next(error); }

@@ -1,8 +1,8 @@
-import { createCipheriv, createDecipheriv, randomBytes, X509Certificate } from 'node:crypto';
-import { createSecureContext } from 'node:tls';
+import { createCipheriv, createDecipheriv, randomBytes } from 'node:crypto';
 import { FiscalEnvironment, type FiscalSettings, type Prisma } from '@prisma/client';
 import { z } from 'zod';
 import type { FiscalContext } from './providers';
+import { CertificateError, checkCertificate, parsePfx } from './fiscal-certificate';
 
 // ---- Secrets (provider token, CSC, A1 certificate and its password) ----
 function encryptionKey() {
@@ -27,22 +27,18 @@ export function openSecret(value: string): Buffer {
   return Buffer.concat([decipher.update(Buffer.from(encrypted, 'base64url')), decipher.final()]);
 }
 
-// ---- A1 certificate inspection (built-in TLS: validates the password and reads holder/validity without extra libraries) ----
-export type CertificateInfo = { subject: string; cnpj: string | null; validFrom: Date; validTo: Date };
-export function inspectCertificate(pfx: Buffer, password: string): CertificateInfo {
-  let der: Buffer | undefined;
-  try {
-    const context = createSecureContext({ pfx, passphrase: password }) as unknown as { context: { getCertificate(): Buffer | undefined } };
-    der = context.context.getCertificate();
-  } catch (error) {
-    const text = error instanceof Error ? error.message : '';
-    throw new FiscalConfigError(/mac verify|bad decrypt|password/i.test(text) ? 'Senha do certificado incorreta.' : 'Arquivo de certificado inválido (envie o .pfx/.p12 do certificado A1).');
+// ---- A1 certificate inspection: validate PKCS#12 contents, private-key match, CNPJ and ICP-Brasil metadata ----
+export type CertificateInfo = { subject: string; cnpj: string | null; issuer: string; serial: string; validFrom: Date; validTo: Date; warnings: string[] };
+export function inspectCertificate(pfx: Buffer, password: string, issuerCnpj: string | null = null): CertificateInfo {
+  let cert;
+  try { cert = parsePfx(pfx, password); }
+  catch (error) {
+    if (error instanceof CertificateError) throw new FiscalConfigError(error.message, error.status);
+    throw error;
   }
-  if (!der) throw new FiscalConfigError('O arquivo não contém um certificado.');
-  const cert = new X509Certificate(der);
-  // ICP-Brasil e-CNPJ: "CN=RAZAO SOCIAL:CNPJ"; fall back to any 14-digit run in the subject.
-  const cnpj = /:(\d{14})(?:\D|$)/.exec(cert.subject)?.[1] ?? /\b(\d{14})\b/.exec(cert.subject)?.[1] ?? null;
-  return { subject: cert.subject.replace(/\n/g, ', '), cnpj, validFrom: new Date(cert.validFrom), validTo: new Date(cert.validTo) };
+  const check = checkCertificate(cert, issuerCnpj);
+  if (check.problems.length > 0) throw new FiscalConfigError(check.problems.join(' '));
+  return { subject: cert.subject, cnpj: cert.cnpj, issuer: cert.issuer, serial: cert.serial, validFrom: cert.validFrom, validTo: cert.validTo, warnings: check.warnings };
 }
 
 // ---- Settings shape ----
@@ -108,6 +104,26 @@ export function fiscalContext(settings: FiscalSettings | null, extra: Partial<Fi
     certificate: settings?.certPfxEnc && settings.certPasswordEnc ? { pfxBase64: openSecret(settings.certPfxEnc).toString('base64'), password: reveal(settings.certPasswordEnc)! } : null,
     contingency: false, ...extra,
   };
+}
+
+export async function fiscalContextForUnit(db: Pick<Prisma.TransactionClient, 'fiscalUnitConfig'>, settings: FiscalSettings | null, tenantId: string, unitId: string | null, extra: Partial<FiscalContext> = {}): Promise<FiscalContext> {
+  const context = fiscalContext(settings, extra);
+  if (!unitId) return context;
+  const unit = await db.fiscalUnitConfig.findFirst({ where: { tenantId, unitId } });
+  if (!unit) return context;
+  const issuer = issuerSchema.parse(unit.issuer);
+  if (!issuer.cnpj && !issuer.legalName) return context;
+
+  context.issuer = issuer;
+  context.crt = crtOf(issuer.taxRegime);
+  if (unit.certPfxEnc || unit.certPasswordEnc) {
+    context.certificate = unit.certPfxEnc && unit.certPasswordEnc
+      ? { pfxBase64: openSecret(unit.certPfxEnc).toString('base64'), password: openSecret(unit.certPasswordEnc).toString('utf8') }
+      : null;
+  } else if (issuer.cnpj && issuer.cnpj !== issuerOf(settings).cnpj && (!settings?.certCnpj || settings.certCnpj.slice(0, 8) !== issuer.cnpj.slice(0, 8))) {
+    context.certificate = null;
+  }
+  return context;
 }
 
 export function publicSettings(settings: FiscalSettings | null, registeredProviders: string[]) {

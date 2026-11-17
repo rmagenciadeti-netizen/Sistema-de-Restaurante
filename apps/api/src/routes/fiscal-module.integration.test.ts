@@ -8,7 +8,7 @@ import { AddressInfo } from 'node:net';
 import { UserRole } from '@prisma/client';
 import { prisma } from '../lib/prisma';
 import { signAccessToken } from '../middleware/auth';
-import { fiscalProviders, type FiscalEmission, type FiscalOrder } from '../lib/providers';
+import { fiscalProviders, type FiscalContext, type FiscalEmission, type FiscalOrder } from '../lib/providers';
 
 // Needs a migrated PostgreSQL database (RUN_DB_TESTS=1), like the other *.integration tests.
 const enabled = process.env.RUN_DB_TESTS === '1';
@@ -51,12 +51,12 @@ test('fiscal module: settings, certificate, lost protocol, contingency, inutiliz
   });
 
   // Fake provider that can lose the answer, fail or be consulted, recording every call.
-  const calls: string[] = []; let mode: 'ok' | 'throw' = 'ok'; let consultAnswer: FiscalEmission['status'] = 'NOT_FOUND';
+  const calls: string[] = []; const sentContexts: FiscalContext[] = []; let mode: 'ok' | 'throw' = 'ok'; let consultAnswer: FiscalEmission['status'] = 'NOT_FOUND';
   const sent: FiscalOrder[] = [];
   fiscalProviders.clear();
   fiscalProviders.register({
     name: 'fake',
-    emit: async (order, kind) => { calls.push(`emit:${order.number}`); sent.push(order); if (mode === 'throw') throw new Error('timeout'); return { status: 'AUTHORIZED', protocol: `P${order.number}`, accessKey: `${kind === 'NFE' ? '55' : '65'}${order.number}`.padEnd(44, '0'), xml: `<nfeProc><n>${order.number}</n></nfeProc>` }; },
+    emit: async (order, kind, context) => { calls.push(`emit:${order.number}`); sent.push(order); if (context) sentContexts.push(context); if (mode === 'throw') throw new Error('timeout'); return { status: 'AUTHORIZED', protocol: `P${order.number}`, accessKey: `${kind === 'NFE' ? '55' : '65'}${order.number}`.padEnd(44, '0'), xml: `<nfeProc><n>${order.number}</n></nfeProc>` }; },
     consult: async document => { calls.push(`consult:${document.number}`); return consultAnswer === 'AUTHORIZED' ? { status: 'AUTHORIZED', protocol: 'RECOVERED', xml: `<nfeProc><n>${document.number}</n><rec/></nfeProc>` } : { status: consultAnswer }; },
     cancel: async () => ({ cancelled: true, protocol: 'C1', xml: '<procEventoNFe>cancel</procEventoNFe>' }),
     correct: async (_document, _text, sequence) => ({ status: 'REGISTERED', protocol: `CCE${sequence}`, xml: `<procEventoNFe>cce ${sequence}</procEventoNFe>` }),
@@ -80,6 +80,31 @@ test('fiscal module: settings, certificate, lost protocol, contingency, inutiliz
     assert.equal(JSON.stringify(cert.body).includes(pfxBase64.slice(0, 40)), false);
     assert.equal((await call('POST', '/fiscal/settings/certificate/test', admin)).body.ok, true);
     assert.equal((await call('GET', '/fiscal/settings', B.tokens.ADMIN)).body.configured, false, 'settings are per company');
+  });
+
+  await t.test('unit fiscal settings use the establishment issuer, certificate and independent numbering', async () => {
+    const filial = await prisma.unit.create({ data: { tenantId: A.tenant.id, name: 'Filial' } });
+    const unitAdminUser = await prisma.user.create({ data: { tenantId: A.tenant.id, unitId: filial.id, name: 'Unit Admin', email: `unit-${suffix}@test.local`, passwordHash: 'x', role: UserRole.ADMIN } });
+    const unitAdmin = signAccessToken({ userId: unitAdminUser.id, tenantId: A.tenant.id, unitId: filial.id, role: UserRole.ADMIN });
+    const unitPath = `/fiscal/settings/units/${filial.id}`;
+    const initial = await call('GET', unitPath, unitAdmin);
+    assert.equal(initial.status, 200);
+    assert.equal(initial.body.issuer.cnpj, '12345678000195');
+    assert.equal(initial.body.ownCertificate, false);
+    const saved = await call('PUT', unitPath, unitAdmin, { issuer: { legalName: 'RM Filial LTDA', cnpj: '12345678000276', stateRegistration: '131234567', uf: 'MT', cityIbge: '5103403', taxRegime: 'SIMPLES_NACIONAL' } });
+    assert.equal(saved.status, 200); assert.equal(saved.body.issuer.legalName, 'RM Filial LTDA');
+    const certificate = await call('POST', `${unitPath}/certificate`, unitAdmin, { pfxBase64, password: 'teste123' });
+    assert.equal(certificate.status, 201); assert.equal(certificate.body.certificate.cnpj, '12345678000195'); assert.ok(certificate.body.certificateWarnings.length > 0);
+    assert.equal((await call('GET', `/fiscal/settings/units/${B.unit.id}`, unitAdmin)).status, 404);
+    assert.equal((await call('GET', `/fiscal/settings/units/${A.unit.id}`, unitAdmin)).status, 404, 'unit users cannot read another establishment');
+    assert.equal((await call('GET', '/fiscal/numbering', admin)).body.items.find((item: any) => item.kind === 'NFCE').nextNumber, 1, 'company numbering stays independent');
+    assert.equal((await call('GET', '/fiscal/numbering', unitAdmin)).body.items.find((item: any) => item.kind === 'NFCE').nextNumber, 1, 'unit numbering starts independently');
+    const order = (await call('POST', '/orders', admin, { unitId: filial.id, items: [{ productId: product.id, quantity: 1 }] })).body;
+    const emitted = await call('POST', `/fiscal/orders/${order.id}/emit`, unitAdmin, { kind: 'NFCE' });
+    assert.equal(emitted.status, 201); assert.equal(emitted.body.number, '1');
+    assert.equal(sentContexts.at(-1)?.issuer.cnpj, '12345678000276');
+    assert.equal((await call('GET', '/fiscal/numbering', unitAdmin)).body.items.find((item: any) => item.kind === 'NFCE').nextNumber, 2);
+    assert.equal((await call('GET', '/fiscal/numbering', admin)).body.items.find((item: any) => item.kind === 'NFCE').nextNumber, 1);
   });
 
   let lost: any;

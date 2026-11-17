@@ -41,6 +41,10 @@ export type FiscalOrder = {
   ref?: string;
   nature?: string; finality?: '1' | '2' | '3' | '4'; freight?: string; otherExpenses?: string; discount?: string; additionalInfo?: string;
   payments?: Array<{ method: string; amount: string }>;
+  // tpNF (0 entrada, 1 saída) and idDest (1 interna, 2 interestadual, 3 exterior), resolved from the operation rule.
+  operationType?: '0' | '1'; destination?: '1' | '2' | '3';
+  // Off-line contingency document already signed and printed: must be transmitted exactly as is.
+  signedXml?: string;
 };
 export type FiscalResultStatus = 'AUTHORIZED' | 'REJECTED' | 'PROCESSING' | 'DENIED' | 'CANCELLED' | 'NOT_FOUND';
 // PROCESSING = sent without an official answer yet; it is consulted before any retry so a number is never issued twice.
@@ -53,18 +57,23 @@ export type FiscalContext = {
   // True while the company is in a declared contingency period: the provider should use the applicable offline modality.
   contingency: boolean;
 };
-export type FiscalDocumentRef = { ref: string; kind: 'NFCE' | 'NFE'; number: string | null; series: string | null; accessKey: string | null };
+export type FiscalDocumentRef = { ref: string; kind: 'NFCE' | 'NFE'; number: string | null; series: string | null; accessKey: string | null; protocol?: string | null; xml?: string | null; order?: FiscalOrder | null };
 export type FiscalInutilization = { kind: 'NFCE' | 'NFE'; series: string; numberFrom: number; numberTo: number; year: number; justification: string };
 
 // Implemented by a certified tax-document provider (NFC-e/NF-e) or a direct SEFAZ adapter. Optional methods unlock the matching screens.
 export interface FiscalProvider {
   readonly name: string;
   emit(order: FiscalOrder, kind: 'NFCE' | 'NFE', context?: FiscalContext): Promise<FiscalEmission>;
-  cancel(document: { number: string | null; accessKey: string | null; ref?: string; kind?: 'NFCE' | 'NFE' }, reason: string, context?: FiscalContext): Promise<{ cancelled: boolean; error?: string; protocol?: string; xml?: string }>;
+  cancel(document: { number: string | null; accessKey: string | null; ref?: string; kind?: 'NFCE' | 'NFE'; protocol?: string | null }, reason: string, context?: FiscalContext): Promise<{ cancelled: boolean; error?: string; protocol?: string; xml?: string }>;
   consult?(document: FiscalDocumentRef, context: FiscalContext): Promise<FiscalEmission>;
   correct?(document: FiscalDocumentRef, correction: string, sequence: number, context: FiscalContext): Promise<FiscalEventResult>;
   inutilize?(request: FiscalInutilization, context: FiscalContext): Promise<FiscalEventResult>;
   testConnection?(context: FiscalContext): Promise<{ ok: boolean; message: string }>;
+}
+
+// Thrown when the request may have reached SEFAZ but no answer came back: the access key/signed XML are kept so the document can be consulted.
+export class FiscalTransportError extends Error {
+  constructor(message: string, readonly accessKey?: string, readonly xml?: string) { super(message); }
 }
 
 export class ProviderRegistry<T extends { name: string }> {
