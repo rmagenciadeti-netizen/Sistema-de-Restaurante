@@ -24,6 +24,7 @@ import { storeRoutes } from './routes/store';
 import { tenantRoutes } from './routes/tenants';
 import { planRoutes } from './routes/plans';
 import { commercialRoutes } from './routes/commercial';
+import { intelligenceRoutes } from './routes/intelligence';
 import { commercialBillingRoutes } from './routes/commercial-billing';
 import { dashboardRoutes } from './routes/dashboard';
 import { employeeRoutes } from './routes/employees';
@@ -96,6 +97,7 @@ app.get('/api/v1/health', (_req, res) => res.json({ status: 'ok', service: 'rm-r
 app.use('/api/v1/auth', authRoutes);
 app.use('/api/v1/tenants', tenantRoutes);
 app.use('/api/v1/plans', planRoutes);
+app.use('/api/v1/intelligence', intelligenceRoutes);
 app.use('/api/v1/commercial', commercialRoutes);
 app.use('/api/v1/commercial', commercialBillingRoutes);
 app.use('/api/v1/units', unitRoutes);

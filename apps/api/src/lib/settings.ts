@@ -61,6 +61,18 @@ export const SETTINGS_SECTIONS = {
   }),
   products: z.object({ defaultMarginPercent: z.number().min(0).max(1000).default(0) }),
   orders: z.object({ resetCounterDaily: z.boolean().default(false) }),
+  // RM Inteligência: which alerts the restaurant wants and their thresholds. A monthly goal of 0 means no goal.
+  intelligence: z.object({
+    monthlyGoal: z.number().min(0).max(100_000_000).default(0),
+    alerts: z.object({
+      salesDrop: z.boolean().default(true), lowStock: z.boolean().default(true), payables: z.boolean().default(true), receivables: z.boolean().default(true),
+      lowMargin: z.boolean().default(true), delayedOrders: z.boolean().default(true), cashDivergence: z.boolean().default(true), waste: z.boolean().default(true),
+    }).default({ salesDrop: true, lowStock: true, payables: true, receivables: true, lowMargin: true, delayedOrders: true, cashDivergence: true, waste: true }),
+    salesDropPercent: z.number().int().min(5).max(90).default(30),
+    payableDays: z.number().int().min(0).max(30).default(3),
+    delayedMinutes: z.number().int().min(5).max(240).default(30),
+    marginFloorPercent: z.number().min(0).max(100).default(15),
+  }),
   menuLayout: z.object({ hidden: z.array(z.string().max(60)).max(100).default([]) }),
   // The bot is opt-in: nothing is answered automatically until the restaurant turns it on.
   whatsapp: z.object({

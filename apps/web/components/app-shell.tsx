@@ -4,12 +4,12 @@ import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
 import { useEffect, useMemo, useState } from 'react';
 import { api, clearSessionCookie, isAdminApp, tokenStorageKey, userStorageKey } from '../lib/api';
-import { alwaysVisibleHrefs, flows, menuGroups, moduleIcon, moduleLabel, pathOf, topTabs, type MenuGroup } from '../lib/menu-catalog';
+import { alwaysVisibleHrefs, flows, hrefAllowed, menuGroups, moduleIcon, moduleLabel, pathOf, topTabs, type MenuGroup } from '../lib/menu-catalog';
 import { isStoreOpen, type SettingsResponse, type TenantSettings } from '../lib/settings';
 
 export { flows, moduleIcon, moduleLabel };
 
-type Me = { name?: string; role?: string; tenant?: { name?: string; slug?: string; license?: { status: string; validUntil: string | null } | null } | null };
+type Me = { name?: string; role?: string; enabledModules?: string[] | null; tenant?: { name?: string; slug?: string; license?: { status: string; validUntil: string | null } | null } | null };
 const MANAGER_ROLES = ['ADMIN', 'MANAGER'];
 // Paths that appear in the menu both with and without a query string (e.g. /reports, /history) highlight only the matching entry.
 const groupsWithQuery = new Set(menuGroups.flatMap(group => group.items).filter(item => item.href.includes('?')).map(item => pathOf(item.href)));
@@ -55,7 +55,7 @@ export function AppShell({ title, children }: { title: string; children: React.R
     // Validates the stored session on every protected screen; an expired/invalid token (HTTP 401) is handled by api() and redirects to /login.
     if (isAdminApp || stored.role === 'MASTER_ADMIN') { void api('/auth/me').catch(() => undefined); return; }
     let active = true;
-    api<{ user: { tenant?: Me['tenant'] } }>('/auth/me').then(result => { if (active && result.user?.tenant) setUser(current => ({ ...current, tenant: result.user.tenant })); }).catch(() => undefined);
+    api<{ user: { tenant?: Me['tenant']; enabledModules?: string[] | null } }>('/auth/me').then(result => { if (active && result.user?.tenant) setUser(current => ({ ...current, tenant: result.user.tenant, enabledModules: result.user.enabledModules })); }).catch(() => undefined);
     api<SettingsResponse>('/settings').then(result => { if (active) { setSettings(result.settings); if (result.settings.company.sidebarLayout === 'COMPACT') setCollapsed(true); } }).catch(() => undefined);
     return () => { active = false; };
   }, [router]);
@@ -63,8 +63,8 @@ export function AppShell({ title, children }: { title: string; children: React.R
   const hidden = useMemo(() => new Set(settings?.menuLayout.hidden ?? []), [settings]);
   const groups = useMemo<MenuGroup[]>(() => menuGroups.map(group => ({
     ...group,
-    items: group.items.filter(item => (masterMode ? item.masterOnly || item.href === '/dashboard' : !item.masterOnly) && (masterMode || alwaysVisibleHrefs.includes(item.href) || !hidden.has(item.href))),
-  })).filter(group => group.items.length > 0), [masterMode, hidden]);
+    items: group.items.filter(item => (masterMode ? item.masterOnly || item.href === '/dashboard' : !item.masterOnly) && (masterMode || alwaysVisibleHrefs.includes(item.href) || !hidden.has(item.href)) && (masterMode || hrefAllowed(item.href, user?.enabledModules))),
+  })).filter(group => group.items.length > 0), [masterMode, hidden, user?.enabledModules]);
 
   const needle = query.trim().toLowerCase();
   const visibleGroups = useMemo(() => needle ? groups.map(group => ({ ...group, items: group.items.filter(item => item.label.toLowerCase().includes(needle)) })).filter(group => group.items.length > 0) : groups, [groups, needle]);
@@ -107,7 +107,7 @@ export function AppShell({ title, children }: { title: string; children: React.R
           <span className="hidden max-w-44 truncate text-sm lg:block">{brand}</span>
         </Link>
         {!masterMode && <nav aria-label="Acesso rápido" className="flex min-w-0 flex-1 items-center gap-1 overflow-x-auto">
-          {topTabs.map(item => <Link key={item.href} href={item.href} aria-current={pathname === item.href ? 'page' : undefined} className={`flex shrink-0 flex-col items-center gap-0.5 rounded-lg px-3 py-1.5 text-[11px] font-semibold leading-tight transition sm:px-4 ${pathname === item.href ? 'text-brand-300' : 'text-neutral-200 hover:bg-white/10'}`}>
+          {topTabs.filter(item => hrefAllowed(item.href, user?.enabledModules)).map(item => <Link key={item.href} href={item.href} aria-current={pathname === item.href ? 'page' : undefined} className={`flex shrink-0 flex-col items-center gap-0.5 rounded-lg px-3 py-1.5 text-[11px] font-semibold leading-tight transition sm:px-4 ${pathname === item.href ? 'text-brand-300' : 'text-neutral-200 hover:bg-white/10'}`}>
             <span aria-hidden="true" className="text-lg leading-none">{item.icon}</span>{item.label}
             <span className={`h-0.5 w-6 rounded-full ${pathname === item.href ? 'bg-brand-400' : 'bg-transparent'}`} />
           </Link>)}

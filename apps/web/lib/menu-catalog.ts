@@ -61,6 +61,7 @@ export const menuGroups: MenuGroup[] = [
     { href: '/history', label: 'Histórico de vendas/pedidos', icon: '🧾' }, { href: '/scheduled', label: 'Vendas agendadas', icon: '⏰' },
     { href: '/orders', label: 'Lançamento manual de pedido', icon: '✍️' }, { href: '/releases', label: 'Liberações por senha', icon: '🛡️' },
   ] },
+  { title: 'RM Inteligência', icon: '🧠', items: [{ href: '/intelligence', label: 'Assistente, previsões e alertas', icon: '🧠' }] },
   { title: 'Relatórios', icon: '📊', items: reportMenu },
   { title: 'Cadastros', icon: '🗃️', items: [
     { href: '/employees', label: 'Funcionários', icon: '👥' }, { href: '/users', label: 'Usuários e permissões', icon: '🔐' },
@@ -81,7 +82,11 @@ export const menuGroups: MenuGroup[] = [
     { href: '/users', label: 'Cadastros de usuários', icon: '🔐' }, { href: '/cover-events', label: 'Couvert artístico', icon: '🎤' },
     { href: '/order-statuses', label: 'Status dos pedidos', icon: '📝' }, { href: '/production', label: 'Gerenciadores de pedidos', icon: '🖨️' },
     { href: '/downloads', label: 'Downloads', icon: '⬇️' }, { href: '/audit', label: 'Auditoria', icon: '🛡️' },
-    { href: '/plans', label: 'Planos e preços', icon: '💎', masterOnly: true }, { href: '/licenses', label: 'Licenças e módulos', icon: '🔑', masterOnly: true },
+  ] },
+  { title: 'Gestão comercial', icon: '💼', items: [
+    { href: '/commercial', label: 'Visão geral, módulos, promoções e cobranças', icon: '📊', masterOnly: true },
+    { href: '/plans', label: 'Planos e montador', icon: '💎', masterOnly: true },
+    { href: '/licenses', label: 'Clientes e assinaturas', icon: '🔑', masterOnly: true },
   ] },
 ];
 
@@ -106,3 +111,18 @@ export const flows: { title: string; hrefs: string[] }[] = [
 export const pathOf = (href: string) => href.split('?')[0];
 export const moduleLabel = (href: string) => menuGroups.flatMap(group => group.items).find(item => pathOf(item.href) === href)?.label ?? topTabs.find(tab => tab.href === href)?.label ?? href;
 export const moduleIcon = (href: string) => menuGroups.flatMap(group => group.items).find(item => pathOf(item.href) === href)?.icon ?? topTabs.find(tab => tab.href === href)?.icon ?? '•';
+
+// Licensed module required by each screen (same keys enforced by the API). Screens not listed are core.
+const moduleByPath: Record<string, string> = {
+  '/orders': 'pos', '/pdv': 'pos', '/monitor': 'pos', '/comandas': 'pos', '/history': 'pos', '/scheduled': 'pos', '/releases': 'pos', '/scale-file': 'pos',
+  '/tables': 'tables', '/reservations': 'tables', '/cover-events': 'tables', '/delivery': 'delivery', '/couriers': 'delivery',
+  '/inventory': 'inventory', '/purchasing': 'inventory', '/carriers': 'inventory', '/financial': 'financial', '/cash': 'financial', '/payment-methods': 'financial', '/financial-categories': 'financial',
+  '/employees': 'employees', '/shifts': 'employees', '/kds': 'kds', '/production': 'kds', '/whatsapp': 'whatsapp', '/coupons': 'marketing', '/promotions': 'marketing',
+  '/fiscal': 'fiscal', '/tax-rules': 'fiscal', '/fiscal-xmls': 'fiscal', '/contingency': 'fiscal', '/reconciliation': 'fiscal', '/received-invoices': 'fiscal', '/natures': 'fiscal', '/cst-map': 'fiscal',
+  '/reports': 'reports', '/integrations': 'integrations', '/intelligence': 'intelligence',
+};
+export const moduleOfHref = (href: string): string | undefined => moduleByPath[pathOf(href)];
+export const hrefAllowed = (href: string, enabledModules: string[] | null | undefined) => {
+  const required = moduleOfHref(href);
+  return !required || !enabledModules || enabledModules.includes(required);
+};

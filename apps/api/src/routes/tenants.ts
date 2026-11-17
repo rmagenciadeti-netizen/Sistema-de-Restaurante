@@ -200,7 +200,7 @@ tenantRoutes.put('/:id/license', async (req, res, next) => {
         : fields.discountPercent === null ? null : new Prisma.Decimal(fields.discountPercent),
     };
     const wanted = [...new Set(modules)];
-    const problem = await moduleSetProblem(wanted);
+    const problem = await moduleSetProblem(wanted, tenant.modules.map(item => item.moduleKey));
     if (problem) return res.status(400).json({ message: problem });
     const includedByPlan = new Set(plan?.modules.filter(item => !item.optional).map(item => item.moduleKey) ?? []);
     const previousPlanId = tenant.license?.planId ?? null;

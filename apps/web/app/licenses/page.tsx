@@ -3,13 +3,14 @@
 import { useCallback, useEffect, useState } from 'react';
 import { api, errorMessage, formatDateTime, Tenant } from '../../lib/api';
 import { AppShell, buttonClass, Check, Field, Notice, panelClass, secondaryButtonClass, Select } from '../../components/app-shell';
+import { TenantCommercialPanel } from '../../components/commercial/tenant-panel';
 
 type CatalogItem = { key: string; name: string };
 type CommercialPlan = { id: string; name: string; active: boolean; maxUnits: number | null; maxUsers: number | null; activationFee: string | number; setupFee: string | number; modules: string[]; prices: { period: string; amount: string | number }[] };
 type License = { status: string; validUntil: string | null; maxUnits: number | null; maxUsers: number | null; notes: string | null; updatedAt: string; planId: string | null; billingPeriod: string | null; contractedPrice: string | number | null; activationFee: string | number | null; setupFee: string | number | null; discountPercent: string | number | null };
 type LicenseView = { license: License | null; modules: string[]; usage: { units: number; users: number }; restricted: boolean };
 const statuses = [['PENDING', 'Pendente'], ['ACTIVE', 'Ativa'], ['SUSPENDED', 'Suspensa'], ['REVOKED', 'Revogada'], ['CANCELLED', 'Cancelada']];
-const emptyForm = { status: 'ACTIVE', planId: '', billingPeriod: 'MONTHLY', contractedPrice: '', activationFee: '', setupFee: '', discountPercent: '0', validUntil: '', maxUnits: '', maxUsers: '', notes: '', modules: [] as string[] };
+const emptyForm = { reason: '', graceDays: '0', status: 'ACTIVE', planId: '', billingPeriod: 'MONTHLY', contractedPrice: '', activationFee: '', setupFee: '', discountPercent: '0', validUntil: '', maxUnits: '', maxUsers: '', notes: '', modules: [] as string[] };
 const billingPeriods = [['MONTHLY', 'Mensal'], ['QUARTERLY', 'Trimestral'], ['SEMIANNUAL', 'Semestral'], ['ANNUAL', 'Anual']];
 
 export default function LicensesPage() {
@@ -36,7 +37,7 @@ export default function LicensesPage() {
       const result = await api<LicenseView>(`/tenants/${id}/license`);
       setView(result);
       setForm(result.license ? {
-        status: result.license.status, planId: result.license.planId ?? '', billingPeriod: result.license.billingPeriod ?? 'MONTHLY',
+        reason: '', graceDays: String((result.license as { graceDays?: number }).graceDays ?? 0), status: result.license.status, planId: result.license.planId ?? '', billingPeriod: result.license.billingPeriod ?? 'MONTHLY',
         contractedPrice: result.license.contractedPrice?.toString() ?? '', activationFee: result.license.activationFee?.toString() ?? '',
         setupFee: result.license.setupFee?.toString() ?? '', discountPercent: result.license.discountPercent?.toString() ?? '0',
         validUntil: result.license.validUntil ? result.license.validUntil.slice(0, 10) : '',
@@ -53,7 +54,7 @@ export default function LicensesPage() {
         contractedPrice: form.contractedPrice ? Number(form.contractedPrice) : null,
         activationFee: form.activationFee ? Number(form.activationFee) : null, setupFee: form.setupFee ? Number(form.setupFee) : null,
         discountPercent: form.discountPercent === '' ? null : Number(form.discountPercent),
-        validUntil: form.validUntil ? new Date(`${form.validUntil}T23:59:59`).toISOString() : null,
+        validUntil: form.validUntil ? new Date(`${form.validUntil}T23:59:59`).toISOString() : null, graceDays: Number(form.graceDays || 0), reason: form.reason || undefined,
         maxUnits: form.maxUnits ? Number(form.maxUnits) : null, maxUsers: form.maxUsers ? Number(form.maxUsers) : null, notes: form.notes || null, modules: form.modules,
       }) });
       await loadLicense(tenantId);
@@ -77,7 +78,7 @@ export default function LicensesPage() {
     setForm(current => ({ ...current, billingPeriod, ...(price ? { contractedPrice: String(price.amount) } : {}) }));
   }
 
-  return <AppShell title="Licenças e módulos">
+  return <AppShell title="Clientes e assinaturas">
     {message && <Notice message={message} kind={success ? 'success' : 'error'} />}
     <section className={`${panelClass} mb-6`}>
       <Select label="Empresa" value={tenantId} onChange={event => { setTenantId(event.target.value); void loadLicense(event.target.value); }}>
@@ -95,6 +96,7 @@ export default function LicensesPage() {
         <Select label="Periodicidade" value={form.billingPeriod} onChange={event => choosePeriod(event.target.value)}>{billingPeriods.map(([value, label]) => <option key={value} value={value}>{label}</option>)}</Select>
         <Select label="Situação" value={form.status} onChange={event => setForm({ ...form, status: event.target.value })}>{statuses.map(([value, label]) => <option key={value} value={value}>{label}</option>)}</Select>
         <Field label="Validade (vazio = sem vencimento)" type="date" value={form.validUntil} onChange={event => setForm({ ...form, validUntil: event.target.value })} />
+        <Field label="Carência após o vencimento (dias)" type="number" min={0} max={120} value={form.graceDays} onChange={event => setForm({ ...form, graceDays: event.target.value })} />
         <Field label="Limite de unidades" type="number" min={1} value={form.maxUnits} onChange={event => setForm({ ...form, maxUnits: event.target.value })} />
         <Field label="Limite de usuários ativos" type="number" min={1} value={form.maxUsers} onChange={event => setForm({ ...form, maxUsers: event.target.value })} />
         <Field label="Preço recorrente contratado (R$)" type="number" min={0} step="0.01" value={form.contractedPrice} onChange={event => setForm({ ...form, contractedPrice: event.target.value })} />
@@ -102,6 +104,7 @@ export default function LicensesPage() {
         <Field label="Taxa de ativação contratada (R$)" type="number" min={0} step="0.01" value={form.activationFee} onChange={event => setForm({ ...form, activationFee: event.target.value })} />
         <Field label="Taxa de implantação contratada (R$)" type="number" min={0} step="0.01" value={form.setupFee} onChange={event => setForm({ ...form, setupFee: event.target.value })} />
       </div>
+      <Field label="Motivo da alteração (registrado na auditoria; obrigatório ao trocar de plano para histórico de upgrade/downgrade)" maxLength={300} value={form.reason} onChange={event => setForm({ ...form, reason: event.target.value })} />
       <Field label="Observações" maxLength={500} value={form.notes} onChange={event => setForm({ ...form, notes: event.target.value })} />
       <fieldset>
         <legend className="mb-2 text-sm font-semibold text-slate-900">Módulos contratados</legend>
@@ -114,5 +117,6 @@ export default function LicensesPage() {
       </fieldset>
       <button className={buttonClass} disabled={busy}>{busy ? 'Gravando...' : 'Gravar licença'}</button>
     </form>}
+    {tenantId && <TenantCommercialPanel key={tenantId} tenantId={tenantId} onChanged={() => void loadLicense(tenantId)} />}
   </AppShell>;
 }

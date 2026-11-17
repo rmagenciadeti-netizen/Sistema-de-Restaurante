@@ -7,7 +7,7 @@ import { z } from 'zod';
 import bcrypt from 'bcryptjs';
 import { prisma } from '../lib/prisma';
 import { isStrongPassword } from '../lib/password-policy';
-import { licenseDenial } from '../lib/licensing';
+import { effectiveModules, globallyBlockedModules, licenseDenial } from '../lib/licensing';
 import { decryptTotpSecret, encryptTotpSecret, hashRecoveryCode, matchingTotpStep, newRecoveryCodes, newTotpSecret, recoveryCodeIndex } from '../lib/master-mfa';
 import { emailProviders } from '../lib/providers';
 import { signAccessToken, signScopedToken, verifyScopedToken, requireAuth, devMfaDisabled } from '../middleware/auth';
@@ -250,7 +250,14 @@ authRoutes.post('/change-password', requireAuth, async (req, res, next) => {
 authRoutes.get('/me', requireAuth, async (req, res, next) => {
   try {
     const user = await prisma.user.findUnique({ where: { id: req.auth!.userId }, select: { id: true, name: true, email: true, role: true, tenantId: true, unitId: true, mustChangePassword: true, tenant: { select: { name: true, slug: true, license: { select: { status: true, validUntil: true } } } } } });
-    return res.json({ user });
+    // Frontend hint only (menus); the API enforces modules on every request. null = tenant without a license row, i.e. unrestricted.
+    let enabledModules: string[] | null = null;
+    if (user?.tenantId && user.tenant?.license) {
+      const grants = await prisma.tenantModule.findMany({ where: { tenantId: user.tenantId }, select: { moduleKey: true, blocked: true, startsAt: true, endsAt: true } });
+      const blocked = await globallyBlockedModules(async () => (await prisma.saaSModule.findMany({ where: { blocked: true }, select: { key: true } })).map(item => item.key));
+      enabledModules = effectiveModules(grants, blocked);
+    }
+    return res.json({ user: user && { ...user, enabledModules } });
   }
   catch (error) { return next(error); }
 });

@@ -14,8 +14,8 @@ export default function CompaniesPage() {
   async function load() { try { const result = await api<{ items: Tenant[] }>('/tenants'); setItems(result.items); } catch (e) { setSuccess(false); setMessage(errorMessage(e, 'Erro ao carregar empresas')); } }
   useEffect(() => {
     let active = true;
-    Promise.all([api<{ items: Tenant[] }>('/tenants'), api<{ items: { id: string; name: string; key: string }[] }>('/plans')])
-      .then(([companies, commercialPlans]) => { if (active) { setItems(companies.items); setPlans(commercialPlans.items); } })
+    Promise.all([api<{ items: Tenant[] }>('/tenants'), api<{ items: { id: string; name: string; key: string; status: string }[] }>('/plans')])
+      .then(([companies, commercialPlans]) => { if (active) { setItems(companies.items); setPlans(commercialPlans.items.filter(plan => plan.status === 'ACTIVE')); } })
       .catch(e => { if (active) { setSuccess(false); setMessage(errorMessage(e, 'Erro ao carregar empresas e planos comerciais')); } });
     return () => { active = false; };
   }, []);
@@ -27,7 +27,7 @@ export default function CompaniesPage() {
         method: 'POST', headers: { 'Idempotency-Key': crypto.randomUUID() },
         body: JSON.stringify({ ...values, ...(commercialPlanId ? { commercialPlanId } : {}) }),
       });
-      setSuccess(true); setMessage(`Empresa provisionada. ${commercialPlanId ? 'A licença comercial foi criada como pendente e precisa ser liberada na tela Licenças.' : ''}`);
+      setSuccess(true); setMessage(`Empresa provisionada. ${commercialPlanId ? 'A licença comercial foi criada como pendente e precisa ser liberada em Clientes e assinaturas.' : ''}`);
       setForm({ name: '', slug: '', plan: 'BASIC', commercialPlanId: '', adminName: '', adminEmail: '', adminPassword: '', unitName: 'Matriz' }); await load();
     }
     catch (e) { setSuccess(false); setMessage(errorMessage(e, 'Erro ao cadastrar empresa')); }

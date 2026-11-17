@@ -25,6 +25,22 @@ function Metric({ label, value, detail }: { label: string; value: string | numbe
   </article>;
 }
 
+type CommercialSummary = { revenue: { mrr: number; received: number; open: number; overdue: number }; subscriptions: { active: number; expired: number }; clients: { delinquent: number } };
+function MasterCommercial() {
+  const [data, setData] = useState<CommercialSummary | null>(null);
+  useEffect(() => { api<CommercialSummary>('/commercial/overview').then(setData).catch(() => undefined); }, []);
+  if (!data) return null;
+  return <section className="mt-6">
+    <div className="mb-3 flex items-center justify-between"><h2 className="text-base font-bold">Resultado comercial do mês</h2><Link href="/commercial" className="text-sm font-semibold text-brand-700 hover:text-brand-600">Abrir gestão comercial ›</Link></div>
+    <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+      <Metric label="Receita recorrente (MRR)" value={formatMoney(data.revenue.mrr)} detail={`${data.subscriptions.active} assinatura(s) ativa(s)`} />
+      <Metric label="Recebido no mês" value={formatMoney(data.revenue.received)} detail="Pagamentos confirmados" />
+      <Metric label="Em aberto" value={formatMoney(data.revenue.open)} detail={`${data.subscriptions.expired} assinatura(s) vencida(s)`} />
+      <Metric label="Vencido" value={formatMoney(data.revenue.overdue)} detail={`${data.clients.delinquent} cliente(s) inadimplente(s)`} />
+    </div>
+  </section>;
+}
+
 export default function DashboardPage() {
   const [result, setResult] = useState<{ summary: Summary; isMaster: boolean } | null>(null);
   const [error, setError] = useState('');
@@ -62,7 +78,7 @@ export default function DashboardPage() {
           <Metric label="Usuários" value={summary.users ?? 0} />
           <Metric label="Pedidos" value={summary.orders ?? 0} />
         </section>
-        {summary.note && <p className="mt-5 text-sm text-slate-500">{summary.note}</p>}
+        <MasterCommercial />
       </>
       : <>
         <section className="mb-6 flex flex-wrap items-center justify-between gap-4 rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
