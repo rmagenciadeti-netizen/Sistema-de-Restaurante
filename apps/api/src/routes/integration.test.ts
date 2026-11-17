@@ -5,6 +5,7 @@ import { AddressInfo } from 'node:net';
 import { UserRole } from '@prisma/client';
 import { prisma } from '../lib/prisma';
 import { signAccessToken } from '../middleware/auth';
+import { fiscalProviders, paymentProviders } from '../lib/providers';
 
 // These tests need a migrated PostgreSQL database; CI sets RUN_DB_TESTS=1 after `prisma migrate deploy`.
 const enabled = process.env.RUN_DB_TESTS === '1';
@@ -17,7 +18,7 @@ async function createTenant(role: UserRole = UserRole.ADMIN) {
   const tenant = await prisma.tenant.create({ data: { name: `Test ${id}`, slug: `test-${id}`, status: 'ACTIVE' } });
   const unit = await prisma.unit.create({ data: { tenantId: tenant.id, name: 'Matriz', serviceFeePercent: 10 } });
   const actors: Partial<Record<UserRole, Actor>> = {};
-  for (const r of new Set<UserRole>([role, UserRole.WAITER, UserRole.KITCHEN, UserRole.FINANCE])) {
+  for (const r of new Set<UserRole>([role, UserRole.WAITER, UserRole.KITCHEN, UserRole.FINANCE, UserRole.MANAGER, UserRole.CASHIER])) {
     const user = await prisma.user.create({ data: { tenantId: tenant.id, name: r, email: `${r}-${id}@test.local`, passwordHash: 'x', role: r } });
     actors[r] = { token: signAccessToken({ userId: user.id, tenantId: tenant.id, unitId: null, role: r }), tenantId: tenant.id, unitId: unit.id };
   }
@@ -41,6 +42,7 @@ test('database-backed API behaviour', { skip: !enabled }, async t => {
     const tenantIds = [A.tenant.id, B.tenant.id];
     // Restrictive foreign keys (items->products, movements/purchases->ingredients) require deleting history first.
     await prisma.order.deleteMany({ where: { tenantId: { in: tenantIds } } });
+    await prisma.recipeIngredient.deleteMany({ where: { recipe: { tenantId: { in: tenantIds } } } });
     await prisma.comboComponent.deleteMany({ where: { combo: { tenantId: { in: tenantIds } } } });
     await prisma.purchaseOrder.deleteMany({ where: { tenantId: { in: tenantIds } } });
     await prisma.stockMovement.deleteMany({ where: { tenantId: { in: tenantIds } } });
@@ -276,6 +278,176 @@ test('database-backed API behaviour', { skip: !enabled }, async t => {
     assert.equal(mine.orders, 1); assert.equal(Number(mine.serviceFee), 2.6);
     assert.equal((await call('GET', '/reports/waiters', waiter.token)).status, 403);
     assert.equal((await call('GET', '/reports/waiters', b)).body.items.some((row: any) => row.name === 'WAITER' && row.orders > 1), false);
+  });
+
+  await t.test('cancelling an order restores stock and coupon use, and requires refunding payments first', async () => {
+    const cheese = await prisma.ingredient.create({ data: { tenantId: A.tenant.id, name: 'Queijo', unitOfMeasure: 'kg', currentStock: 10, averageCost: 30 } });
+    const patty = await prisma.ingredient.create({ data: { tenantId: A.tenant.id, name: 'Blend', unitOfMeasure: 'kg', currentStock: 10, averageCost: 40 } });
+    const dish = await prisma.product.create({ data: { tenantId: A.tenant.id, name: 'Prato Estoque', price: 50, sectorId: sector.id } });
+    assert.equal((await call('PUT', `/inventory/recipes/${dish.id}`, a, { yield: 1, ingredients: [{ ingredientId: patty.id, quantity: 0.2 }] })).status, 200);
+    // modifier option that consumes its own ingredient
+    const group = await call('POST', '/catalog/modifier-groups', a, { name: 'Queijo extra', maxSelect: 2, options: [{ name: 'Extra cheddar', price: 3, ingredientId: cheese.id, ingredientQuantity: 0.05 }] });
+    assert.equal(group.status, 201, JSON.stringify(group.body));
+    assert.equal((await call('POST', '/catalog/modifier-groups', a, { name: 'Ruim', options: [{ name: 'x', ingredientId: cheese.id }] })).status, 400, 'ingredient without quantity');
+    assert.equal((await call('POST', '/catalog/modifier-groups', b, { name: 'Estrangeiro', options: [{ name: 'y', ingredientId: cheese.id, ingredientQuantity: 1 }] })).status, 400, 'foreign ingredient');
+    assert.equal((await call('PUT', `/catalog/products/${dish.id}/modifier-groups`, a, { groupIds: [group.body.id] })).status, 200);
+    assert.equal((await call('POST', '/coupons', a, { code: 'BACK5', type: 'FIXED', value: 5 })).status, 201);
+
+    const order = await call('POST', '/orders', a, { unitId: A.unit.id, couponCode: 'BACK5', items: [{ productId: dish.id, quantity: 2, modifiers: [{ optionId: group.body.options[0].id, quantity: 2 }] }] });
+    assert.equal(order.status, 201, JSON.stringify(order.body));
+    assert.equal((await call('PATCH', `/orders/${order.body.id}/status`, a, { status: 'PREPARING' })).status, 200);
+    const stock = async (id: string) => (await prisma.ingredient.findUniqueOrThrow({ where: { id } })).currentStock.toString();
+    assert.equal(await stock(patty.id), '9.6'); assert.equal(await stock(cheese.id), '9.8');
+    assert.equal((await prisma.coupon.findFirstOrThrow({ where: { tenantId: A.tenant.id, code: 'BACK5' } })).usedCount, 1);
+
+    const payment = await call('POST', '/cash/payments', a, { orderId: order.body.id, method: 'PIX', amount: 10 });
+    assert.equal(payment.status, 201);
+    assert.equal((await call('PATCH', `/orders/${order.body.id}/status`, a, { status: 'CANCELLED' })).status, 409, 'confirmed payment blocks cancellation');
+    assert.equal((await call('POST', `/cash/payments/${payment.body.payment.id}/refund`, A.actors.WAITER!.token)).status, 403);
+    assert.equal((await call('POST', `/cash/payments/${payment.body.payment.id}/refund`, a)).status, 204);
+    assert.equal((await call('POST', `/cash/payments/${payment.body.payment.id}/refund`, a)).status, 409, 'cannot refund twice');
+    assert.equal((await call('PATCH', `/orders/${order.body.id}/status`, a, { status: 'CANCELLED' })).status, 200);
+    assert.equal(await stock(patty.id), '10'); assert.equal(await stock(cheese.id), '10');
+    assert.equal((await prisma.coupon.findFirstOrThrow({ where: { tenantId: A.tenant.id, code: 'BACK5' } })).usedCount, 0);
+    assert.equal(await prisma.stockMovement.count({ where: { tenantId: A.tenant.id, reference: order.body.id, type: 'ORDER_REVERSAL' } }), 2);
+  });
+
+  await t.test('stock transfers move quantity and cost atomically', async () => {
+    const unit2 = await prisma.unit.create({ data: { tenantId: A.tenant.id, name: 'Filial' } });
+    const src = await prisma.ingredient.create({ data: { tenantId: A.tenant.id, unitId: A.unit.id, name: 'Arroz', unitOfMeasure: 'kg', currentStock: 20, averageCost: 6 } });
+    const dst = await prisma.ingredient.create({ data: { tenantId: A.tenant.id, unitId: unit2.id, name: 'Arroz', unitOfMeasure: 'kg', currentStock: 10, averageCost: 3 } });
+    const other = await prisma.ingredient.create({ data: { tenantId: A.tenant.id, unitId: unit2.id, name: 'Óleo', unitOfMeasure: 'l', currentStock: 1 } });
+    const transfer = (body: unknown, token = a) => call('POST', '/inventory/transfers', token, body);
+    assert.equal((await transfer({ fromIngredientId: src.id, toIngredientId: dst.id, quantity: 25 })).status, 409);
+    assert.equal((await transfer({ fromIngredientId: src.id, toIngredientId: other.id, quantity: 1 })).status, 400, 'different units of measure');
+    assert.equal((await transfer({ fromIngredientId: src.id, toIngredientId: dst.id, quantity: 10 }, b)).status, 404, 'other tenant');
+    assert.equal((await transfer({ fromIngredientId: src.id, toIngredientId: dst.id, quantity: 10 })).status, 201);
+    const [s1, d1] = await Promise.all([prisma.ingredient.findUniqueOrThrow({ where: { id: src.id } }), prisma.ingredient.findUniqueOrThrow({ where: { id: dst.id } })]);
+    assert.equal(s1.currentStock.toString(), '10'); assert.equal(d1.currentStock.toString(), '20'); assert.equal(d1.averageCost.toString(), '4.5');
+    assert.equal(await prisma.stockMovement.count({ where: { tenantId: A.tenant.id, type: { in: ['TRANSFER_IN', 'TRANSFER_OUT'] } } }), 2);
+  });
+
+  await t.test('shifts reject overlaps and are tenant scoped', async () => {
+    const employee = await prisma.employee.create({ data: { tenantId: A.tenant.id, fullName: 'Ana', unitId: A.unit.id } });
+    const start = new Date(Date.now() + 48 * 3600 * 1000);
+    const at = (h: number) => new Date(start.getTime() + h * 3600 * 1000).toISOString();
+    const make = (from: number, to: number, token = a) => call('POST', '/shifts', token, { employeeId: employee.id, unitId: A.unit.id, startsAt: at(from), endsAt: at(to) });
+    const first = await make(0, 8); assert.equal(first.status, 201);
+    assert.equal((await make(6, 10)).status, 409);
+    assert.equal((await make(8, 12)).status, 201, 'back-to-back shifts are fine');
+    assert.equal((await make(20, 50)).status, 400, 'longer than 16h');
+    assert.equal((await make(30, 32, b)).status, 400, 'employee of another tenant');
+    assert.equal((await make(30, 32, A.actors.WAITER!.token)).status, 403);
+    assert.equal((await call('PATCH', `/shifts/${first.body.id}`, a, { endsAt: at(9) })).status, 409, 'extending into the next shift');
+    assert.equal((await call('GET', '/shifts', A.actors.WAITER!.token)).status, 200);
+    assert.equal((await call('DELETE', `/shifts/${first.body.id}`, b)).status, 404);
+    assert.equal((await call('DELETE', `/shifts/${first.body.id}`, a)).status, 204);
+  });
+
+  await t.test('user management respects privilege levels', async () => {
+    const manager = A.actors.MANAGER!.token; const base = { password: 'long-enough-pass', unitId: A.unit.id };
+    const email = (n: string) => `${n}-${suffix()}@test.local`;
+    assert.equal((await call('POST', '/users', manager, { ...base, name: 'Novo Admin', email: email('adm'), role: 'ADMIN' })).status, 403);
+    assert.equal((await call('POST', '/users', manager, { ...base, password: 'short', name: 'Fraco', email: email('weak'), role: 'WAITER' })).status, 400);
+    const waiter = await call('POST', '/users', manager, { ...base, name: 'Gar Com', email: email('w'), role: 'WAITER', commissionPercent: 2 });
+    assert.equal(waiter.status, 201); assert.equal(waiter.body.passwordHash, undefined);
+    assert.equal((await call('POST', '/users', manager, { ...base, name: 'Dup', email: waiter.body.email, role: 'WAITER' })).status, 409);
+    assert.equal((await call('POST', '/users', manager, { ...base, name: 'Cross', email: email('c'), role: 'WAITER', unitId: (await prisma.unit.create({ data: { tenantId: B.tenant.id, name: 'X' } })).id })).status, 400);
+    assert.equal((await call('PATCH', `/users/${waiter.body.id}`, manager, { role: 'MANAGER' })).status, 403);
+    assert.equal((await call('PATCH', `/users/${waiter.body.id}`, a, { status: 'INACTIVE' })).status, 200);
+    assert.equal((await call('PATCH', `/users/${waiter.body.id}`, b, { status: 'ACTIVE' })).status, 404);
+    const self = await prisma.user.findFirstOrThrow({ where: { tenantId: A.tenant.id, role: 'ADMIN' } });
+    assert.equal((await call('PATCH', `/users/${self.id}`, a, { role: 'WAITER' })).status, 409, 'no self-demotion');
+    assert.equal((await call('GET', '/users', A.actors.WAITER!.token)).status, 403);
+    assert.equal((await call('GET', '/users', b)).body.items.some((u: any) => u.id === waiter.body.id), false);
+  });
+
+  await t.test('service fee distribution uses the waiter share and commission rates', async () => {
+    await prisma.unit.update({ where: { id: A.unit.id }, data: { waiterSharePercent: 70 } });
+    const waiter = A.actors.WAITER!;
+    const waiterUser = await prisma.user.findFirstOrThrow({ where: { tenantId: A.tenant.id, role: 'WAITER', email: { startsWith: 'WAITER-' } } });
+    await prisma.user.update({ where: { id: waiterUser.id }, data: { commissionPercent: 5 } });
+    const table = (await call('POST', '/tables', a, { label: 'D1', seats: 2, unitId: A.unit.id })).body;
+    const order = await call('POST', '/orders', waiter.token, { channel: 'TABLE', tableId: table.id, unitId: A.unit.id, items: [{ productId: soda.id, quantity: 10 }] });
+    for (const status of ['PREPARING', 'READY', 'COMPLETED']) assert.equal((await call('PATCH', `/orders/${order.body.id}/status`, a, { status })).status, 200);
+    const report = (await call('GET', '/reports/service-fee-distribution', a)).body;
+    const mine = report.items.find((row: any) => row.userId === waiterUser.id);
+    // 10 x 6.50 = 65.00; fee 10% = 6.50; waiter 70% = 4.55; pool 1.95; commission 5% of 65 = 3.25
+    assert.equal(Number(mine.serviceFeeCollected) >= 6.5, true);
+    assert.equal(Number(mine.waiterAmount) >= 4.55, true);
+    assert.equal(Number(mine.commission) >= 3.25, true);
+    assert.equal(Number((Number(mine.waiterAmount) + Number(mine.poolAmount)).toFixed(2)), Number(Number(mine.serviceFeeCollected).toFixed(2)));
+    assert.equal((await call('GET', '/reports/service-fee-distribution', waiter.token)).status, 403);
+    assert.equal((await call('PATCH', `/units/${A.unit.id}`, a, { serviceFeePercent: 12.5, waiterSharePercent: 80 })).status, 200);
+    assert.equal((await call('PATCH', `/units/${A.unit.id}`, a, { waiterSharePercent: 120 })).status, 400);
+  });
+
+  await t.test('payment charges require a configured provider and settle through signed webhooks', async () => {
+    const order = await call('POST', '/orders', a, { unitId: A.unit.id, items: [{ productId: soda.id, quantity: 2 }] });
+    const charge = (token = a) => call('POST', '/payments/charges', token, { orderId: order.body.id, provider: 'fakepix', method: 'PIX' });
+    assert.equal((await charge()).status, 501, 'no provider registered yet');
+    let seq = 0;
+    paymentProviders.register({
+      name: 'fakepix',
+      createCharge: async ({ amount }) => ({ externalRef: `ext-${++seq}-${amount}`, qrPayload: '000201...' }),
+      parseWebhook: (headers, raw) => (headers['x-signature'] === 'valid' ? JSON.parse(raw.toString()) : null),
+    });
+    t.after(() => paymentProviders.clear());
+    assert.equal((await charge(A.actors.KITCHEN!.token)).status, 403);
+    assert.equal((await charge(b)).status, 404);
+    const created = await charge(); assert.equal(created.status, 201, JSON.stringify(created.body));
+    assert.equal(Number(created.body.amount), 13); assert.equal(created.body.status, 'PENDING');
+    assert.equal((await charge()).status, 409, 'balance already reserved by the pending charge');
+    const hook = (signature: string, body: unknown, provider = 'fakepix') => fetch(`${base}/payments/webhook/${provider}`, { method: 'POST', headers: { 'content-type': 'application/json', 'x-signature': signature }, body: JSON.stringify(body) }).then(async r => ({ status: r.status, body: await r.json() as any }));
+    assert.equal((await hook('forged', { externalRef: created.body.externalRef, status: 'PAID' })).status, 400);
+    assert.equal((await hook('valid', { externalRef: created.body.externalRef, status: 'PAID' }, 'nope')).status, 404);
+    assert.equal((await hook('valid', { externalRef: created.body.externalRef, status: 'PAID' })).body.result, 'paid');
+    assert.equal((await hook('valid', { externalRef: created.body.externalRef, status: 'PAID' })).body.result, 'duplicate');
+    assert.equal(await prisma.payment.count({ where: { tenantId: A.tenant.id, orderId: order.body.id, status: 'CONFIRMED' } }), 1);
+    assert.equal((await charge()).status, 409, 'order is fully paid');
+    assert.equal((await hook('valid', { externalRef: 'never-created', status: 'PAID' })).body.result, 'unknown');
+  });
+
+  await t.test('fiscal emission needs a provider and a completed order', async () => {
+    const order = await call('POST', '/orders', a, { unitId: A.unit.id, items: [{ productId: soda.id, quantity: 1 }] });
+    const emit = (token = a) => call('POST', `/fiscal/orders/${order.body.id}/emit`, token, { provider: 'fakefisc' });
+    assert.equal((await emit()).status, 501);
+    let outcome: 'AUTHORIZED' | 'REJECTED' = 'REJECTED';
+    fiscalProviders.register({ name: 'fakefisc', emit: async () => ({ status: outcome, number: '123', accessKey: 'K'.repeat(44), error: outcome === 'REJECTED' ? 'CNPJ inválido' : undefined }), cancel: async () => ({ cancelled: true }) });
+    t.after(() => fiscalProviders.clear());
+    assert.equal((await emit()).status, 409, 'order is not completed');
+    for (const status of ['PREPARING', 'READY', 'COMPLETED']) await call('PATCH', `/orders/${order.body.id}/status`, a, { status });
+    assert.equal((await emit(A.actors.WAITER!.token)).status, 403);
+    assert.equal((await emit(b)).status, 404);
+    const rejected = await emit(); assert.equal(rejected.status, 422); assert.equal(rejected.body.status, 'REJECTED');
+    outcome = 'AUTHORIZED';
+    const ok = await emit(); assert.equal(ok.status, 201); assert.equal(ok.body.number, '123');
+    assert.equal((await emit()).status, 409, 'already authorized');
+    assert.equal((await call('POST', `/fiscal/documents/${ok.body.id}/cancel`, a, { reason: 'curto' })).status, 400);
+    assert.equal((await call('POST', `/fiscal/documents/${ok.body.id}/cancel`, b, { reason: 'Erro de digitação no pedido' })).status, 404);
+    assert.equal((await call('POST', `/fiscal/documents/${ok.body.id}/cancel`, a, { reason: 'Erro de digitação no pedido' })).body.status, 'CANCELLED');
+  });
+
+  await t.test('marketplace orders enter through scoped integration keys, idempotently', async () => {
+    await prisma.product.update({ where: { id: soda.id }, data: { code: 'SD-01' } });
+    const integration = await call('POST', '/integrations', a, { provider: 'ifood', name: 'iFood Matriz', unitId: A.unit.id });
+    assert.equal(integration.status, 201); assert.match(integration.body.key, /^rmint_/);
+    assert.equal((await call('POST', '/integrations', A.actors.WAITER!.token, { provider: 'ifood', name: 'x', unitId: A.unit.id })).status, 403);
+    assert.equal((await call('POST', '/integrations', b, { provider: 'ifood', name: 'x', unitId: A.unit.id })).status, 400);
+    const send = (key: string | undefined, body: unknown, source = 'ifood') => call('POST', `/inbound/${source}/orders`, key, body);
+    const payload = { externalId: 'IF-1', customer: { name: 'Pedro', phone: '11955554444' }, address: 'Rua A, 10', deliveryFee: 6, items: [{ code: 'SD-01', quantity: 2 }] };
+    assert.equal((await send(undefined, payload)).status, 401);
+    assert.equal((await send(a, payload)).status, 401, 'user JWT is not an integration key');
+    assert.equal((await send(integration.body.key, payload, 'rappi')).status, 401, 'key bound to its provider');
+    assert.equal((await send(integration.body.key, { ...payload, items: [{ code: 'NOPE', quantity: 1 }] })).status, 422);
+    const first = await send(integration.body.key, payload);
+    assert.equal(first.status, 201, JSON.stringify(first.body)); assert.equal(Number(first.body.total), 19);
+    const again = await send(integration.body.key, payload);
+    assert.equal(again.status, 200); assert.equal(again.body.duplicate, true); assert.equal(again.body.orderId, first.body.orderId);
+    const job = await prisma.deliveryJob.findUniqueOrThrow({ where: { orderId: first.body.orderId } });
+    assert.equal(job.provider, 'ifood'); assert.equal(job.address, 'Rua A, 10');
+    assert.equal((await call('PATCH', `/integrations/${integration.body.id}`, a, { active: false })).status, 200);
+    assert.equal((await send(integration.body.key, { ...payload, externalId: 'IF-2' })).status, 401, 'revoked key');
   });
 });
 

@@ -8,7 +8,14 @@ import { moneySchema } from '../lib/money';
 export const catalogRoutes = Router();
 catalogRoutes.use(requireAuth, requireTenant, allowRead(ALL_TENANT_ROLES, MANAGEMENT_ROLES));
 
-const optionSchema = z.object({ name: z.string().min(1).max(100), price: moneySchema.default(0), sectorId: z.string().uuid().nullable().optional() });
+const optionSchema = z.object({ name: z.string().min(1).max(100), price: moneySchema.default(0), sectorId: z.string().uuid().nullable().optional(), ingredientId: z.string().uuid().nullable().optional(), ingredientQuantity: z.number().positive().max(99999999).nullable().optional() });
+
+// An option either consumes an ingredient (id + quantity) or neither.
+async function ingredientRulesOk(tenantId: string, option: { ingredientId?: string | null; ingredientQuantity?: number | null }) {
+  if (option.ingredientId === undefined && option.ingredientQuantity === undefined) return true;
+  if (!option.ingredientId) return !option.ingredientQuantity;
+  return Boolean(option.ingredientQuantity) && await prisma.ingredient.count({ where: { id: option.ingredientId, tenantId, active: true } }) === 1;
+}
 const groupSchema = z.object({ name: z.string().min(2).max(100), minSelect: z.number().int().min(0).max(50).default(0), maxSelect: z.number().int().min(1).max(50).default(1), options: z.array(optionSchema).min(1).max(100) })
   .refine(group => group.minSelect <= group.maxSelect, { message: 'minSelect cannot exceed maxSelect', path: ['minSelect'] });
 
@@ -26,10 +33,11 @@ catalogRoutes.post('/modifier-groups', async (req, res, next) => {
     const parsed = groupSchema.safeParse(req.body); if (!parsed.success) return res.status(400).json({ message: 'Validation failed', errors: parsed.error.flatten() });
     const tenantId = req.auth!.tenantId!;
     if (!await sectorsBelongToTenant(tenantId, parsed.data.options.map(option => option.sectorId))) return res.status(400).json({ message: 'Sector does not belong to this tenant' });
+    for (const option of parsed.data.options) if (!await ingredientRulesOk(tenantId, option)) return res.status(400).json({ message: 'Invalid ingredient configuration for option' });
     if (new Set(parsed.data.options.map(option => option.name)).size !== parsed.data.options.length) return res.status(400).json({ message: 'Duplicate option names' });
     if (await prisma.modifierGroup.findUnique({ where: { tenantId_name: { tenantId, name: parsed.data.name } } })) return res.status(409).json({ message: 'Group already exists' });
     const { options, ...group } = parsed.data;
-    return res.status(201).json(await prisma.modifierGroup.create({ data: { ...group, tenantId, options: { create: options.map(option => ({ ...option, sectorId: option.sectorId ?? null })) } }, include: { options: true } }));
+    return res.status(201).json(await prisma.modifierGroup.create({ data: { ...group, tenantId, options: { create: options.map(option => ({ ...option, sectorId: option.sectorId ?? null, ingredientId: option.ingredientId ?? null, ingredientQuantity: option.ingredientId ? option.ingredientQuantity : null })) } }, include: { options: true } }));
   } catch (error) { return next(error); }
 });
 catalogRoutes.patch('/modifier-groups/:id', async (req, res, next) => {
@@ -46,8 +54,9 @@ catalogRoutes.post('/modifier-groups/:id/options', async (req, res, next) => {
     const tenantId = req.auth!.tenantId!;
     const group = await prisma.modifierGroup.findFirst({ where: { id: req.params.id, tenantId } }); if (!group) return res.status(404).json({ message: 'Group not found' });
     if (!await sectorsBelongToTenant(tenantId, [parsed.data.sectorId])) return res.status(400).json({ message: 'Sector does not belong to this tenant' });
+    if (!await ingredientRulesOk(tenantId, parsed.data)) return res.status(400).json({ message: 'Invalid ingredient configuration for option' });
     if (await prisma.modifierOption.findUnique({ where: { groupId_name: { groupId: group.id, name: parsed.data.name } } })) return res.status(409).json({ message: 'Option already exists' });
-    return res.status(201).json(await prisma.modifierOption.create({ data: { ...parsed.data, sectorId: parsed.data.sectorId ?? null, groupId: group.id } }));
+    return res.status(201).json(await prisma.modifierOption.create({ data: { ...parsed.data, sectorId: parsed.data.sectorId ?? null, ingredientId: parsed.data.ingredientId ?? null, ingredientQuantity: parsed.data.ingredientId ? parsed.data.ingredientQuantity : null, groupId: group.id } }));
   } catch (error) { return next(error); }
 });
 catalogRoutes.patch('/modifier-options/:id', async (req, res, next) => {
@@ -56,6 +65,7 @@ catalogRoutes.patch('/modifier-options/:id', async (req, res, next) => {
     const tenantId = req.auth!.tenantId!;
     const current = await prisma.modifierOption.findFirst({ where: { id: req.params.id, group: { tenantId } } }); if (!current) return res.status(404).json({ message: 'Option not found' });
     if (!await sectorsBelongToTenant(tenantId, [parsed.data.sectorId])) return res.status(400).json({ message: 'Sector does not belong to this tenant' });
+    if (!await ingredientRulesOk(tenantId, parsed.data)) return res.status(400).json({ message: 'Invalid ingredient configuration for option' });
     return res.json(await prisma.modifierOption.update({ where: { id: current.id }, data: parsed.data }));
   } catch (error) { return next(error); }
 });

@@ -19,3 +19,10 @@ whatsappRoutes.get('/outbox', async (req, res, next) => {
   try { const items = await prisma.whatsappMessage.findMany({ where: { tenantId: req.auth!.tenantId! }, orderBy: { createdAt: 'desc' }, take: 100 }); return res.json({ items, total: items.length }); }
   catch (error) { return next(error); }
 });
+whatsappRoutes.post('/outbox/:id/retry', async (req, res, next) => {
+  try {
+    const updated = await prisma.whatsappMessage.updateMany({ where: { id: req.params.id, tenantId: req.auth!.tenantId!, status: 'FAILED', toPhone: { not: 'redacted' } }, data: { status: 'QUEUED', error: null } });
+    return updated.count === 1 ? res.status(204).end() : res.status(409).json({ message: 'Only failed messages can be retried' });
+  } catch (error) { return next(error); }
+});
+

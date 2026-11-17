@@ -19,6 +19,8 @@ export type NewOrderInput = {
   couponCode?: string;
   deliveryZoneId?: string;
   applyServiceFee?: boolean;
+  // Only for trusted server-side integrations (marketplace orders) whose delivery fee is set by the platform.
+  deliveryFeeOverride?: Prisma.Decimal;
 };
 
 export function normalizePhone(phone: string): string | null {
@@ -131,6 +133,11 @@ export async function createOrder(tx: Prisma.TransactionClient, input: NewOrderI
     deliveryZoneId = zone.id;
   }
 
+  if (input.deliveryFeeOverride) {
+    if (input.channel !== OrderChannel.DELIVERY) throw new OrderEngineError('DELIVERY_ZONE_ONLY_FOR_DELIVERY');
+    deliveryFee = input.deliveryFeeOverride;
+  }
+
   const total = subtotal.sub(discount).add(serviceFee).add(deliveryFee);
   const created = await tx.order.create({
     data: {
@@ -145,7 +152,7 @@ export async function createOrder(tx: Prisma.TransactionClient, input: NewOrderI
         orderId: created.id, productId: line.product.id, quantity: line.quantity, unitPrice: line.product.price, total: line.total, notes: line.notes,
         // A combo line is a billing wrapper; production happens on its component items.
         sectorId: line.product.isCombo ? null : line.product.sectorId,
-        modifiers: { create: line.selected.map(entry => ({ optionId: entry.option.id, name: entry.option.name, price: entry.option.price, quantity: entry.quantity, sectorId: entry.option.sectorId })) },
+        modifiers: { create: line.selected.map(entry => ({ optionId: entry.option.id, name: entry.option.name, price: entry.option.price, quantity: entry.quantity, sectorId: entry.option.sectorId, ingredientId: entry.option.ingredientId, ingredientQuantity: entry.option.ingredientQuantity })) },
       },
     });
     if (line.product.comboComponents.length > 0) {

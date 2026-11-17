@@ -5,7 +5,7 @@ import { prisma } from '../lib/prisma';
 import { MAX_MONEY, moneySchema, positiveMoneySchema } from '../lib/money';
 import { serializable } from '../lib/serializable';
 import { requireAuth, requireTenant } from '../middleware/auth';
-import { CASH_ROLES, requireRoles } from '../lib/permissions';
+import { CASH_ROLES, FINANCE_ROLES, requireRoles } from '../lib/permissions';
 
 export const cashRoutes = Router();
 cashRoutes.use(requireAuth, requireTenant, requireRoles(...CASH_ROLES));
@@ -88,3 +88,15 @@ cashRoutes.get('/payments', async (req, res, next) => {
   try { const items = await prisma.payment.findMany({ where: { tenantId: req.auth!.tenantId!, ...(req.auth!.unitId ? { unitId: req.auth!.unitId } : {}) }, include: { order: { select: { code: true } } }, orderBy: { paidAt: 'desc' }, take: 100 }); return res.json({ items, total: items.length }); }
   catch (error) { return next(error); }
 });
+
+// Marks a payment as refunded in the books; returning the money (cash, PIX, card reversal) is done outside this system.
+cashRoutes.post('/payments/:id/refund', requireRoles(...FINANCE_ROLES), async (req, res, next) => {
+  try {
+    const { tenantId, unitId, userId } = req.auth!;
+    const updated = await prisma.payment.updateMany({ where: { id: req.params.id, tenantId: tenantId!, ...(unitId ? { unitId } : {}), status: PaymentStatus.CONFIRMED }, data: { status: PaymentStatus.REFUNDED } });
+    if (updated.count !== 1) return res.status(409).json({ message: 'Only confirmed payments of this tenant can be refunded' });
+    await prisma.auditLog.create({ data: { tenantId: tenantId!, actorUserId: userId, action: 'PAYMENT_REFUNDED', entityType: 'Payment', entityId: req.params.id } });
+    return res.status(204).end();
+  } catch (error) { return next(error); }
+});
+

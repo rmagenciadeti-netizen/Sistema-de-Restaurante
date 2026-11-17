@@ -1,4 +1,5 @@
 import { Router } from 'express';
+import { randomUUID } from 'node:crypto';
 import { Prisma, StockMovementType } from '@prisma/client';
 import { z } from 'zod';
 import { prisma } from '../lib/prisma';
@@ -78,3 +79,31 @@ inventoryRoutes.post('/counts', async (req, res, next) => {
     return res.status(201).json({ adjustments: result.adjustments, adjusted: result.adjustments.length });
   } catch (error) { return next(error); }
 });
+
+// Moves stock between two ingredient records of the same tenant (e.g. one per unit); the destination cost is re-averaged.
+inventoryRoutes.post('/transfers', async (req, res, next) => {
+  try {
+    const parsed = z.object({ fromIngredientId: z.string().uuid(), toIngredientId: z.string().uuid(), quantity: z.number().positive().max(99999999999), note: z.string().max(300).optional() }).safeParse(req.body);
+    if (!parsed.success || parsed.data.fromIngredientId === parsed.data.toIngredientId) return res.status(400).json({ message: 'Validation failed' });
+    const tenantId = req.auth!.tenantId!; const quantity = new Prisma.Decimal(parsed.data.quantity).toDecimalPlaces(3, Prisma.Decimal.ROUND_UP);
+    if (req.auth!.unitId) return res.status(403).json({ message: 'Tenant-wide access is required to transfer between units' });
+    const result = await serializable(prisma, async tx => {
+      const [from, to] = await Promise.all([tx.ingredient.findFirst({ where: { id: parsed.data.fromIngredientId, tenantId, active: true } }), tx.ingredient.findFirst({ where: { id: parsed.data.toIngredientId, tenantId, active: true } })]);
+      if (!from || !to) return { status: 404, message: 'Ingredient not found' } as const;
+      if (from.unitOfMeasure !== to.unitOfMeasure) return { status: 400, message: 'Ingredients must use the same unit of measure' } as const;
+      if (from.currentStock.lt(quantity)) return { status: 409, message: 'Insufficient stock to transfer' } as const;
+      const newToStock = to.currentStock.add(quantity);
+      const averageCost = to.currentStock.mul(to.averageCost).add(quantity.mul(from.averageCost)).div(newToStock).toDecimalPlaces(4);
+      await tx.ingredient.update({ where: { id: from.id }, data: { currentStock: { decrement: quantity } } });
+      await tx.ingredient.update({ where: { id: to.id }, data: { currentStock: newToStock, averageCost } });
+      const reference = randomUUID(); const note = parsed.data.note ?? 'Stock transfer';
+      await tx.stockMovement.create({ data: { tenantId, unitId: from.unitId, ingredientId: from.id, type: StockMovementType.TRANSFER_OUT, quantity: quantity.negated(), unitCost: from.averageCost, reference, note, actorUserId: req.auth!.userId } });
+      await tx.stockMovement.create({ data: { tenantId, unitId: to.unitId, ingredientId: to.id, type: StockMovementType.TRANSFER_IN, quantity, unitCost: from.averageCost, reference, note, actorUserId: req.auth!.userId } });
+      await tx.auditLog.create({ data: { tenantId, actorUserId: req.auth!.userId, action: 'STOCK_TRANSFERRED', entityType: 'Ingredient', entityId: from.id, metadata: { to: to.id, quantity: quantity.toString(), reference } } });
+      return { status: 201, reference } as const;
+    });
+    if (result.status !== 201) return res.status(result.status).json({ message: result.message });
+    return res.status(201).json({ reference: result.reference });
+  } catch (error) { return next(error); }
+});
+

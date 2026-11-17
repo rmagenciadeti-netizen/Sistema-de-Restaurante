@@ -61,6 +61,7 @@ orderRoutes.patch('/:id/status', requireRoles(...PRODUCTION_ROLES), async (req, 
           customer: true,
           items: {
             include: {
+              modifiers: true,
               product: {
                 include: {
                   recipe: {
@@ -75,10 +76,11 @@ orderRoutes.patch('/:id/status', requireRoles(...PRODUCTION_ROLES), async (req, 
       if (!order) return { kind: 'error', message: 'Order not found', status: 404 } as const;
       if (!canTransitionOrder(order.status, status.data)) return { kind: 'error', message: 'Invalid order status transition', status: 409 } as const;
       if (order.status === status.data) return { kind: 'ok', order } as const;
+      if (status.data === OrderStatus.CANCELLED && await tx.payment.count({ where: { tenantId: order.tenantId, orderId: order.id, status: 'CONFIRMED' } }) > 0) return { kind: 'error', message: 'Refund confirmed payments before cancelling this order', status: 409 } as const;
 
       if (status.data === OrderStatus.PREPARING) await consumeOrderInventory(tx, order, userId);
       const updated = await tx.order.update({ where: { id: order.id }, data: { status: status.data } });
-      await applyStatusSideEffects(tx, order, status.data);
+      await applyStatusSideEffects(tx, order, status.data, userId);
       await tx.auditLog.create({ data: { tenantId: order.tenantId, actorUserId: userId, action: 'ORDER_STATUS_CHANGED', entityType: 'Order', entityId: order.id, metadata: { status: status.data } } });
       return { kind: 'ok', order: updated } as const;
     });

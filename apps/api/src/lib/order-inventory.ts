@@ -7,6 +7,7 @@ type RecipeOrder = {
   unitId: string | null;
   items: Array<{
     quantity: number;
+    modifiers?: Array<{ quantity: number; ingredientId: string | null; ingredientQuantity: Prisma.Decimal | null }>;
     product: {
       id: string;
       tenantId: string;
@@ -62,6 +63,28 @@ export async function consumeOrderInventory(
     }
   }
 
+  // Modifier options may consume their own ingredient (e.g. extra cheese); the amount is snapshotted on the order line.
+  const modifierNeeds = new Map<string, Prisma.Decimal>();
+  for (const item of order.items) {
+    for (const modifier of item.modifiers ?? []) {
+      if (!modifier.ingredientId || !modifier.ingredientQuantity) continue;
+      const quantity = modifier.ingredientQuantity.mul(modifier.quantity).mul(item.quantity).toDecimalPlaces(3, Prisma.Decimal.ROUND_UP);
+      modifierNeeds.set(modifier.ingredientId, (modifierNeeds.get(modifier.ingredientId) ?? new Prisma.Decimal(0)).add(quantity));
+    }
+  }
+  if (modifierNeeds.size > 0) {
+    const ingredients = await tx.ingredient.findMany({ where: { id: { in: [...modifierNeeds.keys()] }, tenantId: order.tenantId } });
+    for (const ingredient of ingredients) {
+      const visible = order.unitId === null ? ingredient.unitId === null : ingredient.unitId === null || ingredient.unitId === order.unitId;
+      if (!ingredient.active || !visible) throw new OrderInventoryError('INVALID_RECIPE');
+      const existing = requiredByIngredient.get(ingredient.id);
+      const total = (existing?.quantity ?? new Prisma.Decimal(0)).add(modifierNeeds.get(ingredient.id)!);
+      if (total.gt(MAX_STOCK_QUANTITY)) throw new OrderInventoryError('INVALID_RECIPE');
+      requiredByIngredient.set(ingredient.id, { ingredient, quantity: total });
+    }
+    if (ingredients.length !== modifierNeeds.size) throw new OrderInventoryError('INVALID_RECIPE');
+  }
+
   for (const { ingredient, quantity } of requiredByIngredient.values()) {
     const updated = await tx.ingredient.updateMany({
       where: {
@@ -100,4 +123,20 @@ export function canTransitionOrder(from: OrderStatus, to: OrderStatus): boolean 
     [OrderStatus.CANCELLED]: [],
   };
   return transitions[from].includes(to);
+}
+
+// Returns to stock what the order consumed when it started preparing. Safe to call once per cancelled order.
+export async function reverseOrderInventory(tx: Prisma.TransactionClient, order: { id: string; code: string; tenantId: string }, actorUserId: string): Promise<void> {
+  const consumed = await tx.stockMovement.findMany({ where: { tenantId: order.tenantId, reference: order.id, type: { in: [StockMovementType.ORDER_CONSUMPTION, StockMovementType.ORDER_REVERSAL] } } });
+  const net = new Map<string, { quantity: Prisma.Decimal; unitId: string | null }>();
+  for (const movement of consumed) {
+    const entry = net.get(movement.ingredientId) ?? { quantity: new Prisma.Decimal(0), unitId: movement.unitId };
+    net.set(movement.ingredientId, { quantity: entry.quantity.add(movement.quantity), unitId: entry.unitId });
+  }
+  for (const [ingredientId, { quantity, unitId }] of net) {
+    if (!quantity.lt(0)) continue;
+    const restore = quantity.negated();
+    await tx.ingredient.updateMany({ where: { id: ingredientId, tenantId: order.tenantId }, data: { currentStock: { increment: restore } } });
+    await tx.stockMovement.create({ data: { tenantId: order.tenantId, unitId, ingredientId, type: StockMovementType.ORDER_REVERSAL, quantity: restore, reference: order.id, note: `Reversal for cancelled order ${order.code}`, actorUserId } });
+  }
 }
