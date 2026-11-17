@@ -103,10 +103,30 @@ export default function ComandasPage() {
         })}
       </div>}
 
-    {freeTables.length > 0 && <section className="mt-6" aria-label="Mesas livres">
-      <h2 className="mb-2 text-sm font-bold uppercase tracking-wider text-slate-600">Mesas livres ({freeTables.length})</h2>
-      <div className="grid grid-cols-2 gap-2 sm:grid-cols-4 lg:grid-cols-6">
-        {freeTables.map(table => <Link key={table.id} href={`/pdv?tableId=${encodeURIComponent(table.id)}`} className="rounded-xl border border-dashed border-slate-300 bg-white p-3 text-center transition hover:border-brand-500 hover:bg-brand-50"><span className="block text-lg font-bold text-slate-900">{table.label}</span><span className="text-xs text-slate-500">{table.seats} lugares · abrir</span></Link>)}
+    {tables.length > 0 && <section className="mt-6" aria-label="Mapa do salão">
+      <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
+        <h2 className="text-sm font-bold uppercase tracking-wider text-slate-600">Mapa do salão ({tables.length} mesas · {freeTables.length} livres)</h2>
+        <ul className="flex flex-wrap gap-3 text-xs text-slate-600" aria-label="Legenda">
+          <li className="flex items-center gap-1"><span className="h-3 w-3 rounded bg-emerald-500" />Livre</li>
+          <li className="flex items-center gap-1"><span className="h-3 w-3 rounded bg-red-500" />Ocupada</li>
+          <li className="flex items-center gap-1"><span className="h-3 w-3 rounded bg-amber-400" />Parcialmente paga</li>
+        </ul>
+      </div>
+      <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-5 xl:grid-cols-6">
+        {tables.filter(table => !term || table.label.toLocaleLowerCase('pt-BR').includes(term)).map(table => {
+          const group = groups.get(`table:${table.id}`);
+          const partial = group !== undefined && group.paid > 0 && group.total - group.paid > 0.009;
+          const tone = !group ? 'border-emerald-300 bg-emerald-50 hover:border-emerald-500' : partial ? 'border-amber-300 bg-amber-50 hover:border-amber-500' : 'border-red-300 bg-red-50 hover:border-red-500';
+          const dot = !group ? 'bg-emerald-500' : partial ? 'bg-amber-400' : 'bg-red-500';
+          const oldest = group?.orders.reduce((min, order) => order.createdAt < min ? order.createdAt : min, group.orders[0].createdAt);
+          return <Link key={table.id} href={group ? openHref(group) : `/pdv?tableId=${encodeURIComponent(table.id)}`} aria-label={`Mesa ${table.label}: ${group ? (partial ? 'parcialmente paga' : 'ocupada') : 'livre'}`} className={`relative flex min-h-28 flex-col justify-between rounded-2xl border-2 p-3 transition ${tone}`}>
+            <span className={`absolute right-3 top-3 h-3 w-3 rounded-full ${dot}`} />
+            <span><span className="block text-[10px] font-semibold uppercase tracking-wider text-slate-500">Mesa</span><span className="block text-2xl font-black text-slate-900">{table.label}</span></span>
+            {group && oldest
+              ? <span className="text-xs text-slate-700"><strong className="block text-sm text-slate-900">{formatMoney(group.total - group.paid)}</strong>{group.orders.length} pedido(s) · ⏱ {elapsedLabel(oldest, now || undefined)}</span>
+              : <span className="text-xs text-slate-500">{table.seats} lugares · toque para abrir</span>}
+          </Link>;
+        })}
       </div>
     </section>}
   </AppShell>;
