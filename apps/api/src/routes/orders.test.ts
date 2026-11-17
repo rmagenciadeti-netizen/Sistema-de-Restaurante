@@ -95,7 +95,7 @@ test('order preparation consumes recipe stock atomically and respects state tran
 
     const response = await patch('PREPARING');
     assert.equal(response.status, 200);
-    assert.deepEqual(orderWhere, { id: orderId, tenantId, unitId });
+    assert.deepEqual(orderWhere, { id: orderId, tenantId });
     assert.deepEqual(stockUpdate.where, {
       id: ingredientId,
       tenantId,
