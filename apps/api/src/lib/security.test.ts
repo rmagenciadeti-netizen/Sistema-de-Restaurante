@@ -80,6 +80,8 @@ test('API security controls and tenant authentication', async () => {
     assert.equal(response?.headers.get('x-ratelimit-limit'), null);
     assert(response?.headers.get('ratelimit'));
     assert.equal((await fetch(`${base}/health`)).status, 200);
+    const apiLimitResponses = await Promise.all(Array.from({ length: 300 }, () => fetch(`${base}/health`)));
+    assert(apiLimitResponses.some(result => result.status === 429));
   } finally {
     (prisma.user as any).findUnique = originalFindUnique;
     await new Promise<void>((resolve, reject) => server.close(error => error ? reject(error) : resolve()));

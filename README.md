@@ -50,7 +50,7 @@ Para um banco que já contém dados ou tabelas, não aplique cegamente uma migra
 - WhatsApp: `POST|GET /whatsapp/outbox`. O endpoint apenas enfileira um registro auditável; envio real requer adaptador de provedor oficial e worker configurado.
 - Financeiro e relatórios: `GET|POST /financial/entries`, `GET /financial/summary`, `GET /reports/overview?from=ISO&to=ISO`.
 
-Rotas privadas exigem token Bearer. Os escopos tenant/unidade vêm do usuário autenticado no banco. O login tem limitação de tentativas em memória por processo, CORS aceita origens configuradas, o corpo JSON tem limite e erros internos não são expostos ao cliente. Os demais endpoints não têm limitação de requisições na API: configure e teste limites no proxy/gateway. Para múltiplas instâncias ou proxy reverso, configure e teste também uma estratégia compartilhada de limitação do login e confiança no proxy antes de expor a API. Testes ainda são iniciais e devem ser ampliados com testes de integração de isolamento de tenant antes de produção.
+Rotas privadas exigem token Bearer. Os escopos tenant/unidade vêm do usuário autenticado no banco. O login limita tentativas a 10 por 15 minutos; a API aplica um limite geral de 300 requisições por 15 minutos, ambos em memória por processo. CORS aceita origens configuradas, o corpo JSON tem limite e erros internos não são expostos ao cliente. Para múltiplas instâncias, configure um armazenamento compartilhado de limites; atrás de proxy, ajuste e teste `trust proxy` de acordo com sua topologia e aplique limites no gateway antes de expor a API. Testes ainda são iniciais e devem ser ampliados com testes de integração de isolamento de tenant antes de produção.
 
 ## Limitações relevantes
 

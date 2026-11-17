@@ -2,6 +2,7 @@ import 'dotenv/config';
 import express from 'express';
 import cors from 'cors';
 import helmet from 'helmet';
+import { rateLimit } from 'express-rate-limit';
 import { authRoutes } from './routes/auth';
 import { tenantRoutes } from './routes/tenants';
 import { dashboardRoutes } from './routes/dashboard';
@@ -31,6 +32,7 @@ export function parseAllowedOrigins(config: string | undefined): string[] {
 }
 const allowedOrigins = parseAllowedOrigins(process.env.CORS_ORIGIN);
 app.use(cors({ origin: (origin, callback) => { if (!origin || allowedOrigins.includes(origin)) return callback(null, true); return callback(new OriginNotAllowedError()); } }));
+app.use('/api/v1', rateLimit({ windowMs: 15 * 60 * 1000, limit: 300, standardHeaders: 'draft-7', legacyHeaders: false, message: { message: 'Too many requests. Try again later.' } }));
 app.use(express.json({ limit: '1mb' }));
 app.get('/api/v1/health', (_req, res) => res.json({ status: 'ok', service: 'rm-restaurant-api', version: '1.0.0' }));
 app.use('/api/v1/auth', authRoutes);
