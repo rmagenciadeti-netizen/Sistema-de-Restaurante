@@ -37,3 +37,19 @@ test('invalid or hostile XML is rejected', () => {
   assert.throws(() => parseNfeXml('<!DOCTYPE x [<!ENTITY a "b">]>' + xml()), /DOCTYPE/);
   assert.throws(() => parseNfeXml('<foo/>'), /Chave de acesso/);
 });
+
+test('issue date keeps the issuer calendar day for evening notes', () => {
+  const evening = xml().replace('2026-11-10T10:00:00-03:00', '2026-11-10T22:30:00-03:00');
+  const parsed = parseNfeXml(evening);
+  assert.equal(parsed.issueDate, '2026-11-10');
+  assert.equal(parsed.issuedAt.toISOString().slice(0, 10), '2026-11-11', 'the UTC instant is already the next day');
+});
+
+test('hostile unclosed tags are parsed in linear time', () => {
+  const started = Date.now();
+  const flood = xml().replace('</infNFe>', `${'<det '.repeat(60_000)}</infNFe>`);
+  try { parseNfeXml(flood); } catch { /* rejected or parsed: only the time matters */ }
+  const noClose = xml().replace('<det nItem="1">', '<det nItem="1">'.repeat(30_000));
+  try { parseNfeXml(noClose); } catch { /* idem */ }
+  assert.ok(Date.now() - started < 1500, `took ${Date.now() - started} ms`);
+});

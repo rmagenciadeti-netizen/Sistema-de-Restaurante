@@ -13,7 +13,6 @@ type TabKey = 'received' | 'entry';
 const tabs: { key: TabKey; label: string }[] = [{ key: 'received', label: 'Notas recebidas' }, { key: 'entry', label: 'Entrada de NF-e' }];
 const statusTone: Record<InvoiceStatus, 'amber' | 'green' | 'red'> = { RECEIVED: 'amber', ENTERED: 'green', CANCELLED: 'red' };
 const emptyForm = { accessKey: '', number: '', series: '1', supplierName: '', supplierDocument: '', issuedAt: '', totalAmount: '', natureId: '', notes: '' };
-const toDateInput = (iso: string) => iso.slice(0, 10);
 
 function InvoicesContent() {
   const initial = useSearchParams().get('tab');
@@ -45,7 +44,7 @@ function InvoicesContent() {
       const text = await file.text();
       const parsed = await api<ParsedInvoice>('/fiscal-registry/invoices/parse-xml', { method: 'POST', body: JSON.stringify({ xml: text }) });
       setXml(text); setXmlItems(parsed.items);
-      setForm(current => ({ ...current, accessKey: parsed.accessKey, number: parsed.number, series: parsed.series, supplierName: parsed.supplierName, supplierDocument: parsed.supplierDocument ?? '', issuedAt: toDateInput(parsed.issuedAt), totalAmount: String(parsed.totalAmount) }));
+      setForm(current => ({ ...current, accessKey: parsed.accessKey, number: parsed.number, series: parsed.series, supplierName: parsed.supplierName, supplierDocument: parsed.supplierDocument ?? '', issuedAt: parsed.issueDate, totalAmount: String(parsed.totalAmount) }));
       ok('XML lido. Confira os dados e escolha a natureza de operação antes de registrar.');
     } catch (e) { setXml(null); setXmlItems([]); fail(e, 'Não foi possível ler o XML'); }
   }
