@@ -1,6 +1,7 @@
 import 'dotenv/config';
 import express from 'express';
 import cors from 'cors';
+import helmet from 'helmet';
 import { authRoutes } from './routes/auth';
 import { tenantRoutes } from './routes/tenants';
 import { dashboardRoutes } from './routes/dashboard';
@@ -18,8 +19,18 @@ import { reportsRoutes } from './routes/reports';
 
 export const app = express();
 app.disable('x-powered-by');
-const allowedOrigins = (process.env.CORS_ORIGIN ?? 'http://localhost:3000').split(',').map(origin => origin.trim());
-app.use(cors({ origin: (origin, callback) => { if (!origin || allowedOrigins.includes(origin)) return callback(null, true); return callback(new Error('Origin not allowed')); } }));
+app.use(helmet());
+export function parseAllowedOrigins(config: string | undefined): string[] {
+  const origins = (config ?? '').split(',').map(origin => origin.trim()).filter(Boolean);
+  for (const origin of origins) {
+    let valid = false;
+    try { const url = new URL(origin); valid = ['http:', 'https:'].includes(url.protocol) && url.origin === origin; } catch { /* Invalid origin. */ }
+    if (!valid) throw new Error('CORS_ORIGIN must contain exact HTTP(S) origins');
+  }
+  return origins;
+}
+const allowedOrigins = parseAllowedOrigins(process.env.CORS_ORIGIN);
+app.use(cors({ origin: (origin, callback) => { if (!origin || allowedOrigins.includes(origin)) return callback(null, true); return callback(new OriginNotAllowedError()); } }));
 app.use(express.json({ limit: '1mb' }));
 app.get('/api/v1/health', (_req, res) => res.json({ status: 'ok', service: 'rm-restaurant-api', version: '1.0.0' }));
 app.use('/api/v1/auth', authRoutes);
@@ -38,10 +49,16 @@ app.use('/api/v1/financial', financialRoutes);
 app.use('/api/v1/reports', reportsRoutes);
 app.use((_req, res) => res.status(404).json({ message: 'Not found' }));
 app.use((error: unknown, _req: express.Request, res: express.Response, _next: express.NextFunction) => {
-  if (error instanceof Error && error.message === 'Origin not allowed') return res.status(403).json({ message: 'Origin not allowed' });
+  if (error instanceof OriginNotAllowedError) return res.status(403).json({ message: 'Origin not allowed' });
+  if (typeof error === 'object' && error !== null && 'type' in error) {
+    if (error.type === 'entity.parse.failed') return res.status(400).json({ message: 'Invalid JSON body' });
+    if (error.type === 'entity.too.large') return res.status(413).json({ message: 'JSON body too large' });
+  }
   console.error(error);
   return res.status(500).json({ message: 'Internal server error' });
 });
+
+class OriginNotAllowedError extends Error {}
 
 if (require.main === module) {
   const port = Number(process.env.PORT || 4000);

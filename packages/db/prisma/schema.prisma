@@ -389,18 +389,97 @@ model AuditLog {
   @@index([actorUserId, createdAt])
 }
 
-enum TenantStatus { ACTIVE TRIAL SUSPENDED BLOCKED }
-enum PlanType { BASIC PRO PREMIUM ENTERPRISE }
-enum UserRole { MASTER_ADMIN ADMIN MANAGER CASHIER WAITER KITCHEN DELIVERY FINANCE SUPPORT }
-enum UserStatus { ACTIVE INACTIVE BLOCKED }
-enum OrderChannel { POS DELIVERY TAKEAWAY WHATSAPP TABLE }
-enum OrderStatus { OPEN PREPARING READY COMPLETED CANCELLED }
-enum OrderItemStatus { PENDING PREPARING READY CANCELLED }
-enum StockMovementType { PURCHASE ADJUSTMENT WASTE ORDER_CONSUMPTION TRANSFER_IN TRANSFER_OUT }
-enum CashSessionStatus { OPEN CLOSED }
-enum PaymentMethod { CASH PIX CREDIT_CARD DEBIT_CARD VOUCHER OTHER }
-enum PaymentStatus { CONFIRMED REFUNDED CANCELLED }
-enum DeliveryStatus { PENDING ASSIGNED PICKED_UP DELIVERED CANCELLED }
-enum MessageStatus { QUEUED SENT FAILED }
-enum FinancialEntryType { INCOME EXPENSE }
-enum FinancialEntryStatus { OPEN PAID CANCELLED }
+enum TenantStatus {
+  ACTIVE
+  TRIAL
+  SUSPENDED
+  BLOCKED
+}
+enum PlanType {
+  BASIC
+  PRO
+  PREMIUM
+  ENTERPRISE
+}
+enum UserRole {
+  MASTER_ADMIN
+  ADMIN
+  MANAGER
+  CASHIER
+  WAITER
+  KITCHEN
+  DELIVERY
+  FINANCE
+  SUPPORT
+}
+enum UserStatus {
+  ACTIVE
+  INACTIVE
+  BLOCKED
+}
+enum OrderChannel {
+  POS
+  DELIVERY
+  TAKEAWAY
+  WHATSAPP
+  TABLE
+}
+enum OrderStatus {
+  OPEN
+  PREPARING
+  READY
+  COMPLETED
+  CANCELLED
+}
+enum OrderItemStatus {
+  PENDING
+  PREPARING
+  READY
+  CANCELLED
+}
+enum StockMovementType {
+  PURCHASE
+  ADJUSTMENT
+  WASTE
+  ORDER_CONSUMPTION
+  TRANSFER_IN
+  TRANSFER_OUT
+}
+enum CashSessionStatus {
+  OPEN
+  CLOSED
+}
+enum PaymentMethod {
+  CASH
+  PIX
+  CREDIT_CARD
+  DEBIT_CARD
+  VOUCHER
+  OTHER
+}
+enum PaymentStatus {
+  CONFIRMED
+  REFUNDED
+  CANCELLED
+}
+enum DeliveryStatus {
+  PENDING
+  ASSIGNED
+  PICKED_UP
+  DELIVERED
+  CANCELLED
+}
+enum MessageStatus {
+  QUEUED
+  SENT
+  FAILED
+}
+enum FinancialEntryType {
+  INCOME
+  EXPENSE
+}
+enum FinancialEntryStatus {
+  OPEN
+  PAID
+  CANCELLED
+}

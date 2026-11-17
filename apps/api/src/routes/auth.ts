@@ -13,7 +13,7 @@ authRoutes.post('/login', loginLimiter, async (req, res, next) => {
     const input = loginSchema.safeParse(req.body); if (!input.success) return res.status(400).json({ message: 'Invalid credentials format' });
     const user = await prisma.user.findUnique({ where: { email: input.data.email.toLowerCase() }, include: { tenant: true } });
     if (!user || !user.passwordHash || user.status !== 'ACTIVE' || !(await bcrypt.compare(input.data.password, user.passwordHash))) return res.status(401).json({ message: 'Email or password is incorrect' });
-    if (user.role !== 'MASTER_ADMIN' && (!user.tenant || !['ACTIVE', 'TRIAL'].includes(user.tenant.status))) return res.status(403).json({ message: 'Tenant is not available' });
+    if (user.role !== 'MASTER_ADMIN' && (!user.tenantId || !user.tenant || !['ACTIVE', 'TRIAL'].includes(user.tenant.status))) return res.status(403).json({ message: 'Tenant is not available' });
     const accessToken = signAccessToken({ userId: user.id, tenantId: user.tenantId, unitId: user.unitId, role: user.role });
     return res.json({ accessToken, tokenType: 'Bearer', expiresIn: 28800, user: { id: user.id, name: user.name, email: user.email, role: user.role, tenantId: user.tenantId, unitId: user.unitId } });
   } catch (error) { return next(error); }
