@@ -2,6 +2,8 @@ import { Router } from 'express';
 import { OrderChannel, OrderStatus, Prisma } from '@prisma/client';
 import { z } from 'zod';
 import { prisma } from '../lib/prisma';
+import { consumeOrderInventory, canTransitionOrder, OrderInventoryError } from '../lib/order-inventory';
+import { serializable } from '../lib/serializable';
 import { requireAuth, requireTenant } from '../middleware/auth';
 
 export const orderRoutes = Router();
@@ -38,10 +40,40 @@ orderRoutes.post('/', async (req, res, next) => {
 orderRoutes.patch('/:id/status', async (req, res, next) => {
   try {
     const status = z.nativeEnum(OrderStatus).safeParse(req.body?.status); if (!status.success) return res.status(400).json({ message: 'Invalid order status' });
-    const order = await prisma.order.findFirst({ where: { id: req.params.id, tenantId: req.auth!.tenantId!, ...(req.auth!.unitId ? { unitId: req.auth!.unitId } : {}) } });
-    if (!order) return res.status(404).json({ message: 'Order not found' });
-    const updated = await prisma.order.update({ where: { id: order.id }, data: { status: status.data } });
-    await prisma.auditLog.create({ data: { tenantId: order.tenantId, actorUserId: req.auth!.userId, action: 'ORDER_STATUS_CHANGED', entityType: 'Order', entityId: order.id, metadata: { status: status.data } } });
-    return res.json(updated);
-  } catch (error) { return next(error); }
+    const { tenantId, unitId, userId } = req.auth!;
+    const result = await serializable(prisma, async tx => {
+      const order = await tx.order.findFirst({
+        where: { id: req.params.id, tenantId: tenantId!, ...(unitId ? { unitId } : {}) },
+        include: {
+          items: {
+            include: {
+              product: {
+                include: {
+                  recipe: {
+                    include: { ingredients: { include: { ingredient: true } } },
+                  },
+                },
+              },
+            },
+          },
+        },
+      });
+      if (!order) return { kind: 'error', message: 'Order not found', status: 404 } as const;
+      if (!canTransitionOrder(order.status, status.data)) return { kind: 'error', message: 'Invalid order status transition', status: 409 } as const;
+      if (order.status === status.data) return { kind: 'ok', order } as const;
+
+      if (status.data === OrderStatus.PREPARING) await consumeOrderInventory(tx, order, userId);
+      const updated = await tx.order.update({ where: { id: order.id }, data: { status: status.data } });
+      await tx.auditLog.create({ data: { tenantId: order.tenantId, actorUserId: userId, action: 'ORDER_STATUS_CHANGED', entityType: 'Order', entityId: order.id, metadata: { status: status.data } } });
+      return { kind: 'ok', order: updated } as const;
+    });
+    if (result.kind === 'error') return res.status(result.status).json({ message: result.message });
+    return res.json(result.order);
+  } catch (error) {
+    if (error instanceof OrderInventoryError) {
+      const message = error.reason === 'INSUFFICIENT_STOCK' ? 'Insufficient stock to start preparing this order' : 'Order recipe contains invalid or out-of-scope ingredients';
+      return res.status(409).json({ message });
+    }
+    return next(error);
+  }
 });
