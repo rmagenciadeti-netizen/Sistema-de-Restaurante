@@ -12,6 +12,7 @@ const links = [
   { href: '/products', label: 'Produtos e produção' },
   { href: '/inventory', label: 'Estoque e fichas' },
   { href: '/orders', label: 'Pedidos / PDV' },
+  { href: '/cash', label: 'Caixa e pagamentos' },
 ];
 
 export function AppShell({ title, children }: { title: string; children: React.ReactNode }) {

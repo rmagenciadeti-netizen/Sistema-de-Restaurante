@@ -39,7 +39,7 @@ Para um banco que já contém dados ou tabelas, **não aplique cegamente** a mig
 - CRUD parcial/soft delete: atualizações em `/employees/:id`, `/products/:id` e `/units/:id`; registros operacionais usam status, preservando histórico.
 - Produção/KDS: `GET /production/kds?sectorId=...`, `PATCH /production/items/:id/status`.
 - Estoque e fichas: interface em `/inventory` e endpoints `GET|POST /inventory/ingredients`, `POST /inventory/ingredients/:id/movements`, `GET /inventory/movements`, `GET|PUT /inventory/recipes/:productId`. Ao avançar um pedido de `OPEN` para `PREPARING`, a API baixa atomicamente o estoque da receita e registra movimentações; sem receita, mantém o fluxo sem baixa. A transição exige saldo suficiente e não pode ser repetida ou revertida pelo fluxo de status.
-- Caixa/pagamentos: `POST|GET /cash/sessions`, `POST /cash/sessions/:id/close`, `POST|GET /cash/payments`.
+- Caixa/pagamentos: interface em `/cash` para abertura/fechamento de caixa e registro manual de pagamentos em pedidos com saldo, usando `POST|GET /cash/sessions`, `POST /cash/sessions/:id/close`, `POST|GET /cash/payments`. A interface mostra saldos e diferenças, mas PIX/cartões não são cobrados nem confirmados por provedor externo.
 - Entrega: `GET|POST /delivery`, `PATCH /delivery/:id/status`.
 - WhatsApp: `POST|GET /whatsapp/outbox`. O endpoint apenas enfileira um registro auditável; envio real requer adaptador de provedor oficial e worker configurado.
 - Financeiro e relatórios: `GET|POST /financial/entries`, `GET /financial/summary`, `GET /reports/overview?from=ISO&to=ISO`.

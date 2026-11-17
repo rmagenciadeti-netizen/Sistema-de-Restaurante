@@ -13,7 +13,7 @@ orderRoutes.get('/', async (req, res, next) => {
   try {
     const page = Math.max(1, Number(req.query.page) || 1); const pageSize = Math.min(100, Math.max(1, Number(req.query.pageSize) || 25));
     const where = { tenantId: req.auth!.tenantId!, ...(req.auth!.unitId ? { unitId: req.auth!.unitId } : {}) };
-    const [items, total] = await Promise.all([prisma.order.findMany({ where, include: { items: { include: { product: true } } }, orderBy: { createdAt: 'desc' }, skip: (page - 1) * pageSize, take: pageSize }), prisma.order.count({ where })]);
+    const [items, total] = await Promise.all([prisma.order.findMany({ where, include: { items: { include: { product: true } }, payments: { where: { status: 'CONFIRMED' }, select: { amount: true } } }, orderBy: { createdAt: 'desc' }, skip: (page - 1) * pageSize, take: pageSize }), prisma.order.count({ where })]);
     return res.json({ items, total, page, pageSize });
   } catch (error) { return next(error); }
 });
