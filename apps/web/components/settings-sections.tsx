@@ -202,6 +202,12 @@ export function PdvSection({ value, onChange, disabled, password }: SectionProps
       <Toggle label="Exigir senha de administrador em pedidos online" checked={value.requireAdminPasswordOnline} disabled={disabled} onChange={requireAdminPasswordOnline => onChange({ requireAdminPasswordOnline })} />
       <Toggle label="Mostrar PIX no terminal" hint="Depende de um provedor PIX configurado em Integrações." checked={value.showPixOnTerminal} disabled={disabled} onChange={showPixOnTerminal => onChange({ showPixOnTerminal })} />
     </div>
+    <Subtitle>Controle de moedas estrangeiras</Subtitle>
+    <Grid>
+      <NumberField label="Cotação do dólar (R$ por US$)" value={value.usdRate} step={0.01} max={1000} disabled={disabled} onChange={usdRate => onChange({ usdRate })} />
+      <NumberField label="Cotação do peso (pesos por R$ 1)" value={value.pesoRate} step={0.01} max={1000000} disabled={disabled} onChange={pesoRate => onChange({ pesoRate })} />
+    </Grid>
+    <p className="mt-2 text-xs text-slate-500">Quando preenchidas, o PDV mostra o total também nessas moedas como referência para o atendente. Os pedidos continuam sempre em reais; use 0 para desativar.</p>
     <Subtitle>Senha de administrador do caixa</Subtitle>
     <div className="rounded-xl border border-slate-200 bg-slate-50 p-4">
       <p className="mb-3 text-sm text-slate-600">Usada nas <Link href="/releases" className="font-semibold text-brand-700 hover:underline">liberações por senha</Link> (cancelamentos, descontos, sangria…). Só é guardada criptografada e não pode ser consultada depois. Estado atual: <Badge tone={password.hasPassword ? 'green' : 'amber'}>{password.hasPassword ? 'Configurada' : 'Não configurada'}</Badge></p>

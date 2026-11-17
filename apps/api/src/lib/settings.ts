@@ -33,6 +33,8 @@ export const SETTINGS_SECTIONS = {
     tableControl: z.enum(['TABLES', 'TABS', 'TABLES_AND_TABS', 'TABLES_AND_ORDERS']).default('TABLES_AND_TABS'),
     askSeller: z.boolean().default(false), serviceFeeName: z.string().max(40).default('Taxa de serviço'),
     requireAdminPasswordOnline: z.boolean().default(false), showPixOnTerminal: z.boolean().default(false),
+    // Reference rates for showing the total in foreign currency at the terminal: R$ per US$ and pesos per R$. 0 = off. Display only; orders are always in R$.
+    usdRate: z.number().min(0).max(1000).default(0), pesoRate: z.number().min(0).max(1_000_000).default(0),
   }),
   scale: z.object({
     enabled: z.boolean().default(false), prefix: z.string().regex(/^\d{1,2}$/).default('2'),

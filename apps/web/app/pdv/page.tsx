@@ -5,6 +5,7 @@ import { useEffect, useRef, useState } from 'react';
 import { api, ApiError, errorMessage, formatMoney, ListResponse, ModifierGroup, ModifierGroupView, ProductComposition, storedUser, toIso, Unit } from '../../lib/api';
 import { useAutoLoad } from '../../lib/use-auto-load';
 import type { SettingsResponse, TenantSettings } from '../../lib/settings';
+import { foreignTotals } from '../../lib/settings-helpers';
 import { AppShell, buttonClass, Check, Field, inputClass, Notice, secondaryButtonClass, Select } from '../../components/app-shell';
 import { ModifierPicker, ModifierSelection, modifiersPayload, selectionError } from '../../components/modifier-picker';
 import { OpsNav } from '../../components/ops-nav';
@@ -20,7 +21,7 @@ type CartLine = { key: string; product: OpsProduct; quantity: number; weightKg: 
 type ChannelKey = 'POS' | 'TAKEAWAY' | 'DELIVERY' | 'TABLE' | 'TAB';
 type Config = { product: OpsProduct; groups: ModifierGroupView[]; weight: string; sel: ModifierSelection; notes: string; error: string };
 
-const DEFAULT_PDV: TenantSettings['pdv'] = { layout: 'FOOD', side: 'RIGHT', orderMode: true, saleMode: true, whatsappNotify: true, autoRegisterCustomer: true, tableControl: 'TABLES_AND_TABS', askSeller: false, serviceFeeName: 'Taxa de serviço', requireAdminPasswordOnline: false, showPixOnTerminal: false };
+const DEFAULT_PDV: TenantSettings['pdv'] = { layout: 'FOOD', side: 'RIGHT', orderMode: true, saleMode: true, whatsappNotify: true, autoRegisterCustomer: true, tableControl: 'TABLES_AND_TABS', askSeller: false, serviceFeeName: 'Taxa de serviço', requireAdminPasswordOnline: false, showPixOnTerminal: false, usdRate: 0, pesoRate: 0 };
 const channelOptions: { key: ChannelKey; label: string }[] = [{ key: 'POS', label: 'Balcão' }, { key: 'TAKEAWAY', label: 'Retirada' }, { key: 'DELIVERY', label: 'Entrega' }, { key: 'TABLE', label: 'Mesa' }, { key: 'TAB', label: 'Comanda' }];
 const round2 = (value: number) => Math.round(value * 100) / 100;
 const normalize = (value: string) => value.toLocaleLowerCase('pt-BR').normalize('NFD').replace(/[\u0300-\u036f]/g, '');
@@ -453,6 +454,7 @@ export default function PdvPage() {
               {couvert > 0 && <div className="flex justify-between"><dt className="text-slate-600">Couvert</dt><dd>{formatMoney(couvert)}</dd></div>}
               {deliveryFee > 0 && <div className="flex justify-between"><dt className="text-slate-600">Entrega</dt><dd>{formatMoney(deliveryFee)}</dd></div>}
               <div className="flex items-center justify-between rounded-xl bg-neutral-950 px-3 py-3 text-brand-300"><dt className="font-semibold">Valor total</dt><dd className="text-2xl font-black">{formatMoney(total)}</dd></div>
+              {foreignTotals(Number(total), pdv).map(row => <div key={row.code} className="flex justify-between text-xs text-slate-600"><dt>{row.label}</dt><dd className="font-semibold">{row.value}</dd></div>)}
               <p className="text-[11px] text-slate-500">Estimativa. O servidor confirma cupom, promoções e taxas ao gerar.</p>
             </dl>
 

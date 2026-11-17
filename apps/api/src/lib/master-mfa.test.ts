@@ -18,7 +18,9 @@ test('TOTP secrets are encrypted and authenticated with the configured 256-bit k
     const encrypted = encryptTotpSecret(secret);
     assert.notEqual(encrypted, secret);
     assert.equal(decryptTotpSecret(encrypted), secret);
-    assert.throws(() => decryptTotpSecret(encrypted.replace(/.$/, 'A')));
+    // Flip the first character of the ciphertext segment (the last base64 character may only hold unused bits).
+    const [version, iv, tag, body] = encrypted.split(':');
+    assert.throws(() => decryptTotpSecret([version, iv, tag, (body[0] === 'A' ? 'B' : 'A') + body.slice(1)].join(':')));
   } finally {
     if (previous === undefined) delete process.env.MFA_ENCRYPTION_KEY;
     else process.env.MFA_ENCRYPTION_KEY = previous;

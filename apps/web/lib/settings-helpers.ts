@@ -63,3 +63,11 @@ export function parseMenuLayout(text: string, validHrefs: string[]): string[] | 
     return Array.from(new Set(data.hidden.filter((href): href is string => typeof href === 'string' && valid.has(href))));
   } catch { return null; }
 }
+
+// Total shown in foreign currency at the terminal. usdRate = R$ per US$, pesoRate = pesos per R$; a rate of 0 hides that currency.
+export function foreignTotals(totalBrl: number, rates: { usdRate: number; pesoRate: number }) {
+  const rows: { code: 'USD' | 'ARS'; label: string; value: string }[] = [];
+  if (rates.usdRate > 0) rows.push({ code: 'USD', label: 'Dólar (US$)', value: (Math.round((totalBrl / rates.usdRate) * 100) / 100).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) });
+  if (rates.pesoRate > 0) rows.push({ code: 'ARS', label: 'Peso', value: (Math.round(totalBrl * rates.pesoRate * 100) / 100).toLocaleString('es-AR', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) });
+  return rows;
+}
