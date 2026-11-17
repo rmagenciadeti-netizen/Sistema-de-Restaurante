@@ -11,7 +11,21 @@ jobs:
   validate:
     runs-on: ubuntu-latest
     env:
-      DATABASE_URL: postgresql://localhost:5432/validation
+      DATABASE_URL: postgresql://postgres@postgres:5432/validation?schema=public
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_HOST_AUTH_METHOD: trust
+          POSTGRES_DB: validation
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres -d validation"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -22,6 +36,8 @@ jobs:
       - run: npm audit --audit-level=moderate
       - run: npm run db:validate
       - run: npm run db:generate
+      - run: npm run db:deploy
+      - run: npm exec --workspace packages/db prisma -- migrate status
       - run: npm run build --workspace apps/api
       - run: npm run test --workspace apps/api
       - run: npm run lint --workspace apps/web

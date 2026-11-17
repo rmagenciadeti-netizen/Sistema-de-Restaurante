@@ -5,9 +5,9 @@ Monólito modular para restaurantes, com Next.js, TypeScript, PostgreSQL/Prisma 
 ## Desenvolvimento local
 
 1. Copie `.env.example` para `.env`; configure segredo JWT aleatório com 32+ caracteres, origens CORS exatas e credenciais fortes. Em cada terminal, exporte as variáveis para os comandos dos workspaces: `set -a; . ./.env; set +a` (use apenas um `.env` confiável).
-2. Inicie o banco: `docker compose up -d postgres`.
+2. Inicie o PostgreSQL local: `docker compose up -d postgres`. No Compose de desenvolvimento, ele fica acessível apenas em `127.0.0.1:5432` e usa `postgres/postgres`; não reutilize essa credencial nem exponha essa configuração em produção.
 3. Instale pacotes: `npm ci`.
-4. Gere e revise a migração inicial em um banco de desenvolvimento vazio, conforme a seção de migrações abaixo.
+4. Aplique a migração versionada em um banco local vazio: `npm run db:deploy`.
 5. Crie o Master: `npm run seed:master`. O seed recusa qualquer conta existente com o mesmo e-mail; não altera nem promove contas.
 6. Inicie `npm run dev:api` e `npm run dev` em terminais separados.
 
@@ -18,27 +18,21 @@ Na raiz do repositório, com Node.js 22:
 ```sh
 npm ci
 npm audit --audit-level=moderate
-DATABASE_URL=postgresql://localhost:5432/validation npm run db:validate
-DATABASE_URL=postgresql://localhost:5432/validation npm run db:generate
+DATABASE_URL=postgresql://postgres@localhost:5432/validation?schema=public npm run db:validate
+DATABASE_URL=postgresql://postgres@localhost:5432/validation?schema=public npm run db:generate
 npm run build --workspace apps/api
 npm run test --workspace apps/api
 npm run lint --workspace apps/web
 npm run build --workspace apps/web
 ```
 
-Validação e geração do cliente não conectam ao banco; a URL acima é apenas um exemplo para esses comandos. A CI executa esta mesma sequência, sem testar migrações ou integração com PostgreSQL. O lint web emite avisos para alguns efeitos de carregamento e hidratação existentes; eles não são convertidos em erros de forma a não incentivar mudanças de comportamento fora desta etapa.
+Validação e geração do cliente não conectam ao banco; a URL acima é apenas um exemplo para esses comandos. Para testar `db:deploy` localmente, use o banco de desenvolvimento configurado no `.env`, após revisar a seção de migrações. A CI aplica as migrações em um serviço PostgreSQL 16 limpo e confere o status. O lint web emite avisos para alguns efeitos de carregamento e hidratação existentes; eles não são convertidos em erros de forma a não incentivar mudanças de comportamento fora desta etapa.
 
 ## Migrações e dados existentes
 
-Ainda não há uma migração Prisma inicial versionada. Não use `db:deploy` como se criasse o schema antes de gerar e revisar essa migração. Em um banco de desenvolvimento **vazio e descartável**, configure `DATABASE_URL` em `.env`, exporte as variáveis como acima e execute:
+Uma migração Prisma inicial foi gerada em modo `--create-only`, inspecionada e aplicada com sucesso a um PostgreSQL 16 descartável e vazio. Ela cria as 20 tabelas do schema atual; nenhum SQL de remoção ou alteração de dados existentes foi gerado. A migração versionada pode ser aplicada a uma base local vazia com `npm run db:deploy`. Antes de implantá-la, revise o SQL e faça backup do banco alvo.
 
-```sh
-npm run db:migrate --workspace packages/db -- --name init --create-only
-```
-
-Revise o SQL gerado e seus efeitos, aplique-o ao banco de desenvolvimento com `npm run db:migrate`, valide o resultado e versione a pasta de migração. Em implantação, faça backup, revise o histórico de migrações e só então execute `npm run db:deploy` contra o banco correto. Não execute `migrate dev` em produção.
-
-Para um banco que já contém dados ou tabelas, não aplique cegamente uma migração inicial de banco vazio nem use comandos de reset: compare o schema real, preserve backups e siga o procedimento oficial de [baseline de banco existente](https://www.prisma.io/docs/orm/prisma-migrate/workflows/baselining) com revisão operacional antes de marcar qualquer migração como aplicada.
+Para um banco que já contém dados ou tabelas, **não aplique cegamente** a migração inicial nem use comandos de reset. Compare o schema e o histórico reais, preserve backups e siga o procedimento oficial de [baseline de banco existente](https://www.prisma.io/docs/orm/prisma-migrate/workflows/baselining), revisando a SQL e executando `migrate resolve --applied` somente quando o schema existente corresponder integralmente à migração. Em implantação, use `npm run db:deploy`; nunca execute `migrate dev` em produção.
 
 ## Módulos e endpoints novos
 
