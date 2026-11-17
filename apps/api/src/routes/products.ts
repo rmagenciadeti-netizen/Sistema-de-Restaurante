@@ -1,9 +1,10 @@
-import { Router } from 'express';
+import { Router, type Request } from 'express';
 import { Prisma } from '@prisma/client';
 import { z } from 'zod';
 import { prisma } from '../lib/prisma';
 import { requireAuth, requireTenant } from '../middleware/auth';
 import { ALL_TENANT_ROLES, MANAGEMENT_ROLES, allowRead } from '../lib/permissions';
+import { parseImageDataUrl, toDataUrl } from '../lib/product-image';
 
 export const productRoutes = Router();
 productRoutes.use(requireAuth, requireTenant, allowRead(ALL_TENANT_ROLES, MANAGEMENT_ROLES));
@@ -61,7 +62,7 @@ productRoutes.get('/', async (req, res, next) => {
   try {
     const page = Math.max(1, Number(req.query.page) || 1); const pageSize = Math.min(100, Math.max(1, Number(req.query.pageSize) || 25));
     const where = { tenantId: req.auth!.tenantId!, ...(req.auth!.unitId ? { OR: [{ unitId: req.auth!.unitId }, { unitId: null }] } : {}) };
-    const [items, total] = await Promise.all([prisma.product.findMany({ where, include: { category: true, sector: true }, orderBy: { name: 'asc' }, skip: (page - 1) * pageSize, take: pageSize }), prisma.product.count({ where })]);
+    const [items, total] = await Promise.all([prisma.product.findMany({ where, include: { category: true, sector: true, image: { select: { updatedAt: true } } }, orderBy: { name: 'asc' }, skip: (page - 1) * pageSize, take: pageSize }), prisma.product.count({ where })]);
     return res.json({ items, total, page, pageSize });
   } catch (error) { return next(error); }
 });
@@ -98,6 +99,32 @@ productRoutes.patch('/prices/bulk', async (req, res, next) => {
     if (error instanceof PriceConflictError) return res.status(409).json({ message: 'Um produto foi alterado ou não está disponível. Atualize a lista e revise os preços.' });
     return next(error);
   }
+});
+const productScope = (req: Request, id: string) => ({ id, tenantId: req.auth!.tenantId!, ...(req.auth!.unitId ? { OR: [{ unitId: req.auth!.unitId }, { unitId: null }] } : {}) });
+productRoutes.get('/:id/image', async (req, res, next) => {
+  try {
+    const product = await prisma.product.findFirst({ where: productScope(req, req.params.id), select: { image: true } }); if (!product) return res.status(404).json({ message: 'Product not found' });
+    if (!product.image) return res.status(404).json({ message: 'O produto não tem foto.' });
+    return res.json({ dataUrl: toDataUrl(product.image.contentType, product.image.data) });
+  } catch (error) { return next(error); }
+});
+productRoutes.put('/:id/image', async (req, res, next) => {
+  try {
+    const parsed = z.object({ dataUrl: z.string().max(450_000) }).safeParse(req.body); if (!parsed.success) return res.status(400).json({ message: 'Validation failed' });
+    const image = parseImageDataUrl(parsed.data.dataUrl); if ('error' in image) return res.status(400).json({ message: image.error });
+    const product = await prisma.product.findFirst({ where: productScope(req, req.params.id), select: { id: true } }); if (!product) return res.status(404).json({ message: 'Product not found' });
+    await prisma.productImage.upsert({ where: { productId: product.id }, create: { productId: product.id, ...image }, update: { ...image } });
+    await prisma.auditLog.create({ data: { tenantId: req.auth!.tenantId!, actorUserId: req.auth!.userId, action: 'PRODUCT_IMAGE_SET', entityType: 'Product', entityId: product.id, metadata: { bytes: image.data.length } } });
+    return res.json({ productId: product.id, bytes: image.data.length });
+  } catch (error) { return next(error); }
+});
+productRoutes.delete('/:id/image', async (req, res, next) => {
+  try {
+    const product = await prisma.product.findFirst({ where: productScope(req, req.params.id), select: { id: true } }); if (!product) return res.status(404).json({ message: 'Product not found' });
+    await prisma.productImage.deleteMany({ where: { productId: product.id } });
+    await prisma.auditLog.create({ data: { tenantId: req.auth!.tenantId!, actorUserId: req.auth!.userId, action: 'PRODUCT_IMAGE_REMOVED', entityType: 'Product', entityId: product.id } });
+    return res.json({ productId: product.id, removed: true });
+  } catch (error) { return next(error); }
 });
 productRoutes.patch('/:id', async (req, res, next) => {
   try {

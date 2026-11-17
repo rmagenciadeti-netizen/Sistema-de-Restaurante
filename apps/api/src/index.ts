@@ -70,6 +70,7 @@ const allowedOrigins = [...new Set([...parseAllowedOrigins(process.env.CORS_ORIG
 // Development only: Codespaces/proxied hosts send arbitrary public Origins, so any origin is reflected outside production.
 const allowAnyOrigin = () => process.env.NODE_ENV !== 'production';
 app.use(cors({ origin: (origin, callback) => { if (!origin || allowAnyOrigin() || allowedOrigins.includes(origin)) return callback(null, true); return callback(new OriginNotAllowedError()); } }));
+const productImagePath = /^\/store\/[^/]+\/products\/[^/]+\/image$/;
 const limiterMessage = { message: 'Too many requests. Try again later.' };
 const printAgentPaths = '/print-agent';
 const machinePaths = ['/print-agent', '/public', '/inbound', '/payments/webhook'];
@@ -78,7 +79,8 @@ app.use('/api/v1', rateLimit({ windowMs: 15 * 60 * 1000, limit: 300, standardHea
 app.use(`/api/v1${printAgentPaths}`, rateLimit({ windowMs: 15 * 60 * 1000, limit: 1500, standardHeaders: 'draft-7', legacyHeaders: false, message: limiterMessage }));
 app.use('/api/v1/inbound', rateLimit({ windowMs: 15 * 60 * 1000, limit: 1000, standardHeaders: 'draft-7', legacyHeaders: false, message: limiterMessage }));
 app.use('/api/v1/payments/webhook', rateLimit({ windowMs: 15 * 60 * 1000, limit: 1000, standardHeaders: 'draft-7', legacyHeaders: false, message: limiterMessage }));
-app.use('/api/v1/public', rateLimit({ windowMs: 15 * 60 * 1000, limit: 100, standardHeaders: 'draft-7', legacyHeaders: false, message: limiterMessage }));
+app.use('/api/v1/public', rateLimit({ windowMs: 15 * 60 * 1000, limit: 100, standardHeaders: 'draft-7', legacyHeaders: false, message: limiterMessage, skip: req => productImagePath.test(req.path) }));
+app.use('/api/v1/public', rateLimit({ windowMs: 15 * 60 * 1000, limit: 1000, standardHeaders: 'draft-7', legacyHeaders: false, message: limiterMessage, skip: req => !productImagePath.test(req.path) }));
 // Webhook signatures are verified over the exact bytes received, so this path must bypass JSON parsing.
 app.use('/api/v1/payments/webhook', express.raw({ type: () => true, limit: '256kb' }), paymentWebhookRoutes);
 app.use(express.json({ limit: '1mb' }));

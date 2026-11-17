@@ -35,7 +35,7 @@ storeRoutes.get('/:slug', async (req, res, next) => {
       prisma.product.findMany({
         where: { tenantId: tenant.id, active: true, ...unitScope },
         select: {
-          id: true, name: true, description: true, price: true, isCombo: true, soldByWeight: true, favorite: true, category: { select: { id: true, name: true } },
+          id: true, name: true, description: true, price: true, isCombo: true, soldByWeight: true, favorite: true, image: { select: { updatedAt: true } }, category: { select: { id: true, name: true } },
           comboComponents: { select: { quantity: true, product: { select: { name: true } } } },
           modifierGroups: { select: { group: { select: { id: true, name: true, minSelect: true, maxSelect: true, active: true, options: { where: { active: true }, select: { id: true, name: true, price: true }, orderBy: { name: 'asc' } } } } } },
         },
@@ -50,11 +50,11 @@ storeRoutes.get('/:slug', async (req, res, next) => {
     ]);
     const promotions = promotionRows.map(row => ({ type: row.type, value: row.value, startsAt: row.startsAt, endsAt: row.endsAt, active: row.active, productIds: row.products.map(link => link.productId) }));
     const categories = new Map<string, { id: string | null; name: string; products: unknown[] }>();
-    for (const { category, modifierGroups, ...rest } of products) {
+    for (const { category, modifierGroups, image, ...rest } of products) {
       if (category && hidden.has(category.id)) continue;
       const price = effectiveUnitPrice(rest.id, rest.price, promotions, now);
       const product = {
-        ...rest, promoPrice: price.lt(rest.price) ? price : null,
+        ...rest, imageVersion: image ? image.updatedAt.getTime() : null, promoPrice: price.lt(rest.price) ? price : null,
         modifierGroups: modifierGroups.map(link => link.group).filter(group => group.active && group.options.length > 0).map(({ active: _active, ...group }) => group),
       };
       const key = category?.id ?? 'none';
@@ -94,6 +94,18 @@ const orderSchema = z.object({
     productId: z.string().uuid(), quantity: z.number().int().positive().max(20), weightKg: z.number().positive().max(999.999).optional(), notes: z.string().trim().max(200).optional(),
     modifiers: z.array(z.object({ optionId: z.string().uuid(), quantity: z.number().int().positive().max(20).optional() })).max(20).optional(),
   })).min(1).max(30),
+});
+
+// Product photos are public by design (they are on the menu); only active products of a live store are served.
+storeRoutes.get('/:slug/products/:productId/image', async (req, res, next) => {
+  try {
+    const store = await resolveStore(req.params.slug); if (!store) return res.status(404).end();
+    if (!/^[0-9a-f-]{36}$/.test(req.params.productId)) return res.status(404).end();
+    const image = await prisma.productImage.findFirst({ where: { productId: req.params.productId, product: { tenantId: store.tenant.id, active: true } } });
+    if (!image) return res.status(404).end();
+    res.setHeader('Content-Type', image.contentType); res.setHeader('X-Content-Type-Options', 'nosniff'); res.setHeader('Cache-Control', 'public, max-age=300');
+    return res.send(Buffer.from(image.data));
+  } catch (error) { return next(error); }
 });
 
 storeRoutes.post('/:slug/orders', async (req, res, next) => {

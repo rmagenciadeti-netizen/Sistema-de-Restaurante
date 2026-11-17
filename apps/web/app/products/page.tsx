@@ -6,6 +6,7 @@ import { api, formatMoney, ListResponse, ProductCategory, Sector } from '../../l
 import type { CatalogProduct as Product, TaxRuleOption } from '../../lib/types-catalog';
 import { AppShell, buttonClass, Check, Field, Notice, panelClass, Select, secondaryButtonClass } from '../../components/app-shell';
 import { Badge, Tabs, textareaClass, Toggle } from '../../components/ui';
+import { fileToDataUrl } from '../../lib/image-resize';
 import { attachTemplateGroups, findTemplate, productTemplates } from '../../lib/product-templates';
 
 const emptyForm = {
@@ -13,8 +14,8 @@ const emptyForm = {
   sendToScale: false, scaleCode: '', scaleDepartment: '', shelfLifeDays: '', scaleNotes: '', ncm: '', cest: '', taxRuleId: '',
   description: '', prepTimeMinutes: '', margin: '',
 };
-type FormTab = 'data' | 'scale' | 'tax';
-const formTabs: { key: FormTab; label: string }[] = [{ key: 'data', label: 'Dados' }, { key: 'scale', label: 'Balança' }, { key: 'tax', label: 'Fiscal' }];
+type FormTab = 'data' | 'photo' | 'scale' | 'tax';
+const formTabs: { key: FormTab; label: string }[] = [{ key: 'data', label: 'Dados' }, { key: 'photo', label: 'Foto' }, { key: 'scale', label: 'Balança' }, { key: 'tax', label: 'Fiscal' }];
 const optionalInt = (value: string) => (value.trim() === '' ? null : Number(value));
 
 export default function ProductsPage() {
@@ -26,6 +27,7 @@ export default function ProductsPage() {
   const [prices, setPrices] = useState<Record<string, string>>({}); const [savingPrices, setSavingPrices] = useState(false);
   const [percentage, setPercentage] = useState(''); const [priceDirection, setPriceDirection] = useState<'increase' | 'decrease'>('increase');
   const [templateKey, setTemplateKey] = useState('');
+  const [photo, setPhoto] = useState<string | null>(null); const [photoPending, setPhotoPending] = useState<string | null>(null); const [photoBusy, setPhotoBusy] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null); const [formTab, setFormTab] = useState<FormTab>('data'); const [taxRules, setTaxRules] = useState<TaxRuleOption[]>([]);
   async function load(nextPage = page) { try { const [products, production, categoryList] = await Promise.all([api<ListResponse<Product>>(`/products?page=${nextPage}&pageSize=100`), api<ListResponse<Sector>>('/production/sectors'), api<ListResponse<ProductCategory>>('/products/categories')]); setItems(products.items); setTotal(products.total); setPage(nextPage); setPrices({}); setSectors(production.items); setCategories(categoryList.items); api<ListResponse<TaxRuleOption>>('/tax-rules').then(rules => setTaxRules(rules.items.filter(rule => rule.active !== false))).catch(() => setTaxRules([])); return true; } catch (e) { setMessage(e instanceof Error ? e.message : 'Erro ao carregar catálogo'); return false; } }
   useEffect(() => { void load(); }, []);
@@ -37,10 +39,11 @@ export default function ProductsPage() {
       scaleNotes: item.scaleNotes ?? '', ncm: item.ncm ?? '', cest: item.cest ?? '', taxRuleId: item.taxRuleId ?? '',
       description: item.description ?? '', prepTimeMinutes: item.prepTimeMinutes == null ? '' : String(item.prepTimeMinutes), margin: '',
     });
-    setEditingId(item.id); setFormTab('data'); setMessage('');
+    setEditingId(item.id); setFormTab('data'); setMessage(''); setPhoto(null); setPhotoPending(null);
+    if (item.image) api<{ dataUrl: string }>(`/products/${item.id}/image`).then(result => setPhoto(result.dataUrl)).catch(() => undefined);
     document.getElementById('product-form')?.scrollIntoView?.({ behavior: 'smooth' });
   }
-  function cancelEdit() { setForm(emptyForm); setTemplateKey(''); setEditingId(null); setFormTab('data'); }
+  function cancelEdit() { setForm(emptyForm); setTemplateKey(''); setPhoto(null); setPhotoPending(null); setEditingId(null); setFormTab('data'); }
   async function submit(event: React.FormEvent) {
     event.preventDefault(); setMessage('');
     const ncm = form.ncm.replace(/\D/g, ''); const cest = form.cest.replace(/\D/g, '');
@@ -56,15 +59,31 @@ export default function ProductsPage() {
       ncm: ncm || null, cest: cest || null, taxRuleId: form.taxRuleId || null,
       description: form.description.trim() || null, prepTimeMinutes: optionalInt(form.prepTimeMinutes),
     };
-    const template = editing ? null : findTemplate(templateKey);
+    const template = editing ? null : findTemplate(templateKey); const pendingPhoto = editing ? null : photoPending;
     try {
       const saved = await api<{ id: string }>(editing ? `/products/${editingId}` : '/products', { method: editing ? 'PATCH' : 'POST', body: JSON.stringify(body) });
       cancelEdit(); await load();
+      let photoFailed = false;
+      if (pendingPhoto) { try { await api(`/products/${saved.id}/image`, { method: 'PUT', body: JSON.stringify({ dataUrl: pendingPhoto }) }); await load(); } catch { photoFailed = true; } }
       if (template && template.groups.length > 0) {
         try { await attachTemplateGroups(saved.id, template.groups); setMessage(`Produto cadastrado com os grupos do ${template.label.toLowerCase()}. Ajuste preços e opções em Adicionais e combos.`); }
         catch (e) { setMessage(`Produto cadastrado, mas os grupos do modelo não foram vinculados: ${e instanceof Error ? e.message : 'erro desconhecido'}`); }
-      } else setMessage(editing ? 'Produto atualizado.' : 'Produto cadastrado.');
+      } else setMessage(photoFailed ? 'Produto cadastrado, mas a foto não foi salva. Edite o produto e envie novamente.' : editing ? 'Produto atualizado.' : 'Produto cadastrado.');
     } catch (e) { setMessage(e instanceof Error ? e.message : editing ? 'Erro ao atualizar produto' : 'Erro ao cadastrar produto'); }
+  }
+  async function choosePhoto(file: File | undefined) {
+    if (!file) return;
+    setMessage(''); setPhotoBusy(true);
+    try {
+      const dataUrl = await fileToDataUrl(file);
+      if (editingId) { await api(`/products/${editingId}/image`, { method: 'PUT', body: JSON.stringify({ dataUrl }) }); setMessage('Foto atualizada.'); await load(); } else setPhotoPending(dataUrl);
+      setPhoto(dataUrl);
+    } catch (e) { setMessage(e instanceof Error ? e.message : 'Erro ao enviar a foto'); } finally { setPhotoBusy(false); }
+  }
+  async function removePhoto() {
+    setMessage(''); setPhotoBusy(true);
+    try { if (editingId) { await api(`/products/${editingId}/image`, { method: 'DELETE' }); setMessage('Foto removida.'); await load(); } setPhoto(null); setPhotoPending(null); }
+    catch (e) { setMessage(e instanceof Error ? e.message : 'Erro ao remover a foto'); } finally { setPhotoBusy(false); }
   }
   async function changeCategory(item: Product, categoryId: string) {
     setMessage('');
@@ -115,11 +134,18 @@ export default function ProductsPage() {
   const costValue = Number(form.cost); const marginValue = Number(form.margin);
   // Price that leaves the wanted profit on top of the cost (markup over cost).
   const suggestedPrice = form.cost !== '' && form.margin !== '' && costValue > 0 && marginValue >= 0 ? Math.round(costValue * (1 + marginValue / 100) * 100) / 100 : null;
+  const activeItems = items.filter(item => item.active);
+  const quality = (() => {
+    if (activeItems.length === 0) return null;
+    const missing = { photo: activeItems.filter(item => !item.image).length, description: activeItems.filter(item => !item.description?.trim()).length, category: activeItems.filter(item => !item.category).length };
+    const score = Math.round((1 - (missing.photo + missing.description + missing.category) / (activeItems.length * 3)) * 100);
+    return { score, missing };
+  })();
   const term = search.trim().toLocaleLowerCase('pt-BR');
   const visibleItems = items.filter(item => `${item.name} ${item.code ?? ''} ${item.barcode ?? ''} ${item.sector?.name ?? ''}`.toLocaleLowerCase('pt-BR').includes(term));
   const selectedItems = items.filter(item => Object.hasOwn(prices, item.id));
   return <AppShell title="Produtos e produção">
-    {message && <Notice message={message} kind={message.startsWith('Produto cadastrado com') || message.includes('cadastrado') || message === 'Produto atualizado.' || message === 'Preços atualizados.' || message === 'Categoria atualizada.' ? 'success' : 'error'} />}
+    {message && <Notice message={message} kind={message.startsWith('Produto cadastrado com') || message.startsWith('Foto ') || message.includes('cadastrado') || message === 'Produto atualizado.' || message === 'Preços atualizados.' || message === 'Categoria atualizada.' ? 'success' : 'error'} />}
     <section id="product-form" className={`${panelClass} mb-6`}>
       <h2 className="mb-4 text-lg font-semibold">{editingId ? 'Editar produto' : 'Novo produto'}</h2>
       {!editingId && <div className="mb-4 max-w-md">
@@ -148,6 +174,19 @@ export default function ProductsPage() {
             {editingId && <Check label="Produto ativo" checked={form.active} onChange={e => setForm({ ...form, active: e.target.checked })} />}
           </div>
         </>}
+        {formTab === 'photo' && <div className="md:col-span-2 xl:col-span-3">
+          <div className="flex flex-wrap items-center gap-4">
+            <div className="flex h-32 w-32 items-center justify-center overflow-hidden rounded-2xl border border-dashed border-slate-300 bg-slate-50 text-sm text-slate-400">
+              {/* eslint-disable-next-line @next/next/no-img-element -- local preview of a data URL */}
+              {photo ? <img src={photo} alt="Foto do produto" className="h-full w-full object-cover" /> : 'Sem foto'}
+            </div>
+            <div className="grid gap-2">
+              <label className={`${secondaryButtonClass} inline-block cursor-pointer text-center`}>{photoBusy ? 'Enviando...' : photo ? 'Trocar foto' : 'Escolher foto'}<input type="file" accept="image/png,image/jpeg,image/webp" className="sr-only" disabled={photoBusy} onChange={event => { void choosePhoto(event.target.files?.[0]); event.target.value = ''; }} /></label>
+              {photo && <button type="button" className={secondaryButtonClass} disabled={photoBusy} onClick={() => void removePhoto()}>Remover foto</button>}
+            </div>
+          </div>
+          <p className="mt-3 text-xs text-slate-500">PNG, JPEG ou WebP. A imagem é reduzida automaticamente (até 800 px) e aparece na loja virtual. {editingId ? 'A foto é salva assim que você a escolhe.' : 'Ela será enviada junto com o cadastro do produto.'}</p>
+        </div>}
         {formTab === 'scale' && <>
           <div className="md:col-span-2 xl:col-span-3"><Toggle label="Enviar para balança" hint="Inclui o produto no arquivo de itens gerado em Arquivo para balança. Exige o código da balança." checked={form.sendToScale} onChange={sendToScale => setForm({ ...form, sendToScale })} /></div>
           <Field label="Código da balança (PLU)" type="number" min="1" max="9999999" value={form.scaleCode} onChange={e => setForm({ ...form, scaleCode: e.target.value })} />
@@ -165,6 +204,14 @@ export default function ProductsPage() {
         <div className="flex items-end gap-2 md:col-span-2 xl:col-span-3"><button className={buttonClass}>{editingId ? 'Salvar alterações' : 'Adicionar produto'}</button>{editingId && <button type="button" className={secondaryButtonClass} onClick={cancelEdit}>Cancelar edição</button>}<Link href="/categories" className={secondaryButtonClass}>Categorias</Link></div>
       </form>
     </section>
+    {quality && <section className={`${panelClass} mb-6`} aria-label="Qualidade do cardápio">
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <div><p className="text-xs font-semibold uppercase tracking-wider text-brand-700">Qualidade do cardápio</p><p className="mt-1 text-sm text-slate-600">Produtos ativos com foto, descrição e categoria vendem mais na loja virtual.</p></div>
+        <Badge tone={quality.score >= 80 ? 'green' : quality.score >= 50 ? 'amber' : 'red'}>{quality.score}%</Badge>
+      </div>
+      <div className="mt-3 h-2 overflow-hidden rounded-full bg-slate-100"><div className="h-full rounded-full bg-brand-500" style={{ width: `${quality.score}%` }} /></div>
+      <p className="mt-3 text-xs text-slate-600">Faltam: {quality.missing.photo} sem foto · {quality.missing.description} sem descrição · {quality.missing.category} sem categoria (de {activeItems.length} ativos nesta página).</p>
+    </section>}
     <section className={panelClass}>
       <div className="mb-4 flex flex-wrap items-end justify-between gap-3"><div><p className="text-xs font-semibold uppercase tracking-wider text-brand-700">Seu cardápio</p><h2 className="mt-1 text-lg font-semibold">Catálogo ({visibleItems.length} nesta página; {total} no total)</h2></div><div className="w-full sm:max-w-xs"><Field label="Pesquisar nesta página" type="search" placeholder="Nome, código ou setor" value={search} onChange={event => setSearch(event.target.value)} /></div></div>
       <div className="overflow-x-auto"><table className="w-full text-left text-sm">

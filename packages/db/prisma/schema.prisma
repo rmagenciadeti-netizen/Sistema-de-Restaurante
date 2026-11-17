@@ -272,6 +272,7 @@ model Product {
   taxRule         TaxRule?               @relation(fields: [taxRuleId], references: [id], onDelete: SetNull)
   promotionItems  PromotionProduct[]
 
+  image           ProductImage?
   @@unique([tenantId, code])
   @@unique([tenantId, scaleCode])
   @@index([tenantId, unitId, active])
@@ -1484,4 +1485,13 @@ model FiscalContingency {
   tenant      Tenant    @relation(fields: [tenantId], references: [id], onDelete: Cascade)
 
   @@index([tenantId, endedAt])
+}
+
+// Product photo kept apart from Product so list queries never load the image bytes.
+model ProductImage {
+  productId   String   @id
+  contentType String
+  data        Bytes
+  updatedAt   DateTime @updatedAt
+  product     Product  @relation(fields: [productId], references: [id], onDelete: Cascade)
 }

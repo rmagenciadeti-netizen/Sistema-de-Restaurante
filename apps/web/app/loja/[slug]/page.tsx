@@ -238,7 +238,9 @@ export default function StorePage() {
         const priceText = formatMoney(onSale ? product.promoPrice : product.price);
         return <article key={product.id} className="rounded-2xl border border-neutral-800 bg-neutral-900 p-4">
           <div className="flex items-start justify-between gap-3">
-            <div className="min-w-0">
+            {/* eslint-disable-next-line @next/next/no-img-element -- served by the API with its own cache headers */}
+            {product.imageVersion && <img src={`/api-proxy/public/store/${encodeURIComponent(slug)}/products/${product.id}/image?v=${product.imageVersion}`} alt={product.name} loading="lazy" className="h-20 w-20 shrink-0 rounded-xl border border-neutral-800 object-cover" />}
+            <div className="min-w-0 flex-1">
               <h3 className="font-semibold text-white">{product.name}</h3>
               {product.description && <p className="mt-1 text-sm text-neutral-400">{product.description}</p>}
               {product.isCombo && product.comboComponents && product.comboComponents.length > 0 && <p className="mt-1 text-xs text-neutral-500">Inclui: {product.comboComponents.map(component => `${component.quantity}× ${component.product.name}`).join(', ')}</p>}

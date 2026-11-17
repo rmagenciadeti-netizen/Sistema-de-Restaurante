@@ -3,7 +3,7 @@ import type { Slot } from './settings';
 
 export type StoreProduct = {
   id: string; name: string; description?: string | null; price: string | number; promoPrice?: string | number | null;
-  isCombo?: boolean; soldByWeight?: boolean; favorite?: boolean;
+  isCombo?: boolean; soldByWeight?: boolean; favorite?: boolean; imageVersion?: number | null;
   comboComponents?: { quantity: number; product: { name: string } }[]; modifierGroups?: ModifierGroupView[];
 };
 export type StoreCategory = { id: string | null; name: string; products: StoreProduct[] };

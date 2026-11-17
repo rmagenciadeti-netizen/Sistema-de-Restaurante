@@ -126,6 +126,27 @@ test('tabular reports and virtual store', { skip: process.env.RUN_DB_TESTS !== '
     await prisma.promotion.delete({ where: { id: promotion.id } });
   });
 
+  await t.test('product photos are validated, tenant scoped and served publicly', async () => {
+    const png = Buffer.concat([Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]), Buffer.alloc(32, 7)]);
+    const dataUrl = `data:image/png;base64,${png.toString('base64')}`;
+    assert.equal((await call('PUT', `/products/${p2.id}/image`, A.admin, { dataUrl: 'data:image/svg+xml;base64,PHN2Zz48L3N2Zz4=' })).status, 400);
+    assert.equal((await call('PUT', `/products/${p2.id}/image`, A.admin, { dataUrl: `data:image/jpeg;base64,${png.toString('base64')}` })).status, 400, 'bytes must match the declared type');
+    assert.equal((await call('PUT', `/products/${p2.id}/image`, A.waiter, { dataUrl })).status, 403);
+    assert.equal((await call('PUT', `/products/${p2.id}/image`, B.admin, { dataUrl })).status, 404, 'other tenant cannot touch the product');
+    assert.equal((await call('PUT', `/products/${p2.id}/image`, A.admin, { dataUrl })).status, 200);
+    assert.equal((await call<any>('GET', `/products/${p2.id}/image`, A.admin)).body.dataUrl, dataUrl);
+    assert.ok((await call<any>('GET', '/products?pageSize=100', A.admin)).body.items.find((item: any) => item.id === p2.id).image);
+    const store = await call<any>('GET', `/public/store/${A.tenant.slug}`);
+    assert.ok(store.body.categories.flatMap((category: any) => category.products).find((item: any) => item.id === p2.id).imageVersion);
+    const served = await fetch(`${base}/public/store/${A.tenant.slug}/products/${p2.id}/image`);
+    assert.equal(served.status, 200);
+    assert.equal(served.headers.get('content-type'), 'image/png');
+    assert.deepEqual(Buffer.from(await served.arrayBuffer()), png);
+    assert.equal((await fetch(`${base}/public/store/${B.tenant.slug}/products/${p2.id}/image`)).status, 404, 'served only through the owning store');
+    assert.equal((await call('DELETE', `/products/${p2.id}/image`, A.admin)).status, 200);
+    assert.equal((await fetch(`${base}/public/store/${A.tenant.slug}/products/${p2.id}/image`)).status, 404);
+  });
+
   await t.test('public store creates scheduled orders and rejects orders while closed', async () => {
     const customer = { name: 'Maria', phone: '11988887777' };
     const items = [{ productId: p1.id, quantity: 1 }];
