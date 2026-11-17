@@ -241,7 +241,7 @@ export async function respond(db: Db, env: BotEnv, input: BotInput, options: Bot
 
   if (hasAny(normalized, RESERVE_WORDS) || normalized === '7') return result('reserve', [`🪑 Vamos reservar! Para quantas pessoas?`], { step: 'RESERVE_PEOPLE' });
 
-  if (hasAny(normalized, ['fazer pedido', 'quero pedir', 'pedir', 'pedido online', 'link', 'site', 'loja virtual', 'cardapio digital', 'encomendar']) || normalized === '2') {
+  if (/\b(fazer|fazendo|realizar|efetuar)\b.*\bpedido\b/.test(normalized) || hasAny(normalized, ['fazer pedido', 'quero pedir', 'pedir', 'pedido online', 'link', 'site', 'loja virtual', 'cardapio digital', 'encomendar']) || normalized === '2') {
     return result('order_link', [env.storeUrl ? `🛒 Faça seu pedido online por aqui:\n${env.storeUrl}\n\nSe preferir, me diga o que deseja e chamo um atendente.` : 'Para fazer seu pedido, digite *atendente* e vamos anotar por aqui. 🙋']);
   }
 
