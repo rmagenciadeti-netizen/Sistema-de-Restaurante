@@ -12,7 +12,9 @@ const schema = z.object({ name: z.string().min(2).max(160), categoryId: z.string
   barcode: z.string().trim().max(40).optional().nullable(), favorite: z.boolean().optional(), soldByWeight: z.boolean().optional(), sendToScale: z.boolean().optional(),
   scaleCode: z.number().int().min(1).max(9999999).optional().nullable(), scaleDepartment: z.number().int().min(0).max(99).optional().nullable(), shelfLifeDays: z.number().int().min(0).max(999).optional().nullable(),
   scaleNotes: z.string().trim().max(500).optional().nullable(), ncm: z.string().regex(/^\d{8}$/, 'NCM deve ter 8 dígitos').optional().nullable(), cest: z.string().regex(/^\d{7}$/, 'CEST deve ter 7 dígitos').optional().nullable(),
-  taxRuleId: z.string().uuid().optional().nullable() });
+  taxRuleId: z.string().uuid().optional().nullable(),
+  gtin: z.string().regex(/^(\d{8}|\d{12}|\d{13}|\d{14})$/, 'GTIN deve ter 8, 12, 13 ou 14 dígitos').optional().nullable(),
+  measureUnit: z.enum(['UN', 'KG', 'G', 'L', 'ML', 'CX', 'PCT', 'PORC']).optional(), localOnly: z.boolean().optional(), isComponent: z.boolean().optional() });
 const priceText = z.string().regex(/^\d{1,10}(?:\.\d{1,2})?$/);
 const bulkPricesSchema = z.object({
   items: z.array(z.object({ id: z.string().uuid(), expectedPrice: priceText, price: priceText })).min(1).max(100),

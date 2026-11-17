@@ -271,6 +271,11 @@ model Product {
   taxRuleId       String?
   taxRule         TaxRule?               @relation(fields: [taxRuleId], references: [id], onDelete: SetNull)
   promotionItems  PromotionProduct[]
+  gtin            String?
+  measureUnit     String                 @default("UN")
+  // localOnly: sold only at the venue (hidden from the virtual store and the WhatsApp bot). isComponent: ingredient/part of other products, never sold on its own online.
+  localOnly       Boolean                @default(false)
+  isComponent     Boolean                @default(false)
 
   image           ProductImage?
   @@unique([tenantId, code])

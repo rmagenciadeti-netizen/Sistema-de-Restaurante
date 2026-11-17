@@ -4,6 +4,7 @@ export type CatalogProduct = Product & {
   barcode?: string | null; favorite?: boolean; soldByWeight?: boolean; sendToScale?: boolean; scaleCode?: number | null;
   scaleDepartment?: number | null; shelfLifeDays?: number | null; scaleNotes?: string | null; ncm?: string | null; cest?: string | null; taxRuleId?: string | null;
   description?: string | null; prepTimeMinutes?: number | null; image?: { updatedAt: string } | null;
+  gtin?: string | null; measureUnit?: string; localOnly?: boolean; isComponent?: boolean;
 };
 
 export type TaxRuleOption = { id: string; name: string; ncm?: string | null; cest?: string | null; active?: boolean };

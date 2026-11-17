@@ -147,6 +147,23 @@ test('tabular reports and virtual store', { skip: process.env.RUN_DB_TESTS !== '
     assert.equal((await fetch(`${base}/public/store/${A.tenant.slug}/products/${p2.id}/image`)).status, 404);
   });
 
+  await t.test('venue-only products and components stay off the online menu', async () => {
+    assert.equal((await call('PATCH', `/products/${p2.id}`, A.admin, { gtin: '123' })).status, 400, 'GTIN length');
+    assert.equal((await call('PATCH', `/products/${p2.id}`, A.admin, { measureUnit: 'XX' })).status, 400);
+    const saved = await call<any>('PATCH', `/products/${p2.id}`, A.admin, { gtin: '7891234567895', measureUnit: 'KG', localOnly: true });
+    assert.equal(saved.status, 200);
+    assert.equal(saved.body.gtin, '7891234567895');
+    const hidden = await call<any>('GET', `/public/store/${A.tenant.slug}`);
+    assert.equal(hidden.body.categories.flatMap((category: any) => category.products).some((item: any) => item.id === p2.id), false);
+    const rejected = await call<any>('POST', `/public/store/${A.tenant.slug}/orders`, undefined, { fulfillment: 'TAKEAWAY', customer: { name: 'Maria', phone: '11988887777' }, items: [{ productId: p2.id, quantity: 1 }] });
+    assert.equal(rejected.status, 400);
+    assert.equal(rejected.body.message, 'PRODUCTS_UNAVAILABLE');
+    await call('PATCH', `/products/${p2.id}`, A.admin, { localOnly: false, isComponent: true });
+    assert.equal((await call<any>('GET', `/public/store/${A.tenant.slug}`)).body.categories.flatMap((category: any) => category.products).some((item: any) => item.id === p2.id), false, 'components are hidden too');
+    await call('PATCH', `/products/${p2.id}`, A.admin, { isComponent: false });
+    assert.equal((await call<any>('GET', `/public/store/${A.tenant.slug}`)).body.categories.flatMap((category: any) => category.products).some((item: any) => item.id === p2.id), true);
+  });
+
   await t.test('public store creates scheduled orders and rejects orders while closed', async () => {
     const customer = { name: 'Maria', phone: '11988887777' };
     const items = [{ productId: p1.id, quantity: 1 }];

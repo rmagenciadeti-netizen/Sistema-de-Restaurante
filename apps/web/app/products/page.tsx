@@ -12,8 +12,9 @@ import { attachTemplateGroups, findTemplate, productTemplates } from '../../lib/
 const emptyForm = {
   name: '', code: '', price: '', cost: '', sectorId: '', categoryId: '', barcode: '', favorite: false, soldByWeight: false, active: true,
   sendToScale: false, scaleCode: '', scaleDepartment: '', shelfLifeDays: '', scaleNotes: '', ncm: '', cest: '', taxRuleId: '',
-  description: '', prepTimeMinutes: '', margin: '',
+  description: '', prepTimeMinutes: '', margin: '', gtin: '', measureUnit: 'UN', localOnly: false, isComponent: false,
 };
+const measureUnits = [['UN', 'Unidade'], ['KG', 'Quilo'], ['G', 'Grama'], ['L', 'Litro'], ['ML', 'Mililitro'], ['CX', 'Caixa'], ['PCT', 'Pacote'], ['PORC', 'Porção']] as const;
 type FormTab = 'data' | 'photo' | 'scale' | 'tax';
 const formTabs: { key: FormTab; label: string }[] = [{ key: 'data', label: 'Dados' }, { key: 'photo', label: 'Foto' }, { key: 'scale', label: 'Balança' }, { key: 'tax', label: 'Fiscal' }];
 const optionalInt = (value: string) => (value.trim() === '' ? null : Number(value));
@@ -38,6 +39,7 @@ export default function ProductsPage() {
       scaleCode: item.scaleCode == null ? '' : String(item.scaleCode), scaleDepartment: item.scaleDepartment == null ? '' : String(item.scaleDepartment), shelfLifeDays: item.shelfLifeDays == null ? '' : String(item.shelfLifeDays),
       scaleNotes: item.scaleNotes ?? '', ncm: item.ncm ?? '', cest: item.cest ?? '', taxRuleId: item.taxRuleId ?? '',
       description: item.description ?? '', prepTimeMinutes: item.prepTimeMinutes == null ? '' : String(item.prepTimeMinutes), margin: '',
+      gtin: item.gtin ?? '', measureUnit: item.measureUnit ?? 'UN', localOnly: Boolean(item.localOnly), isComponent: Boolean(item.isComponent),
     });
     setEditingId(item.id); setFormTab('data'); setMessage(''); setPhoto(null); setPhotoPending(null);
     if (item.image) api<{ dataUrl: string }>(`/products/${item.id}/image`).then(result => setPhoto(result.dataUrl)).catch(() => undefined);
@@ -48,6 +50,8 @@ export default function ProductsPage() {
     event.preventDefault(); setMessage('');
     const ncm = form.ncm.replace(/\D/g, ''); const cest = form.cest.replace(/\D/g, '');
     if (form.sendToScale && !form.scaleCode.trim()) { setFormTab('scale'); setMessage('Informe o código da balança para enviar o produto à balança.'); return; }
+    const gtin = form.gtin.replace(/\D/g, '');
+    if (gtin && ![8, 12, 13, 14].includes(gtin.length)) { setFormTab('data'); setMessage('O GTIN deve ter 8, 12, 13 ou 14 dígitos.'); return; }
     if (ncm && ncm.length !== 8) { setFormTab('tax'); setMessage('O NCM deve ter 8 dígitos.'); return; }
     if (cest && cest.length !== 7) { setFormTab('tax'); setMessage('O CEST deve ter 7 dígitos.'); return; }
     const editing = editingId !== null;
@@ -58,6 +62,7 @@ export default function ProductsPage() {
       scaleCode: optionalInt(form.scaleCode), scaleDepartment: optionalInt(form.scaleDepartment), shelfLifeDays: optionalInt(form.shelfLifeDays), scaleNotes: form.scaleNotes.trim() || null,
       ncm: ncm || null, cest: cest || null, taxRuleId: form.taxRuleId || null,
       description: form.description.trim() || null, prepTimeMinutes: optionalInt(form.prepTimeMinutes),
+      gtin: gtin || null, measureUnit: form.measureUnit, localOnly: form.localOnly, isComponent: form.isComponent,
     };
     const template = editing ? null : findTemplate(templateKey); const pendingPhoto = editing ? null : photoPending;
     try {
@@ -157,6 +162,8 @@ export default function ProductsPage() {
         {formTab === 'data' && <>
           <Field label="Nome" required value={form.name} onChange={e => setForm({ ...form, name: e.target.value })} />
           <Field label="Código" value={form.code} onChange={e => setForm({ ...form, code: e.target.value })} />
+          <Field label="GTIN (EAN)" inputMode="numeric" maxLength={14} placeholder="8, 12, 13 ou 14 dígitos" value={form.gtin} onChange={e => setForm({ ...form, gtin: e.target.value })} />
+          <Select label="Unidade de medida" value={form.measureUnit} onChange={e => setForm({ ...form, measureUnit: e.target.value })}>{measureUnits.map(([key, label]) => <option key={key} value={key}>{label} ({key})</option>)}</Select>
           <Field label="Código de barras" inputMode="numeric" maxLength={40} value={form.barcode} onChange={e => setForm({ ...form, barcode: e.target.value })} />
           <Field label={form.soldByWeight ? 'Preço por kg (R$)' : 'Preço de venda (R$)'} type="number" min="0" step="0.01" required value={form.price} onChange={e => setForm({ ...form, price: e.target.value })} />
           <Field label="Custo (R$)" type="number" min="0" step="0.01" value={form.cost} onChange={e => setForm({ ...form, cost: e.target.value })} />
@@ -170,6 +177,8 @@ export default function ProductsPage() {
           <Select label="Categoria" value={form.categoryId} onChange={e => setForm({ ...form, categoryId: e.target.value })}><option value="">Sem categoria</option>{categories.map(category => <option key={category.id} value={category.id}>{category.name}</option>)}</Select>
           <div className="flex flex-col justify-end gap-2">
             <Check label="Favorito" checked={form.favorite} onChange={e => setForm({ ...form, favorite: e.target.checked })} />
+            <Check label="Somente atendimento local (fora da loja virtual e do robô)" checked={form.localOnly} onChange={e => setForm({ ...form, localOnly: e.target.checked })} />
+            <Check label="Componente (não é vendido sozinho online)" checked={form.isComponent} onChange={e => setForm({ ...form, isComponent: e.target.checked })} />
             <Check label="Vendido por peso (preço por kg)" checked={form.soldByWeight} onChange={e => setForm({ ...form, soldByWeight: e.target.checked })} />
             {editingId && <Check label="Produto ativo" checked={form.active} onChange={e => setForm({ ...form, active: e.target.checked })} />}
           </div>
@@ -218,7 +227,7 @@ export default function ProductsPage() {
         <thead className="border-b border-slate-200 bg-slate-50 text-slate-600"><tr><th className="p-3">Ajustar</th><th className="p-3">Produto</th><th className="p-3">Código</th><th className="p-3">Categoria</th><th className="p-3">Setor</th><th className="p-3">Preço</th><th className="p-3">Situação</th><th className="p-3">Estoque</th><th className="p-3">Ações</th></tr></thead>
         <tbody>{visibleItems.map(item => <tr key={item.id} className="border-b border-slate-200">
           <td className="p-3"><input type="checkbox" aria-label={`Selecionar ${item.name} para ajuste de preço`} checked={Object.hasOwn(prices, item.id)} disabled={savingPrices} onChange={event => selectPrice(item, event.target.checked)} /></td>
-          <td className="p-3 font-semibold">{item.favorite && <span aria-label="Favorito" title="Favorito" className="mr-1 text-brand-600">★</span>}{item.name}{item.soldByWeight && <> <Badge tone="blue">Por kg</Badge></>}{item.sendToScale && <> <Badge tone="gold">Balança {item.scaleCode}</Badge></>}</td><td className="p-3">{item.code || '—'}</td>
+          <td className="p-3 font-semibold">{item.favorite && <span aria-label="Favorito" title="Favorito" className="mr-1 text-brand-600">★</span>}{item.name}{item.localOnly && <> <Badge tone="amber">Só local</Badge></>}{item.isComponent && <> <Badge tone="neutral">Componente</Badge></>}{item.soldByWeight && <> <Badge tone="blue">Por kg</Badge></>}{item.sendToScale && <> <Badge tone="gold">Balança {item.scaleCode}</Badge></>}</td><td className="p-3">{item.code || '—'}</td>
           <td className="p-3"><select aria-label={`Categoria de ${item.name}`} className="rounded-lg border border-slate-300 bg-white px-2 py-1.5" value={item.category?.id ?? ''} disabled={savingPrices || selectedItems.length > 0} onChange={event => void changeCategory(item, event.target.value)}><option value="">Sem categoria</option>{categories.map(category => <option key={category.id} value={category.id}>{category.name}</option>)}</select></td>
           <td className="p-3">{item.sector?.name || '—'}</td><td className="p-3 font-semibold">{formatMoney(item.price)}{item.soldByWeight ? '/kg' : ''}</td><td className="p-3"><span className={`rounded-full px-2.5 py-1 text-xs font-medium ${item.active ? 'bg-emerald-100 text-emerald-800' : 'bg-slate-100 text-slate-700'}`}>{item.active ? 'Ativo' : 'Inativo'}</span></td><td className="p-3">{item.active && <Link href={`/inventory?productId=${encodeURIComponent(item.id)}#ficha-tecnica`} className={`${secondaryButtonClass} inline-block whitespace-nowrap`}>Ficha técnica</Link>}</td><td className="p-3"><button type="button" className={secondaryButtonClass} disabled={savingPrices} onClick={() => startEdit(item)}>Editar</button></td>
         </tr>)}</tbody>

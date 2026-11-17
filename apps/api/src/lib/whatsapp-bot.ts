@@ -64,7 +64,7 @@ type MenuData = { categories: { id: string | null; name: string; products: { id:
 
 async function loadMenu(db: Db, env: BotEnv, now: Date): Promise<MenuData> {
   const [products, hidden, promoRows] = await Promise.all([
-    db.product.findMany({ where: { tenantId: env.tenantId, active: true, ...(env.unitId ? { OR: [{ unitId: env.unitId }, { unitId: null }] } : {}) }, select: { id: true, name: true, description: true, price: true, soldByWeight: true, category: { select: { id: true, name: true } } }, orderBy: { name: 'asc' }, take: 400 }),
+    db.product.findMany({ where: { tenantId: env.tenantId, active: true, localOnly: false, isComponent: false, ...(env.unitId ? { OR: [{ unitId: env.unitId }, { unitId: null }] } : {}) }, select: { id: true, name: true, description: true, price: true, soldByWeight: true, category: { select: { id: true, name: true } } }, orderBy: { name: 'asc' }, take: 400 }),
     hiddenCategoryIds(db, env.tenantId, now),
     db.promotion.findMany({ where: { tenantId: env.tenantId, active: true, startsAt: { lte: now }, OR: [{ endsAt: null }, { endsAt: { gte: now } }] }, include: { products: { select: { productId: true } } } }),
   ]);

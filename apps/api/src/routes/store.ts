@@ -33,7 +33,7 @@ storeRoutes.get('/:slug', async (req, res, next) => {
       loadSettings(prisma, tenant.id),
       hiddenCategoryIds(prisma, tenant.id, now),
       prisma.product.findMany({
-        where: { tenantId: tenant.id, active: true, ...unitScope },
+        where: { tenantId: tenant.id, active: true, localOnly: false, isComponent: false, ...unitScope },
         select: {
           id: true, name: true, description: true, price: true, isCombo: true, soldByWeight: true, favorite: true, image: { select: { updatedAt: true } }, category: { select: { id: true, name: true } },
           comboComponents: { select: { quantity: true, product: { select: { name: true } } } },
@@ -123,6 +123,8 @@ storeRoutes.post('/:slug/orders', async (req, res, next) => {
     if (!input.scheduledFor && !settings.store.allowBuyWhenClosed && !isStoreOpen(settings.hours, now)) return res.status(409).json({ message: 'STORE_CLOSED' });
     if (channel === OrderChannel.DELIVERY && !input.address) return res.status(400).json({ message: 'ADDRESS_REQUIRED' });
     if (channel === OrderChannel.TAKEAWAY && input.deliveryZoneId) return res.status(400).json({ message: 'DELIVERY_ZONE_ONLY_FOR_DELIVERY' });
+    // Venue-only products and components are not on the online menu, so they cannot be ordered through it either.
+    if (await prisma.product.count({ where: { tenantId: tenant.id, id: { in: input.items.map(item => item.productId) }, OR: [{ localOnly: true }, { isComponent: true }] } }) > 0) return res.status(400).json({ message: 'PRODUCTS_UNAVAILABLE' });
 
     let deliveryFeeOverride: Prisma.Decimal | undefined;
     if (channel === OrderChannel.DELIVERY && !input.deliveryZoneId) {
