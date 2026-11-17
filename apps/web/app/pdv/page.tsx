@@ -15,6 +15,8 @@ import { OnlineCharges } from '../../components/online-charges';
 import { PasswordReleaseDialog } from '../../components/password-release';
 import type { ReleaseAction } from '../../lib/types-settings';
 import { textareaClass } from '../../components/ui';
+import { FiscalChoiceDialog, fiscalCheckout, FiscalReadinessBanner, InutilizationDialog } from '../../components/pdv-fiscal';
+import type { FiscalSettingsView } from '../../lib/types-fiscal';
 import {
   DEFAULT_PAYMENT_METHODS, opsError, orderTitle, promoPrice, toLocalInput,
   type CoverEventNow, type OpsCashSession, type OpsCustomer, type OpsOrder, type OpsProduct, type OpsPromotion, type OpsTable, type OpsZone, type PaymentMethodOption, type ScaleLookup,
@@ -48,6 +50,7 @@ export default function PdvPage() {
   const customerTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const pendingSubmit = useRef<'order' | 'sale'>('order');
   const pendingRelease = useRef<'DISCOUNT' | 'ONLINE_ORDER'>('DISCOUNT');
+  const fiscalResolver = useRef<((emit: boolean) => void) | null>(null);
 
   const [products, setProducts] = useState<OpsProduct[]>([]);
   const [promotions, setPromotions] = useState<OpsPromotion[]>([]);
@@ -100,6 +103,9 @@ export default function PdvPage() {
   const [fullscreen, setFullscreen] = useState(false);
   const [printNonce, setPrintNonce] = useState(0);
   const [printContent, setPrintContent] = useState({ receipt: true, ticket: false });
+  const [fiscalSettings, setFiscalSettings] = useState<FiscalSettingsView | null>(null);
+  const [fiscalAsk, setFiscalAsk] = useState(false);
+  const [inutilOpen, setInutilOpen] = useState(false);
 
   const pdv = settings?.pdv ?? DEFAULT_PDV;
   const unit = units.find(item => item.id === unitId);
@@ -110,7 +116,7 @@ export default function PdvPage() {
 
   async function load() {
     try {
-      const [catalog, settingsResult, promotionList, tableList, zoneList, groupList, unitList, sessionList, methodList, coverNow] = await Promise.all([
+      const [catalog, settingsResult, promotionList, tableList, zoneList, groupList, unitList, sessionList, methodList, coverNow, fiscalView] = await Promise.all([
         loadProducts(),
         optional(api<SettingsResponse>('/settings'), null),
         optional(api<ListResponse<OpsPromotion>>('/promotions'), { items: [], total: 0 }),
@@ -121,8 +127,9 @@ export default function PdvPage() {
         optional(api<ListResponse<OpsCashSession>>('/cash/sessions'), null),
         optional(api<{ items: PaymentMethodOption[] }>('/payment-methods/options'), { items: [] }),
         optional(api<unknown>('/cover-events/current'), null),
+        optional(api<FiscalSettingsView>('/fiscal/settings'), null).catch(() => null),
       ]);
-      setProducts(catalog); setSettings(settingsResult?.settings ?? null); setPromotions(promotionList.items);
+      setProducts(catalog); setSettings(settingsResult?.settings ?? null); setFiscalSettings(fiscalView); setPromotions(promotionList.items);
       if (settingsResult?.settings.pdv.askSeller) {
         const staff = await optional(api<ListResponse<{ id: string; name: string }>>('/orders/sellers'), { items: [], total: 0 });
         setSellers(staff.items);
@@ -324,6 +331,10 @@ export default function PdvPage() {
     if (receipt || ticket) { setPrintContent({ receipt, ticket }); setLastOrder(order); setPrintNonce(value => value + 1); }
   }
 
+  function askFiscal() {
+    return new Promise<boolean>(resolve => { fiscalResolver.current = resolve; setFiscalAsk(true); });
+  }
+
   async function submit(mode: 'order' | 'sale', authorizedRelease?: string, authorizedOrderRelease?: string) {
     const problem = validate();
     if (problem) { setMessage(problem); return; }
@@ -356,8 +367,12 @@ export default function PdvPage() {
       const settled = { ...order, payments: [{ id: paid.payment.id, amount: paid.payment.amount, method: paid.payment.method }] };
       setLastOrder(settled);
       const change = method.allowChange && receivedValue > Number(order.total) ? ` Troco: ${formatMoney(receivedValue - Number(order.total))}.` : '';
-      setSuccess(`Venda ${orderTitle(order)} registrada: ${formatMoney(order.total)} em ${method.name}.${change}`);
-      setPayOpen(false); askToPrint(settled, true); resetCart();
+      setPayOpen(false);
+      // Fiscal emission never undoes the sale: its outcome is only appended to the success message.
+      const fiscalMode = fiscalSettings?.pdvMode;
+      const fiscalNote = fiscalMode === 'FISCAL' ? await fiscalCheckout(order.id) : fiscalMode === 'ASK' ? await fiscalCheckout(order.id, await askFiscal()) : '';
+      setSuccess(`Venda ${orderTitle(order)} registrada: ${formatMoney(order.total)} em ${method.name}.${change}${fiscalNote ? ` ${fiscalNote}` : ''}`);
+      askToPrint(settled, true); resetCart();
     } catch (error) {
       if (order) { setMessage(`Pedido ${orderTitle(order)} foi gerado, mas o pagamento não foi registrado: ${opsError(error, 'erro ao pagar')}. Conclua em Caixa.`); setPayOpen(false); resetCart(); }
       else setMessage(opsError(error, 'Erro ao gerar o pedido'));
@@ -394,12 +409,14 @@ export default function PdvPage() {
           <div className="flex items-center gap-2" role="toolbar" aria-label="Ações do PDV">
             <Link href="/cash" title="Caixa e pagamentos" aria-label="Caixa e pagamentos" className={actionButton}>💳</Link>
             <button type="button" title="Imprimir último pedido" aria-label="Imprimir último pedido" onClick={printLast} className={actionButton}>🖨️</button>
+            <button type="button" title="Inutilizar numeração" aria-label="Inutilizar numeração" onClick={() => setInutilOpen(true)} className={actionButton}>🚫</button>
             <button type="button" title="Recarregar produtos e configurações" aria-label="Recarregar" onClick={() => void load()} className={actionButton}>↻</button>
             <button type="button" title={fullscreen ? 'Sair da tela cheia' : 'Tela cheia'} aria-label={fullscreen ? 'Sair da tela cheia' : 'Tela cheia'} aria-pressed={fullscreen} onClick={toggleFullscreen} className={actionButton}>⛶</button>
           </div>
         </div>
         {message && <Notice message={message} />}
         {success && <Notice message={success} kind="success" />}
+        <FiscalReadinessBanner settings={fiscalSettings} />
         {sessions !== null && sessions.length === 0 && <div role="status" className="mb-3 flex flex-wrap items-center justify-between gap-2 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">Nenhum caixa aberto: você pode gerar pedidos, mas a venda com pagamento exige caixa aberto.<Link href="/cash" className="font-semibold underline">Abrir caixa</Link></div>}
 
         <div className="grid items-start gap-4 lg:grid-cols-[minmax(0,1fr)_26rem]">
@@ -554,6 +571,8 @@ export default function PdvPage() {
             <p className="mt-3 text-sm text-slate-600">A confirmação é recebida pelo servidor. Se nenhum provedor estiver configurado, feche esta janela e registre o pagamento manualmente no Caixa.</p>
           </div>
         </div>}
+        {fiscalAsk && <FiscalChoiceDialog onChoose={emit => { setFiscalAsk(false); fiscalResolver.current?.(emit); fiscalResolver.current = null; }} />}
+        {inutilOpen && <InutilizationDialog onClose={() => setInutilOpen(false)} />}
         <PasswordReleaseDialog key={releaseAction} open={releaseOpen} action={releaseAction} defaultReason={releaseAction === 'OTHER' ? 'PDV_TABLE_ORDER' : undefined} fixedReason={releaseAction === 'OTHER'} onCancel={() => setReleaseOpen(false)} onAuthorized={id => {
           setReleaseOpen(false);
           if (pendingRelease.current === 'ONLINE_ORDER') { setOrderReleaseId(id); void submit(pendingSubmit.current, releaseId, id); }

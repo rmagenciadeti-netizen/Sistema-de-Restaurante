@@ -56,6 +56,20 @@ export function api<T>(path: string, options: RequestInit = {}): Promise<T> { re
 // Public endpoints (customer QR menu) must never carry the staff token.
 export function publicApi<T>(path: string, options: RequestInit = {}): Promise<T> { return request<T>(path, options, false); }
 
+// Authenticated binary download (e.g. XML ZIP export); saves the file with the server-provided name.
+export async function downloadFile(path: string, fallbackName: string): Promise<Headers> {
+  const token = localStorage.getItem(tokenStorageKey);
+  const response = await fetch(`${API_BASE}${path}`, { headers: token ? { Authorization: `Bearer ${token}` } : {}, cache: 'no-store' });
+  if (response.status === 401) endSession();
+  if (!response.ok) { const payload = await response.json().catch(() => ({})); throw new ApiError(payload.message ?? 'Falha ao baixar o arquivo', response.status, payload); }
+  const name = /filename="([^"]+)"/.exec(response.headers.get('content-disposition') ?? '')?.[1] ?? fallbackName;
+  const link = document.createElement('a'); link.href = URL.createObjectURL(await response.blob()); link.download = name; link.click(); URL.revokeObjectURL(link.href);
+  return response.headers;
+}
+export function saveText(text: string, fileName: string, type = 'application/xml') {
+  const link = document.createElement('a'); link.href = URL.createObjectURL(new Blob([text], { type })); link.download = fileName; link.click(); URL.revokeObjectURL(link.href);
+}
+
 export function errorMessage(error: unknown, fallback: string) { return error instanceof Error ? error.message : fallback; }
 export function formatMoney(value: string | number | null | undefined) { return `R$ ${Number(value ?? 0).toFixed(2).replace('.', ',')}`; }
 export function formatDateTime(value?: string | null) { return value ? new Date(value).toLocaleString('pt-BR') : '—'; }
@@ -102,7 +116,9 @@ export type PublicProduct = { id: string; name: string; description?: string | n
 export type AppUser = { id: string; name: string; username?: string | null; email: string; role: string; status: 'ACTIVE' | 'INACTIVE' | 'BLOCKED'; unitId?: string | null; employeeId?: string | null; commissionPercent?: string | number | null; createdAt: string };
 export type Shift = { id: string; employeeId: string; unitId: string; startsAt: string; endsAt: string; position?: string | null; notes?: string | null; employee?: { id: string; fullName: string; position?: string | null } };
 export type PaymentCharge = { id: string; orderId: string; provider: string; method: string; amount: string | number; status: 'PENDING' | 'PAID' | 'FAILED' | 'EXPIRED' | 'REFUNDED'; qrPayload?: string | null; error?: string | null; createdAt: string; paidAt?: string | null };
-export type FiscalDocument = { id: string; orderId: string; provider: string; kind: 'NFCE' | 'NFE'; status: 'PENDING' | 'AUTHORIZED' | 'REJECTED' | 'CANCELLED'; series?: string | null; number?: string | null; accessKey?: string | null; documentUrl?: string | null; error?: string | null; createdAt: string; order?: { code: string; total: string | number } };
+export type FiscalDocument = { id: string; orderId: string; provider: string; kind: 'NFCE' | 'NFE'; status: FiscalStatus; series?: string | null; number?: string | null; accessKey?: string | null; documentUrl?: string | null; error?: string | null; createdAt: string; order?: { code: string; total: string | number; customerName?: string | null; customer?: { name: string; document?: string | null } | null };
+  environment: 'HOMOLOGATION' | 'PRODUCTION'; protocol?: string | null; statusCode?: string | null; contingency: boolean; attempts: number; lastAttemptAt?: string | null; hasXml?: boolean };
+export type FiscalStatus = 'PENDING' | 'AUTHORIZED' | 'REJECTED' | 'CANCELLED' | 'PROCESSING' | 'CONTINGENCY' | 'DENIED';
 export type Integration = { id: string; provider: string; name: string; unitId?: string | null; active: boolean; lastUsedAt?: string | null; createdAt: string };
 export type ReportOverview = { period: { from: string; to: string }; orders: number; totals: { subtotal: string | null; serviceFee: string | null; deliveryFee: string | null; discount: string | null; total: string | null }; paidExpenses: string | number; paymentsByMethod: { method: string; _count: number; _sum: { amount: string | null } }[]; bestSellers: { productId: string; name: string; quantity: number | null; sales: string | null }[] };
 export type WaiterReportRow = { userId: string | null; name: string; orders: number; sales: string | null; serviceFee: string | null; total: string | null };

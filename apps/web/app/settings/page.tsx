@@ -4,13 +4,15 @@ import { Suspense, useState } from 'react';
 import { useSearchParams } from 'next/navigation';
 import { AppShell, buttonClass, Notice, panelClass } from '../../components/app-shell';
 import { FinancialSection, FulfillmentSection, HoursSection, CompanySection, MenuLayoutSection, OrderStatusesSection, OrdersSection, PdvSection, PrintingSection, ProductsSection, ScaleSection, StoreSection, TicketSection } from '../../components/settings-sections';
+import { FiscalSettingsPanel } from '../../components/fiscal-settings-panel';
 import { PageHeader, SideTabs } from '../../components/ui';
 import { api } from '../../lib/api';
 import type { SettingsSectionName } from '../../lib/settings';
 import { invalidSlots, saveErrorMessage } from '../../lib/settings-helpers';
 import { useSettings } from '../../lib/use-settings';
 
-type Tab = { key: SettingsSectionName; label: string; icon: string; title: string };
+type TabKey = SettingsSectionName | 'fiscal';
+type Tab = { key: TabKey; label: string; icon: string; title: string };
 const tabs: Tab[] = [
   { key: 'company', label: 'Painel', icon: '🏢', title: 'Dados da empresa' },
   { key: 'menuLayout', label: 'Personalização do sistema', icon: '🎛️', title: 'Personalização do sistema' },
@@ -25,14 +27,17 @@ const tabs: Tab[] = [
   { key: 'ticket', label: 'Ticket de retirada', icon: '🎫', title: 'Ticket de retirada' },
   { key: 'orderStatuses', label: 'Status dos pedidos', icon: '🔖', title: 'Status dos pedidos' },
   { key: 'financial', label: 'Financeiro', icon: '💰', title: 'Financeiro' },
+  { key: 'fiscal', label: 'Fiscais', icon: '📑', title: 'Configurações fiscais' },
 ];
 
 function SettingsContent() {
   const initialTab = useSearchParams().get('tab');
   const { draft, hasAdminPassword, setHasAdminPassword, role, canEdit, notice, setNotice, saving, isDirty, patch, save } = useSettings();
-  const [tab, setTab] = useState<SettingsSectionName>(tabs.find(item => item.key === initialTab)?.key ?? 'company');
+  const [tab, setTab] = useState<TabKey>(tabs.find(item => item.key === initialTab)?.key ?? 'company');
   const [passwordBusy, setPasswordBusy] = useState(false);
   const current = tabs.find(item => item.key === tab)!;
+  const isFiscal = tab === 'fiscal';
+  const dirty = (key: TabKey) => key !== 'fiscal' && isDirty(key);
 
   function problem(): string | null {
     if (!draft) return null;
@@ -50,6 +55,7 @@ function SettingsContent() {
   async function submit() {
     const issue = problem();
     if (issue) { setNotice({ text: issue, kind: 'error' }); return; }
+    if (tab === 'fiscal') return;
     await save(tab, `${current.title}: configurações salvas.`);
   }
 
@@ -65,6 +71,7 @@ function SettingsContent() {
 
   const disabled = !canEdit || saving;
   const renderSection = () => {
+    if (tab === 'fiscal') return <FiscalSettingsPanel canEdit={role === 'ADMIN' || role === 'MANAGER'} />;
     if (!draft) return <p className="text-sm text-slate-500">Carregando configurações…</p>;
     switch (tab) {
       case 'company': return <CompanySection value={draft.company} disabled={disabled} onChange={change => patch('company', change)} />;
@@ -86,13 +93,13 @@ function SettingsContent() {
 
   return <AppShell title="Configurações da empresa">
     <PageHeader title="Configurações da empresa" subtitle="Preferências gerais do restaurante. Cada aba é salva separadamente; algumas preferências só têm efeito nos módulos que as utilizam."
-      actions={<button type="button" onClick={() => void submit()} disabled={!canEdit || saving || !draft || !isDirty(tab)} className={buttonClass}>{saving ? 'Salvando…' : 'Salvar'}</button>} />
+      actions={isFiscal ? undefined : <button type="button" onClick={() => void submit()} disabled={!canEdit || saving || !draft || !dirty(tab)} className={buttonClass}>{saving ? 'Salvando…' : 'Salvar'}</button>} />
     {notice && <Notice message={notice.text} kind={notice.kind} />}
     {draft && !canEdit && <Notice message="Seu perfil pode apenas consultar as configurações; somente administradores e gerentes podem alterá-las." />}
     <div className="flex flex-col gap-4 lg:flex-row lg:items-start">
-      <SideTabs tabs={tabs.map(item => ({ key: item.key, label: isDirty(item.key) ? `${item.label} •` : item.label, icon: item.icon }))} value={tab} onChange={setTab} />
+      <SideTabs tabs={tabs.map(item => ({ key: item.key, label: dirty(item.key) ? `${item.label} •` : item.label, icon: item.icon }))} value={tab} onChange={setTab} />
       <section className={`${panelClass} min-w-0 flex-1`} aria-labelledby="settings-title">
-        <h3 id="settings-title" className="mb-4 border-b border-slate-200 pb-3 text-base font-bold text-slate-900">{current.title}{isDirty(tab) && <span className="ml-2 text-xs font-semibold text-amber-700">alterações não salvas</span>}</h3>
+        <h3 id="settings-title" className="mb-4 border-b border-slate-200 pb-3 text-base font-bold text-slate-900">{current.title}{dirty(tab) && <span className="ml-2 text-xs font-semibold text-amber-700">alterações não salvas</span>}</h3>
         {renderSection()}
       </section>
     </div>
