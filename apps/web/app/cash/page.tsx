@@ -100,7 +100,14 @@ export default function CashPage() {
         setPayments(paymentResult.items);
         setUnits(unitResult.items);
         setSelectedSessionId(current => current || sessionResult.items.find(session => session.status === 'OPEN')?.id || '');
-        setOrderId(current => current || orderResult.items.find(order => order.status !== 'CANCELLED' && Number(order.total) > paidAmount(order))?.id || '');
+        const requestedOrder = new URLSearchParams(window.location.search).get('orderId');
+        if (requestedOrder) {
+          const order = orderResult.items.find(item => item.id === requestedOrder && item.status !== 'CANCELLED' && Number(item.total) > paidAmount(item));
+          if (order) setOrderId(order.id);
+          else setMessage({ text: 'Pedido indisponível nesta lista ou sem saldo pendente. Selecione um pedido para continuar.', kind: 'error' });
+        } else {
+          setOrderId(current => current || orderResult.items.find(order => order.status !== 'CANCELLED' && Number(order.total) > paidAmount(order))?.id || '');
+        }
       } catch (error) {
         if (active) setMessage({ text: error instanceof Error ? error.message : 'Erro ao carregar caixa', kind: 'error' });
       }
@@ -225,7 +232,7 @@ export default function CashPage() {
         </form>}
       </section>
 
-      <section className={`${panelClass} xl:col-span-2`}>
+      <section id="pagamento" className={`${panelClass} scroll-mt-4 xl:col-span-2`}>
         <h2 className="mb-4 text-lg font-semibold">Receber pagamento</h2>
         <form onSubmit={recordPayment} className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
           <label className="text-sm text-slate-300 xl:col-span-2">Pedido com saldo pendente<select className="mt-1 w-full rounded-lg border border-slate-700 bg-slate-950 px-3 py-2" required value={orderId} onChange={event => { setOrderId(event.target.value); setPaymentAmount(''); }}><option value="">Selecione</option>{unpaidOrders.map(order => <option key={order.id} value={order.id}>{order.code} · {order.items.map(item => `${item.quantity}× ${item.product.name}`).join(', ')} · pendente {money(Number(order.total) - paidAmount(order))}</option>)}</select></label>

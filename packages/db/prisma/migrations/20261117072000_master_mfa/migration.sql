@@ -1,0 +1,5 @@
+ALTER TABLE "User"
+ADD COLUMN "mfaEnabled" BOOLEAN NOT NULL DEFAULT false,
+ADD COLUMN "mfaSecretEncrypted" TEXT,
+ADD COLUMN "mfaRecoveryCodeHashes" TEXT[] NOT NULL DEFAULT ARRAY[]::TEXT[],
+ADD COLUMN "mfaLastUsedStep" BIGINT;

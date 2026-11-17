@@ -36,14 +36,24 @@ test('jobs are delivered over TCP to the configured printer', async () => {
 test('connection failures are reported back to the API instead of crashing the loop', async () => {
   const reports = [];
   const client = {
-    nextJobs: async () => ({ items: [{ id: 'ok', content: 'a', printer: {} }, { id: 'bad', content: 'b', printer: {} }] }),
-    report: async (id, ok, error) => reports.push({ id, ok, error }),
+    nextJobs: async () => ({ items: [{ id: 'ok', claimId: 'a', attempts: 1, content: 'a', printer: {} }, { id: 'bad', claimId: 'b', attempts: 2, content: 'b', printer: {} }] }),
+    report: async (id, claimId, attempt, ok, error) => reports.push({ id, claimId, attempt, ok, error }),
   };
   const quiet = { info() {}, error() {} };
   const handled = await pollOnce(client, async job => { if (job.id === 'bad') throw new Error('offline'); }, quiet);
   assert.equal(handled, 2);
-  assert.deepEqual(reports, [{ id: 'ok', ok: true, error: undefined }, { id: 'bad', ok: false, error: 'offline' }]);
+  assert.deepEqual(reports, [{ id: 'ok', claimId: 'a', attempt: 1, ok: true, error: undefined }, { id: 'bad', claimId: 'b', attempt: 2, ok: false, error: 'offline' }]);
   await assert.rejects(sendToNetworkPrinter({ address: '127.0.0.1', port: 1 }, Buffer.from('x'), 500));
+});
+
+test('a failed success confirmation is not reported as a printer failure', async () => {
+  const reports = [];
+  const client = {
+    nextJobs: async limit => { assert.equal(limit, 1); return { items: [{ id: 'printed', claimId: 'a', attempts: 1 }] }; },
+    report: async (id, claimId, attempt, ok) => { reports.push({ id, claimId, attempt, ok }); throw new Error('network unavailable'); },
+  };
+  await assert.rejects(pollOnce(client, async () => {}, { info() {}, error() {} }), /network unavailable/);
+  assert.deepEqual(reports, [{ id: 'printed', claimId: 'a', attempt: 1, ok: true }]);
 });
 
 test('USB, shared and serial printers receive raw bytes on the device path', async () => {

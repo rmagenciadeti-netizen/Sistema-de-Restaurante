@@ -8,3 +8,6 @@ coverage
 npm-debug.log*
 .DS_Store
 *.local
+
+# WhatsApp Web sessions (credentials)
+.whatsapp-sessions/

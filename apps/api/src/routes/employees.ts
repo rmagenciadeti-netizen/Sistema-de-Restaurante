@@ -16,6 +16,7 @@ employeeRoutes.post('/', async (req, res, next) => {
   try {
     const parsed = schema.safeParse(req.body); if (!parsed.success) return res.status(400).json({ message: 'Validation failed', errors: parsed.error.flatten() });
     const { unitId, ...data } = parsed.data; const selectedUnit = unitId ?? req.auth!.unitId;
+    if (req.auth!.unitId && selectedUnit !== req.auth!.unitId) return res.status(403).json({ message: 'Unit access denied' });
     if (selectedUnit && !await prisma.unit.findFirst({ where: { id: selectedUnit, tenantId: req.auth!.tenantId! } })) return res.status(400).json({ message: 'Unit does not belong to this tenant' });
     const employee = await prisma.employee.create({ data: { ...data, tenantId: req.auth!.tenantId!, unitId: selectedUnit } });
     await prisma.auditLog.create({ data: { tenantId: req.auth!.tenantId!, actorUserId: req.auth!.userId, action: 'EMPLOYEE_CREATED', entityType: 'Employee', entityId: employee.id } });
@@ -27,6 +28,7 @@ employeeRoutes.patch('/:id', async (req, res, next) => {
     const parsed = schema.partial().extend({ status: z.enum(['ACTIVE', 'INACTIVE', 'BLOCKED']).optional() }).safeParse(req.body);
     if (!parsed.success) return res.status(400).json({ message: 'Validation failed', errors: parsed.error.flatten() });
     const where = { id: req.params.id, ...scope(req) }; const current = await prisma.employee.findFirst({ where }); if (!current) return res.status(404).json({ message: 'Employee not found' });
+    if (req.auth!.unitId && parsed.data.unitId && parsed.data.unitId !== req.auth!.unitId) return res.status(403).json({ message: 'Unit access denied' });
     if (parsed.data.unitId && !await prisma.unit.findFirst({ where: { id: parsed.data.unitId, tenantId: req.auth!.tenantId! } })) return res.status(400).json({ message: 'Unit does not belong to this tenant' });
     const updated = await prisma.employee.update({ where: { id: current.id }, data: parsed.data });
     await prisma.auditLog.create({ data: { tenantId: req.auth!.tenantId!, actorUserId: req.auth!.userId, action: 'EMPLOYEE_UPDATED', entityType: 'Employee', entityId: updated.id } });

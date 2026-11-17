@@ -2,6 +2,7 @@ import { Router } from 'express';
 import { z } from 'zod';
 import { OrderItemStatus } from '@prisma/client';
 import { prisma } from '../lib/prisma';
+import { releaseDueOrders } from '../lib/scheduling';
 import { requireAuth, requireTenant } from '../middleware/auth';
 import { MANAGEMENT_ROLES, PRODUCTION_ROLES, requireRoles } from '../lib/permissions';
 
@@ -17,6 +18,7 @@ productionRoutes.post('/sectors', requireRoles(...MANAGEMENT_ROLES), async (req,
   try {
     const parsed = sectorSchema.safeParse(req.body); if (!parsed.success) return res.status(400).json({ message: 'Validation failed', errors: parsed.error.flatten() });
     const unitId = parsed.data.unitId ?? req.auth!.unitId;
+    if (req.auth!.unitId && unitId !== req.auth!.unitId) return res.status(403).json({ message: 'Unit access denied' });
     if (unitId && !await prisma.unit.findFirst({ where: { id: unitId, tenantId: req.auth!.tenantId! } })) return res.status(400).json({ message: 'Unit does not belong to this tenant' });
     const sector = await prisma.productionSector.create({ data: { ...parsed.data, tenantId: req.auth!.tenantId!, unitId } });
     return res.status(201).json(sector);
@@ -34,7 +36,8 @@ productionRoutes.patch('/sectors/:id', requireRoles(...MANAGEMENT_ROLES), async 
 productionRoutes.get('/kds', requireRoles(...PRODUCTION_ROLES), async (req, res, next) => {
   try {
     const sectorId = typeof req.query.sectorId === 'string' ? req.query.sectorId : undefined;
-    const items = await prisma.orderItem.findMany({ where: { ...(sectorId ? { sectorId } : {}), status: { in: [OrderItemStatus.PENDING, OrderItemStatus.PREPARING, OrderItemStatus.READY] }, product: { isCombo: false }, order: { tenantId: req.auth!.tenantId!, ...(req.auth!.unitId ? { unitId: req.auth!.unitId } : {}), status: { in: ['OPEN', 'PREPARING', 'READY'] } } }, include: { product: { include: { sector: true } }, modifiers: true, parentItem: { select: { product: { select: { name: true } } } }, order: { select: { id: true, code: true, channel: true, tableLabel: true, customerName: true, createdAt: true } } }, orderBy: { createdAt: 'asc' }, take: 200 });
+    await releaseDueOrders(prisma, { tenantId: req.auth!.tenantId! });
+    const items = await prisma.orderItem.findMany({ where: { ...(sectorId ? { sectorId } : {}), status: { in: [OrderItemStatus.PENDING, OrderItemStatus.PREPARING, OrderItemStatus.READY] }, product: { isCombo: false }, order: { tenantId: req.auth!.tenantId!, ...(req.auth!.unitId ? { unitId: req.auth!.unitId } : {}), status: { in: ['OPEN', 'PREPARING', 'READY'] }, OR: [{ scheduledFor: null }, { releasedAt: { not: null } }] } }, include: { product: { include: { sector: true } }, modifiers: true, parentItem: { select: { product: { select: { name: true } } } }, order: { select: { id: true, code: true, channel: true, tableLabel: true, customerName: true, createdAt: true } } }, orderBy: { createdAt: 'asc' }, take: 200 });
     return res.json({ items, total: items.length });
   } catch (error) { return next(error); }
 });

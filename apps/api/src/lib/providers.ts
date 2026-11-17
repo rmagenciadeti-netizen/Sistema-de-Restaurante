@@ -4,6 +4,11 @@ import type { PaymentMethod } from '@prisma/client';
 export type ChargeRequest = { chargeId: string; method: PaymentMethod; amount: string; description: string };
 export type ChargeResult = { externalRef: string; qrPayload?: string };
 export type WebhookEvent = { externalRef: string; status: 'PAID' | 'FAILED' | 'EXPIRED' | 'REFUNDED' };
+export type EmailMessage = { to: string; subject: string; text: string; html: string };
+export interface EmailProvider {
+  readonly name: string;
+  send(message: EmailMessage): Promise<void>;
+}
 
 // Implemented by a concrete acquirer/PIX gateway adapter. parseWebhook MUST verify the provider's signature and return null for anything unauthenticated.
 export interface PaymentProvider {
@@ -37,3 +42,4 @@ export class ProviderRegistry<T extends { name: string }> {
 // Deployments register concrete adapters at startup (see src/providers.config.ts). Nothing is registered by default.
 export const paymentProviders = new ProviderRegistry<PaymentProvider>();
 export const fiscalProviders = new ProviderRegistry<FiscalProvider>();
+export const emailProviders = new ProviderRegistry<EmailProvider>();

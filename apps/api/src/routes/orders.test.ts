@@ -19,7 +19,7 @@ test('order preparation consumes recipe stock atomically and respects state tran
   process.env.JWT_SECRET = 'a'.repeat(32);
   const originalFindUser = prisma.user.findUnique;
   const originalTransaction = prisma.$transaction;
-  prisma.user.findUnique = (async () => ({ id: userId, tenantId, unitId: null, role: UserRole.ADMIN, status: UserStatus.ACTIVE, tenant: { status: 'ACTIVE' } })) as never;
+  prisma.user.findUnique = (async () => ({ id: userId, tenantId, unitId: null, role: UserRole.ADMIN, status: UserStatus.ACTIVE, authVersion: 0, tenant: { status: 'ACTIVE', license: null, modules: [] } })) as never;
   let tx: any;
   const transactionOptions: unknown[] = [];
   prisma.$transaction = (async (operation: any, options: unknown) => {

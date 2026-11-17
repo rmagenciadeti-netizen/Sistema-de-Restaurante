@@ -11,7 +11,7 @@ test('WhatsApp outbox preserves JSON payloads and validates input', async t => {
   process.env.JWT_SECRET = 'a'.repeat(32);
   const findUser = prisma.user.findUnique;
   const createMessage = prisma.whatsappMessage.create;
-  prisma.user.findUnique = (async () => ({ id: 'user', tenantId: 'tenant', unitId: null, role: UserRole.ADMIN, status: UserStatus.ACTIVE, tenant: { status: 'TRIAL' } })) as never;
+  prisma.user.findUnique = (async () => ({ id: 'user', tenantId: 'tenant', unitId: null, role: UserRole.ADMIN, status: UserStatus.ACTIVE, authVersion: 0, tenant: { status: 'TRIAL', license: null, modules: [] } })) as never;
   let created: any;
   prisma.whatsappMessage.create = (async ({ data }: any) => { created = data; return data; }) as never;
   t.after(() => { prisma.user.findUnique = findUser; prisma.whatsappMessage.create = createMessage; });

@@ -8,12 +8,15 @@ import { requireAuth, requireTenant } from '../middleware/auth';
 import { MANAGEMENT_ROLES, requireRoles } from '../lib/permissions';
 import { createOrder, OrderEngineError } from '../lib/order-engine';
 import { moneySchema } from '../lib/money';
+import { emailProviders, fiscalProviders, paymentProviders } from '../lib/providers';
 
 const hashKey = (key: string) => createHash('sha256').update(key).digest('hex');
 
 // ---- Management of integration keys (marketplaces such as iFood, Rappi, own site) ----
 export const integrationRoutes = Router();
 integrationRoutes.use(requireAuth, requireTenant, requireRoles(...MANAGEMENT_ROLES));
+// Which concrete adapters this deployment registered (see providers.config.ts). Credentials never leave the server.
+integrationRoutes.get('/providers', (_req, res) => res.json({ payment: paymentProviders.names(), fiscal: fiscalProviders.names(), email: emailProviders.names() }));
 integrationRoutes.get('/', async (req, res, next) => {
   try { const items = await prisma.integration.findMany({ where: { tenantId: req.auth!.tenantId! }, select: { id: true, provider: true, name: true, unitId: true, active: true, lastUsedAt: true, createdAt: true }, orderBy: { createdAt: 'desc' } }); return res.json({ items, total: items.length }); }
   catch (error) { return next(error); }
@@ -71,7 +74,7 @@ inboundRoutes.post('/:source/orders', async (req, res, next) => {
     try {
       const order = await serializable(prisma, async tx => {
         const created = await createOrder(tx, {
-          tenantId, unitId, channel: OrderChannel.DELIVERY,
+          tenantId, unitId, channel: OrderChannel.DELIVERY, notifyCustomer: false,
           customer: { name: parsed.data.customer.name, phone: parsed.data.customer.phone, untrusted: true },
           deliveryFeeOverride: new Prisma.Decimal(parsed.data.deliveryFee ?? 0),
           items: parsed.data.items.map(item => ({ productId: byCode.get(item.code)!, quantity: item.quantity, notes: item.notes })),

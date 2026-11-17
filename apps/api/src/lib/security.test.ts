@@ -23,11 +23,12 @@ test('API security controls and tenant authentication', async () => {
   let tenantStatus = 'TRIAL';
   let accountStatus = 'ACTIVE';
   let tenantId: string | null = 'tenant-1';
+  let authVersion = 0;
   let databaseFails = false;
   (prisma.user as any).findUnique = async (args: any) => {
     if (databaseFails) throw new Error('private database details');
     if (args.select && !args.select.status) return { id: 'user-1', name: 'User', email: 'user@example.com', role: 'ADMIN', tenantId: 'tenant-1', unitId: null };
-    return { id: 'user-1', name: 'User', email: 'user@example.com', passwordHash, role: 'ADMIN', status: accountStatus, tenantId, unitId: null, tenant: tenantId ? { status: tenantStatus } : null };
+    return { id: 'user-1', name: 'User', email: 'user@example.com', passwordHash, role: 'ADMIN', status: accountStatus, tenantId, unitId: null, authVersion, tenant: tenantId ? { status: tenantStatus, license: null, modules: [] } : null };
   };
   const login = () => fetch(`${base}/auth/login`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ email: 'user@example.com', password: 'correct-password' }) });
   try {
@@ -35,9 +36,18 @@ test('API security controls and tenant authentication', async () => {
     assert.equal(health.headers.get('access-control-allow-origin'), 'https://restaurant.example');
     assert.equal(health.headers.get('x-content-type-options'), 'nosniff');
     assert.equal(health.headers.get('x-powered-by'), null);
-    const rejected = await fetch(`${base}/health`, { headers: { origin: 'https://restaurant.example.attacker.test' } });
-    assert.equal(rejected.status, 403);
-    assert.equal(rejected.headers.get('access-control-allow-origin'), null);
+    const attacker = { headers: { origin: 'https://restaurant.example.attacker.test' } };
+    const originalEnv = process.env.NODE_ENV;
+    try {
+      process.env.NODE_ENV = 'development';
+      assert.equal((await fetch(`${base}/health`, attacker)).headers.get('access-control-allow-origin'), attacker.headers.origin);
+      process.env.NODE_ENV = 'production';
+      const rejected = await fetch(`${base}/health`, attacker);
+      assert.equal(rejected.status, 403);
+      assert.equal(rejected.headers.get('access-control-allow-origin'), null);
+    } finally {
+      if (originalEnv === undefined) delete process.env.NODE_ENV; else process.env.NODE_ENV = originalEnv;
+    }
     assert.equal((await fetch(`${base}/health`)).status, 200);
     const malformed = await fetch(`${base}/auth/login`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: '{' });
     assert.equal(malformed.status, 400);
@@ -50,15 +60,18 @@ test('API security controls and tenant authentication', async () => {
     const { accessToken } = await trial.json() as { accessToken: string };
     const me = () => fetch(`${base}/auth/me`, { headers: { authorization: 'Bearer' + ' ' + accessToken } });
     assert.equal((await me()).status, 200);
+    authVersion = 1;
+    assert.equal((await me()).status, 401, 'changing the credential version revokes existing sessions');
+    authVersion = 0;
     tenantId = null;
-    assert.equal((await login()).status, 403);
+    assert.equal((await login()).status, 401);
     assert.equal((await me()).status, 403);
     tenantId = 'tenant-1';
     tenantStatus = 'ACTIVE';
     assert.equal((await login()).status, 200);
     for (const status of ['SUSPENDED', 'BLOCKED']) {
       tenantStatus = status;
-      assert.equal((await login()).status, 403);
+      assert.equal((await login()).status, 401);
       assert.equal((await me()).status, 403);
     }
     tenantStatus = 'TRIAL';

@@ -36,21 +36,22 @@ export class ApiClient {
     return response.json();
   }
   nextJobs(limit = 5) { return this.request('GET', `/print-agent/jobs/next?limit=${limit}`); }
-  report(id, ok, error) { return this.request('POST', `/print-agent/jobs/${id}/result`, { ok, ...(error ? { error: error.slice(0, 500) } : {}) }); }
+  report(id, claimId, attempt, ok, error) { return this.request('POST', `/print-agent/jobs/${id}/result`, { claimId, attempt, ok, ...(error ? { error: error.slice(0, 500) } : {}) }); }
 }
 
 export async function pollOnce(client, print = printJob, log = console) {
-  const { items } = await client.nextJobs();
+  const { items } = await client.nextJobs(1);
   for (const job of items) {
     try {
       await print(job);
-      await client.report(job.id, true);
-      log.info(`printed ${job.id}`);
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
       log.error(`failed ${job.id}: ${message}`);
-      await client.report(job.id, false, message);
+      await client.report(job.id, job.claimId, job.attempts, false, message);
+      continue;
     }
+    await client.report(job.id, job.claimId, job.attempts, true);
+    log.info(`printed ${job.id}`);
   }
   return items.length;
 }

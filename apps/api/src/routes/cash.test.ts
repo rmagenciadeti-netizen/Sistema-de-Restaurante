@@ -18,7 +18,7 @@ const userId = '77777777-7777-4777-8777-777777777777';
 test('cash routes use authenticated database scope and atomic transactions', async t => {
   process.env.JWT_SECRET = 'a'.repeat(32);
   const originalFindUser = prisma.user.findUnique;
-  prisma.user.findUnique = (async () => ({ id: userId, tenantId: tenant, unitId: null, role: UserRole.ADMIN, status: UserStatus.ACTIVE, tenant: { status: 'ACTIVE' } })) as never;
+  prisma.user.findUnique = (async () => ({ id: userId, tenantId: tenant, unitId: null, role: UserRole.ADMIN, status: UserStatus.ACTIVE, authVersion: 0, tenant: { status: 'ACTIVE', license: null, modules: [] } })) as never;
   t.after(() => { prisma.user.findUnique = originalFindUser; });
   const token = signAccessToken({ userId, tenantId: otherTenant, unitId: otherUnit, role: UserRole.MASTER_ADMIN });
   const app = express();
