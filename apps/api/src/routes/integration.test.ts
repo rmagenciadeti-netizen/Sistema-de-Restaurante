@@ -30,6 +30,7 @@ async function createTenant(role: UserRole = UserRole.ADMIN) {
 
 test('database-backed API behaviour', { skip: !enabled }, async t => {
   process.env.JWT_SECRET = 'b'.repeat(32);
+  process.env.DEV_DISABLE_MFA = 'false';
   process.env.MFA_ENCRYPTION_KEY = Buffer.alloc(32, 9).toString('base64');
   process.env.RM_RESTAURANT_URL = 'https://restaurant.example';
   process.env.RM_ADMIN_URL = 'https://admin.example';

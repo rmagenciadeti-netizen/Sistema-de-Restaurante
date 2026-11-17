@@ -86,7 +86,6 @@ app.get('/api/v1/health', (_req, res) => res.json({ status: 'ok', service: 'rm-r
 app.use('/api/v1/auth', authRoutes);
 app.use('/api/v1/tenants', tenantRoutes);
 app.use('/api/v1/plans', planRoutes);
-app.use('/api/v1/plans', planRoutes);
 app.use('/api/v1/units', unitRoutes);
 app.use('/api/v1/dashboard', dashboardRoutes);
 app.use('/api/v1/employees', employeeRoutes);

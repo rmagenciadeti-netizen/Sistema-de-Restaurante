@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useState } from 'react';
 import { api, errorMessage, formatDateTime, Tenant } from '../../lib/api';
-import { AppShell, buttonClass, Check, Field, Notice, panelClass, Select } from '../../components/app-shell';
+import { AppShell, buttonClass, Check, Field, Notice, panelClass, secondaryButtonClass, Select } from '../../components/app-shell';
 
 type CatalogItem = { key: string; name: string };
 type CommercialPlan = { id: string; name: string; active: boolean; maxUnits: number | null; maxUsers: number | null; activationFee: string | number; setupFee: string | number; modules: string[]; prices: { period: string; amount: string | number }[] };
@@ -103,7 +103,13 @@ export default function LicensesPage() {
         <Field label="Taxa de implantação contratada (R$)" type="number" min={0} step="0.01" value={form.setupFee} onChange={event => setForm({ ...form, setupFee: event.target.value })} />
       </div>
       <Field label="Observações" maxLength={500} value={form.notes} onChange={event => setForm({ ...form, notes: event.target.value })} />
-      <fieldset><legend className="mb-2 text-sm font-semibold text-slate-900">Módulos contratados</legend>
+      <fieldset>
+        <legend className="mb-2 text-sm font-semibold text-slate-900">Módulos contratados</legend>
+        <div className="mb-2 flex justify-end">
+          <button type="button" className={secondaryButtonClass} disabled={catalog.length === 0} onClick={() => setForm(current => ({ ...current, modules: catalog.every(item => current.modules.includes(item.key)) ? [] : catalog.map(item => item.key) }))}>
+            {catalog.length > 0 && catalog.every(item => form.modules.includes(item.key)) ? 'Desmarcar todos' : 'Selecionar todos'}
+          </button>
+        </div>
         <div className="grid gap-2 sm:grid-cols-2 xl:grid-cols-3">{catalog.map(item => <Check key={item.key} label={item.name} checked={form.modules.includes(item.key)} onChange={() => toggle(item.key)} />)}</div>
       </fieldset>
       <button className={buttonClass} disabled={busy}>{busy ? 'Gravando...' : 'Gravar licença'}</button>

@@ -85,7 +85,15 @@ export default function PlansPage() {
       <fieldset><legend className="mb-2 text-sm font-semibold">Preços recorrentes (R$)</legend><div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
         {periods.map(period => <Field key={period.key} label={period.label} type="number" min={0} step="0.01" value={form.prices[period.key]} onChange={event => setForm({ ...form, prices: { ...form.prices, [period.key]: event.target.value } })} />)}
       </div></fieldset>
-      <fieldset><legend className="mb-2 text-sm font-semibold">Módulos incluídos</legend><div className="grid gap-2 sm:grid-cols-2 xl:grid-cols-3">{catalog.map(module => <Check key={module.key} label={module.name} checked={form.modules.includes(module.key)} onChange={() => toggle(module.key)} />)}</div></fieldset>
+      <fieldset>
+        <legend className="mb-2 text-sm font-semibold">Módulos incluídos</legend>
+        <div className="mb-2 flex justify-end">
+          <button type="button" className={secondaryButtonClass} disabled={catalog.length === 0} onClick={() => setForm(current => ({ ...current, modules: catalog.every(module => current.modules.includes(module.key)) ? [] : catalog.map(module => module.key) }))}>
+            {catalog.length > 0 && catalog.every(module => form.modules.includes(module.key)) ? 'Desmarcar todos' : 'Selecionar todos'}
+          </button>
+        </div>
+        <div className="grid gap-2 sm:grid-cols-2 xl:grid-cols-3">{catalog.map(module => <Check key={module.key} label={module.name} checked={form.modules.includes(module.key)} onChange={() => toggle(module.key)} />)}</div>
+      </fieldset>
       <button className={buttonClass} disabled={busy}>{busy ? 'Salvando...' : editing ? 'Salvar alterações' : 'Criar plano'}</button>
     </form>
     <section className={panelClass}><h2 className="mb-4 text-lg font-semibold">Planos cadastrados ({items.length})</h2><div className="overflow-x-auto"><table className="w-full text-left text-sm"><thead className="text-slate-500"><tr>{['Plano', 'Estado', 'Unidades', 'Usuários', 'Módulos', 'Preços', 'Ações'].map(label => <th key={label} className="p-3">{label}</th>)}</tr></thead><tbody>
