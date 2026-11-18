@@ -5,6 +5,7 @@ import { api, errorMessage, formatDateTime, formatMoney } from '../../lib/api';
 import { AppShell, buttonClass, Check, Field, Notice, panelClass, secondaryButtonClass } from '../../components/app-shell';
 import { Badge, DataTable, EmptyState, PageHeader, StatCard, Tabs } from '../../components/ui';
 import { exportCsv, Section } from '../../components/commercial/common';
+import { DonutChart } from '../../components/charts';
 
 type Row = { key: string; name: string; revenue: number; cost: number; profit: number; marginPercent: number | null; units: number; costCoverage: number };
 type Result = { grossRevenue: number; discounts: number; cancellations: { count: number; value: number }; netRevenue: number; received: number; cogs: number; costCoverage: number; grossProfit: number; cardFees: number; taxes: number; commissions: number; variableExpenses: number; fixedExpenses: number; contributionMargin: number; contributionMarginPercent: number | null; operatingResult: number; operatingMarginPercent: number | null; expensesByCategory: { category: string; amount: number; kind: 'FIXED' | 'VARIABLE' }[] };
@@ -88,6 +89,9 @@ export default function ProfitPage() {
         <StatCard label="Margem de contribuição" value={formatMoney(result.contributionMargin)} hint={`${pctText(result.contributionMarginPercent)} do faturamento`} />
         <StatCard tone="dark" label="Resultado operacional" value={formatMoney(result.operatingResult)} hint={`${pctText(result.operatingMarginPercent)} · anterior ${formatMoney(previous.operatingResult)}`} />
       </div>
+      <Section title="Para onde vai o faturamento líquido" number={1}>
+        {result.netRevenue > 0 ? <DonutChart centerLabel="Composição do faturamento líquido" format={formatMoney} slices={[{ label: 'CMV', value: result.cogs }, { label: 'Taxas de cartão', value: result.cardFees }, { label: 'Impostos', value: result.taxes }, { label: 'Comissões', value: result.commissions }, { label: 'Despesas variáveis', value: result.variableExpenses }, { label: 'Despesas fixas', value: result.fixedExpenses }, { label: 'Resultado operacional', value: Math.max(0, result.operatingResult) }].filter(slice => slice.value > 0)} /> : <p className="text-sm text-slate-500">Sem faturamento no período.</p>}
+      </Section>
       <div className="grid gap-6 xl:grid-cols-2">
         <section className={panelClass}>
           <div className="mb-2 flex items-center justify-between"><h2 className="text-base font-bold">Demonstrativo do período</h2><button type="button" className={secondaryButtonClass} onClick={() => exportCsv('resultado.csv', ['Indicador', 'Valor'], [['Faturamento bruto', result.grossRevenue], ['Descontos', result.discounts], ['Faturamento líquido', result.netRevenue], ['Recebido', result.received], ['Custo das mercadorias', result.cogs], ['Lucro bruto', result.grossProfit], ['Taxas de cartão (estimadas)', result.cardFees], ['Impostos (estimados)', result.taxes], ['Comissões', result.commissions], ['Despesas variáveis pagas', result.variableExpenses - result.cardFees - result.taxes - result.commissions], ['Margem de contribuição', result.contributionMargin], ['Despesas fixas', result.fixedExpenses], ['Resultado operacional', result.operatingResult]])}>Exportar CSV</button></div>

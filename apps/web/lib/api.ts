@@ -106,7 +106,7 @@ export type Supplier = { id: string; name: string; document?: string | null; pho
 export type Ingredient = { id: string; unitId?: string | null; name: string; unitOfMeasure: string; currentStock: string | number; minimumStock?: string | number | null };
 export type PurchaseOrder = { id: string; code: string; status: 'DRAFT' | 'RECEIVED' | 'CANCELLED'; total: string | number; dueAt?: string | null; createdAt: string; supplier: { id: string; name: string }; items: { id: string; quantity: string | number; unitCost: string | number; ingredient: { id: string; name: string; unitOfMeasure: string } }[] };
 export type InventoryAdjustment = { ingredientId: string; name: string; previous: string | number; counted: string | number; difference: string | number };
-export type DeliveryZone = { id: string; name: string; fee: string | number; minOrder?: string | number | null; active: boolean };
+export type DeliveryZone = { id: string; name: string; fee: string | number; minOrder?: string | number | null; estimatedMinutes?: number | null; active: boolean };
 export type DeliveryJob = { id: string; orderId: string; courierName?: string | null; courierPhone?: string | null; address?: string | null; status: 'PENDING' | 'ASSIGNED' | 'PICKED_UP' | 'DELIVERED' | 'CANCELLED'; provider?: string | null; createdAt: string; order?: Order };
 
 export type ModifierOption = { id: string; name: string; price: string | number; active?: boolean; sectorId?: string | null; ingredientId?: string | null; ingredientQuantity?: string | number | null };

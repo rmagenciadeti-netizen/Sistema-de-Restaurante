@@ -39,8 +39,7 @@ export const menuGroups: MenuGroup[] = [
     { href: '/inventory', label: 'Estoque e fichas', icon: '📦' },
   ] },
   { title: 'Controle de entrega', icon: '🛵', items: [
-    { href: '/couriers', label: 'Entregadores', icon: '🏍️' }, { href: '/settings?tab=fulfillment', label: 'Zonas não mapeadas', icon: '📍' },
-    { href: '/delivery', label: 'Entregas e zonas mapeadas', icon: '🛵' },
+    { href: '/settings?tab=fulfillment', label: 'Zonas não mapeadas', icon: '📍' },
   ] },
   { title: 'Gerenciamento financeiro', icon: '💵', items: [
     { href: '/payment-methods', label: 'Formas de pagamento', icon: '💶' }, { href: '/financial?type=EXPENSE', label: 'Contas a pagar', icon: '📤' },
@@ -55,13 +54,20 @@ export const menuGroups: MenuGroup[] = [
   ] },
   { title: 'Comandas', icon: '🪑', items: [
     { href: '/tables', label: 'Mesas', icon: '🪑' }, { href: '/comandas', label: 'Controle de comandas', icon: '📒' },
-    { href: '/history?channel=TABLE', label: 'Histórico de comandas', icon: '🕓' }, { href: '/kds', label: 'Cozinha (KDS)', icon: '👨‍🍳' },
+    { href: '/history?channel=TABLE', label: 'Histórico de comandas', icon: '🕓' },
   ] },
   { title: 'Movimento', icon: '🧾', items: [
     { href: '/history', label: 'Histórico de vendas/pedidos', icon: '🧾' }, { href: '/scheduled', label: 'Vendas agendadas', icon: '⏰' },
     { href: '/orders', label: 'Lançamento manual de pedido', icon: '✍️' }, { href: '/releases', label: 'Liberações por senha', icon: '🛡️' },
   ] },
-  { title: 'RM Inteligência', icon: '🧠', items: [{ href: '/intelligence', label: 'Assistente, previsões e alertas', icon: '🧠' }, { href: '/profit', label: 'Controle de lucro e CMV', icon: '💹' }] },
+  { title: 'RM Inteligência', icon: '🧠', items: [
+    { href: '/intelligence?tab=assistant', label: 'RM Assistente', icon: '🧠' }, { href: '/intelligence?tab=sales', label: 'Inteligência de vendas', icon: '📈' },
+    { href: '/intelligence?tab=stock', label: 'Inteligência de estoque', icon: '📦' }, { href: '/intelligence?tab=business', label: 'Inteligência de negócios (IA)', icon: '✨' },
+    { href: '/profit', label: 'RM Controle de Lucro', icon: '💹' },
+  ] },
+  { title: 'Operação RM', icon: '🏁', items: [
+    { href: '/kds', label: 'RM KDS — Painel de Produção', icon: '👨‍🍳' }, { href: '/delivery', label: 'RM Delivery — Central de Delivery', icon: '🛵' }, { href: '/couriers', label: 'Entregadores', icon: '🏍️' },
+  ] },
   { title: 'Relatórios', icon: '📊', items: reportMenu },
   { title: 'Cadastros', icon: '🗃️', items: [
     { href: '/employees', label: 'Funcionários', icon: '👥' }, { href: '/users', label: 'Usuários e permissões', icon: '🔐' },

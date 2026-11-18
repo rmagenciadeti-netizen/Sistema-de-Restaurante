@@ -7,6 +7,7 @@ import Link from 'next/link';
 import { AppShell, flows, moduleIcon, moduleLabel, Notice, panelClass } from '../../components/app-shell';
 import { AreaChart, DonutChart } from '../../components/charts';
 import { GoldCard, HeroBanner, StatCard } from '../../components/ui';
+import { hrefAllowed } from '../../lib/menu-catalog';
 
 type Summary = {
   totalCompanies?: number; activeCompanies?: number; trialCompanies?: number; suspendedCompanies?: number;
@@ -22,6 +23,16 @@ const metricIcons: Record<string, string> = { 'Empresas cadastradas': '🏢', 'E
 function Metric({ label, value, detail }: { label: string; value: string | number; detail?: string }) {
   return <StatCard icon={metricIcons[label]} label={label} value={value} hint={detail} tone={label.startsWith('Vendas concluídas') || label.startsWith('Receita') ? 'dark' : 'default'} />;
 }
+
+const rmModules = [
+  { href: '/intelligence?tab=assistant', icon: '🧠', title: 'RM Assistente', text: 'Pergunte sobre vendas, lucro, estoque e metas em linguagem natural.' },
+  { href: '/intelligence?tab=sales', icon: '📈', title: 'Inteligência de vendas', text: 'Mais vendidos, horários de pico, canais, previsão e campanhas sugeridas.' },
+  { href: '/intelligence?tab=stock', icon: '📦', title: 'Inteligência de estoque', text: 'Cobertura, sugestão de compra, desperdício e curva ABC.' },
+  { href: '/intelligence?tab=business', icon: '✨', title: 'Inteligência de negócios (IA)', text: 'Diagnóstico executivo com seus dados e análise por IA opcional.' },
+  { href: '/kds', icon: '👨‍🍳', title: 'RM KDS — Painel de Produção', text: 'Pedidos por setor com cronômetro, atraso e prioridade em tempo real.' },
+  { href: '/delivery', icon: '🛵', title: 'RM Delivery — Central de Delivery', text: 'Quadro de entregas, entregadores, zonas, taxas e tempo estimado.' },
+  { href: '/profit', icon: '💹', title: 'RM Controle de Lucro', text: 'Faturamento, margem, CMV, despesas e resultado — faturamento não é lucro.' },
+];
 
 type Insight = { sales: { byChannel: { channel: string; total: number }[] }; topProducts: { name: string; quantity: number; revenue: number }[]; alerts: { key: string; severity: string; title: string; detail: string; href: string }[] };
 const channelLabel: Record<string, string> = { POS: 'PDV', TABLE: 'Mesa / QR Code', DELIVERY: 'Delivery', TAKEAWAY: 'Retirada', WHATSAPP: 'WhatsApp' };
@@ -50,6 +61,7 @@ export default function DashboardPage() {
   const [result, setResult] = useState<{ summary: Summary; isMaster: boolean } | null>(null);
   const [error, setError] = useState('');
   const [insight, setInsight] = useState<Insight | null>(null);
+  const [enabledModules, setEnabledModules] = useState<string[] | null>(null);
   const router = useRouter();
 
   useEffect(() => {
@@ -57,7 +69,7 @@ export default function DashboardPage() {
     const user = storedUser();
     const isMaster = user.role === 'MASTER_ADMIN';
     api<Summary>(isMaster ? '/dashboard/master' : '/dashboard/restaurant')
-      .then(summary => { if (active) setResult({ summary, isMaster }); if (!isMaster) api<Insight>('/intelligence/summary').then(data => { if (active) setInsight(data); }).catch(() => undefined); })
+      .then(summary => { if (active) setResult({ summary, isMaster }); if (!isMaster) api<{ user: { enabledModules?: string[] | null } }>('/auth/me').then(me => { if (active) setEnabledModules(me.user.enabledModules ?? null); }).catch(() => undefined); if (!isMaster) api<Insight>('/intelligence/summary').then(data => { if (active) setInsight(data); }).catch(() => undefined); })
       .catch(cause => {
         if (!active) return;
         if (cause instanceof ApiError && cause.status === 401) router.replace('/login');
@@ -90,6 +102,15 @@ export default function DashboardPage() {
       </>
       : <>
         <HeroBanner title="RM Restaurant" highlight="Gestão gastronômica completa e conectada" text="Acompanhe o atendimento, a cozinha e os resultados em um só lugar." tiles={[{ href: '/pdv', icon: '🖥️', label: 'PDV Interativo' }, { href: '/comandas', icon: '🍽️', label: 'Mesas e Comandas' }, { href: '/kds', icon: '👨‍🍳', label: 'Painel de Produção' }, { href: '/inventory', icon: '📦', label: 'Estoque Inteligente' }, { href: '/intelligence', icon: '🧠', label: 'RM Inteligência' }]} />
+        <GoldCard number={1} title="Módulos RM" subtitle="Inteligência, produção, delivery e lucro">
+          <ul className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
+            {rmModules.map(item => { const allowed = hrefAllowed(item.href, enabledModules); return <li key={item.href}>
+              <Link href={allowed ? item.href : '/support'} className={`flex h-full gap-3 rounded-xl border p-3 transition ${allowed ? 'border-brand-500/40 bg-slate-50 hover:border-brand-500 hover:bg-brand-50' : 'border-slate-200 bg-slate-100 opacity-70'}`}>
+                <span aria-hidden="true" className="grid h-11 w-11 shrink-0 place-items-center rounded-full border border-brand-400/60 bg-neutral-950 text-xl">{item.icon}</span>
+                <span className="min-w-0"><span className="block text-sm font-bold text-slate-900">{item.title}</span><span className="mt-0.5 block text-xs text-slate-600">{allowed ? item.text : 'Módulo não incluído no plano — fale com o suporte para contratar.'}</span></span>
+              </Link></li>; })}
+          </ul>
+        </GoldCard>
         <section className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
           <Metric label="Vendas concluídas hoje" value={formatMoney(summary.daily?.sales)} detail={`${summary.daily?.completedOrders ?? 0} pedido(s) concluído(s)`} />
           <Metric label="Vendas concluídas no mês" value={formatMoney(summary.monthly?.sales)} detail={`${summary.monthly?.completedOrders ?? 0} pedido(s) concluído(s)`} />

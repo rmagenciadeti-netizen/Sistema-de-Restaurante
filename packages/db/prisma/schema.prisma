@@ -739,17 +739,18 @@ model Coupon {
 }
 
 model DeliveryZone {
-  id        String   @id @default(uuid())
-  tenantId  String
-  unitId    String?
-  name      String
-  fee       Decimal  @db.Decimal(12, 2)
-  minOrder  Decimal? @db.Decimal(12, 2)
-  active    Boolean  @default(true)
-  createdAt DateTime @default(now())
-  tenant    Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
-  unit      Unit?    @relation(fields: [unitId], references: [id], onDelete: SetNull)
-  orders    Order[]
+  id               String   @id @default(uuid())
+  tenantId         String
+  unitId           String?
+  name             String
+  fee              Decimal  @db.Decimal(12, 2)
+  minOrder         Decimal? @db.Decimal(12, 2)
+  estimatedMinutes Int?
+  active           Boolean  @default(true)
+  createdAt        DateTime @default(now())
+  tenant           Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  unit             Unit?    @relation(fields: [unitId], references: [id], onDelete: SetNull)
+  orders           Order[]
 
   @@unique([tenantId, unitId, name])
 }
@@ -1392,15 +1393,16 @@ model TenantSettings {
 }
 
 model Courier {
-  id        String        @id @default(uuid())
-  tenantId  String
-  unitId    String?
-  name      String
-  phone     String?
-  active    Boolean       @default(true)
-  createdAt DateTime      @default(now())
-  tenant    Tenant        @relation(fields: [tenantId], references: [id], onDelete: Cascade)
-  jobs      DeliveryJob[]
+  id                 String        @id @default(uuid())
+  tenantId           String
+  unitId             String?
+  name               String
+  phone              String?
+  paymentPerDelivery Decimal?      @db.Decimal(12, 2)
+  active             Boolean       @default(true)
+  createdAt          DateTime      @default(now())
+  tenant             Tenant        @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  jobs               DeliveryJob[]
 
   @@index([tenantId, active])
 }

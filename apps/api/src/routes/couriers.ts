@@ -8,7 +8,7 @@ import { activeFilter, audit, listQuerySchema, optionalText, resolveUnit, unitRe
 export const courierRoutes = Router();
 courierRoutes.use(requireAuth, requireTenant, allowRead(ALL_TENANT_ROLES, MANAGEMENT_ROLES));
 
-const schema = z.object({ name: z.string().trim().min(2).max(160), phone: optionalText(30), unitId: z.string().uuid().nullish(), active: z.boolean().default(true) });
+const schema = z.object({ name: z.string().trim().min(2).max(160), phone: optionalText(30), unitId: z.string().uuid().nullish(), paymentPerDelivery: z.number().min(0).max(9999.99).multipleOf(0.01).nullish(), active: z.boolean().default(true) });
 const scope = (req: Parameters<typeof unitReadScope>[0], extra: object = {}) => ({ tenantId: req.auth!.tenantId!, ...unitReadScope(req), ...extra });
 
 courierRoutes.get('/', async (req, res, next) => {
@@ -25,7 +25,7 @@ courierRoutes.post('/', async (req, res, next) => {
   try {
     const parsed = schema.safeParse(req.body); if (!parsed.success) return res.status(400).json(validationError(parsed.error));
     const unit = await resolveUnit(req, parsed.data.unitId); if ('error' in unit) return res.status(unit.status).json({ message: unit.error });
-    const created = await prisma.courier.create({ data: { tenantId: req.auth!.tenantId!, name: parsed.data.name, phone: parsed.data.phone, active: parsed.data.active, unitId: unit.unitId } });
+    const created = await prisma.courier.create({ data: { tenantId: req.auth!.tenantId!, name: parsed.data.name, phone: parsed.data.phone, active: parsed.data.active, paymentPerDelivery: parsed.data.paymentPerDelivery ?? null, unitId: unit.unitId } });
     await audit(req, 'COURIER_CREATED', 'Courier', created.id);
     return res.status(201).json(created);
   } catch (error) { return next(error); }
@@ -35,7 +35,7 @@ courierRoutes.patch('/:id', async (req, res, next) => {
   try {
     const parsed = schema.partial().safeParse(req.body); if (!parsed.success) return res.status(400).json(validationError(parsed.error));
     const current = await prisma.courier.findFirst({ where: scope(req, { id: req.params.id }) }); if (!current) return res.status(404).json({ message: 'Entregador não encontrado.' });
-    const data: { name?: string; phone?: string | null; active?: boolean; unitId?: string | null } = { name: parsed.data.name, phone: parsed.data.phone, active: parsed.data.active };
+    const data: { name?: string; phone?: string | null; active?: boolean; unitId?: string | null; paymentPerDelivery?: number | null } = { name: parsed.data.name, phone: parsed.data.phone, active: parsed.data.active, paymentPerDelivery: parsed.data.paymentPerDelivery };
     if (parsed.data.unitId !== undefined) {
       const unit = await resolveUnit(req, parsed.data.unitId); if ('error' in unit) return res.status(unit.status).json({ message: unit.error });
       data.unitId = unit.unitId;

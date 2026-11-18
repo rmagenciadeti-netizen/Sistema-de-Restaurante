@@ -1,14 +1,14 @@
 'use client';
 
 import { useState } from 'react';
-import { api, errorMessage, ListResponse } from '../../lib/api';
+import { api, errorMessage, formatMoney, ListResponse } from '../../lib/api';
 import { useAutoLoad } from '../../lib/use-auto-load';
 import { AppShell, buttonClass, Field, Notice, secondaryButtonClass } from '../../components/app-shell';
 import { DataTable, EmptyState, PageHeader, Toggle } from '../../components/ui';
 import { ActiveBadge, deleteMessage, FormCard, SearchBar } from '../../components/registry-ui';
 import type { Courier, DeleteResult } from '../../lib/types-registry';
 
-const emptyForm = { name: '', phone: '', active: true };
+const emptyForm = { name: '', phone: '', payment: '', active: true };
 
 export default function CouriersPage() {
   const [items, setItems] = useState<Courier[]>([]);
@@ -32,11 +32,11 @@ export default function CouriersPage() {
 
   function open(courier: Courier | 'new') {
     setNotice(null); setEditing(courier);
-    setForm(courier === 'new' ? emptyForm : { name: courier.name, phone: courier.phone ?? '', active: courier.active });
+    setForm(courier === 'new' ? emptyForm : { name: courier.name, phone: courier.phone ?? '', payment: courier.paymentPerDelivery == null ? '' : String(Number(courier.paymentPerDelivery)), active: courier.active });
   }
   async function save(event: React.FormEvent) {
     event.preventDefault(); setNotice(null); setSaving(true);
-    const body = JSON.stringify({ name: form.name, phone: form.phone || null, active: form.active });
+    const body = JSON.stringify({ name: form.name, phone: form.phone || null, paymentPerDelivery: form.payment === '' ? null : Number(form.payment), active: form.active });
     try {
       if (editing === 'new') await api('/couriers', { method: 'POST', body }); else await api(`/couriers/${editing!.id}`, { method: 'PATCH', body });
       ok('Entregador salvo.'); setEditing(null); await load();
@@ -57,14 +57,15 @@ export default function CouriersPage() {
       <div className="grid gap-4 md:grid-cols-2">
         <Field label="Nome" required minLength={2} maxLength={160} value={form.name} onChange={e => setForm({ ...form, name: e.target.value })} />
         <Field label="Telefone/WhatsApp" type="tel" maxLength={30} placeholder="(11) 99999-0000" value={form.phone} onChange={e => setForm({ ...form, phone: e.target.value })} />
+        <Field label="Pagamento por entrega (R$)" type="number" min="0" max="9999.99" step="0.01" placeholder="Opcional" value={form.payment} onChange={e => setForm({ ...form, payment: e.target.value })} />
       </div>
       <Toggle label="Ativo" hint="Entregadores inativos não aparecem na escolha de novas entregas." checked={form.active} onChange={value => setForm({ ...form, active: value })} />
     </FormCard>}
     <SearchBar q={q} onQ={setQ} active={active} onActive={value => { setActive(value); void load({ active: value }); }} onSubmit={() => void load()} placeholder="Nome ou telefone" />
     {loaded && items.length === 0 ? <EmptyState icon="🛵" title="Não há registros" hint="Adicione o primeiro entregador para escolhê-lo nas entregas." /> :
-      <DataTable columns={[{ label: 'Nome' }, { label: 'Telefone' }, { label: 'Situação' }, { label: 'Ações', className: 'text-right' }]} footer={`${items.length} registro(s)`}>
+      <DataTable columns={[{ label: 'Nome' }, { label: 'Telefone' }, { label: 'Pagamento/entrega' }, { label: 'Situação' }, { label: 'Ações', className: 'text-right' }]} footer={`${items.length} registro(s)`}>
         {items.map(courier => <tr key={courier.id}>
-          <td className="font-medium text-slate-900">{courier.name}</td><td>{courier.phone || '—'}</td><td><ActiveBadge active={courier.active} /></td>
+          <td className="font-medium text-slate-900">{courier.name}</td><td>{courier.phone || '—'}</td><td>{courier.paymentPerDelivery == null ? '—' : formatMoney(courier.paymentPerDelivery)}</td><td><ActiveBadge active={courier.active} /></td>
           <td><div className="flex flex-wrap justify-end gap-2"><button className={secondaryButtonClass} onClick={() => open(courier)}>Editar</button><button className={secondaryButtonClass} onClick={() => void toggle(courier)}>{courier.active ? 'Desativar' : 'Ativar'}</button><button className={secondaryButtonClass} onClick={() => void remove(courier)}>Excluir</button></div></td>
         </tr>)}
       </DataTable>}

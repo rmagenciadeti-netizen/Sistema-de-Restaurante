@@ -10,7 +10,7 @@ import { brl, enqueueAutoMessage, orderLabel } from '../lib/whatsapp-auto';
 export const deliveryRoutes = Router();
 deliveryRoutes.use(requireAuth, requireTenant, requireRoles(...DELIVERY_ROLES));
 const findActiveCourier = (req: Request, id: string) => prisma.courier.findFirst({ where: { id, tenantId: req.auth!.tenantId!, active: true, ...(req.auth!.unitId ? { OR: [{ unitId: req.auth!.unitId }, { unitId: null }] } : {}) } });
-const zoneSchema = z.object({ name: z.string().min(2).max(100), fee: moneySchema, minOrder: moneySchema.optional(), unitId: z.string().uuid().optional() });
+const zoneSchema = z.object({ name: z.string().min(2).max(100), fee: moneySchema, minOrder: moneySchema.optional(), estimatedMinutes: z.number().int().min(1).max(600).optional(), unitId: z.string().uuid().optional() });
 deliveryRoutes.get('/zones', allowRead(DELIVERY_ROLES, MANAGEMENT_ROLES), async (req, res, next) => {
   try { const items = await prisma.deliveryZone.findMany({ where: { tenantId: req.auth!.tenantId!, active: true, ...(req.auth!.unitId ? { OR: [{ unitId: req.auth!.unitId }, { unitId: null }] } : {}) }, orderBy: { name: 'asc' } }); return res.json({ items, total: items.length }); }
   catch (error) { return next(error); }
@@ -27,9 +27,38 @@ deliveryRoutes.post('/zones', requireRoles(...MANAGEMENT_ROLES), async (req, res
 });
 deliveryRoutes.patch('/zones/:id', requireRoles(...MANAGEMENT_ROLES), async (req, res, next) => {
   try {
-    const parsed = z.object({ fee: moneySchema, minOrder: moneySchema.nullable(), active: z.boolean() }).partial().safeParse(req.body); if (!parsed.success) return res.status(400).json({ message: 'Validation failed', errors: parsed.error.flatten() });
+    const parsed = z.object({ fee: moneySchema, minOrder: moneySchema.nullable(), estimatedMinutes: z.number().int().min(1).max(600).nullable(), active: z.boolean() }).partial().safeParse(req.body); if (!parsed.success) return res.status(400).json({ message: 'Validation failed', errors: parsed.error.flatten() });
     const current = await prisma.deliveryZone.findFirst({ where: { id: req.params.id, tenantId: req.auth!.tenantId!, ...(req.auth!.unitId ? { unitId: req.auth!.unitId } : {}) } }); if (!current) return res.status(404).json({ message: 'Zone not found' });
     return res.json(await prisma.deliveryZone.update({ where: { id: current.id }, data: parsed.data }));
+  } catch (error) { return next(error); }
+});
+// Delivery central indicators over real deliveries: board totals plus per-courier volume, average time and amount owed.
+deliveryRoutes.get('/summary', async (req, res, next) => {
+  try {
+    const query = z.object({ from: z.string().datetime().optional(), to: z.string().datetime().optional() }).safeParse(req.query);
+    if (!query.success) return res.status(400).json({ message: 'Invalid period' });
+    const now = new Date(); const start = new Date(now); start.setUTCHours(0, 0, 0, 0);
+    const from = query.data.from ? new Date(query.data.from) : start; const to = query.data.to ? new Date(query.data.to) : now;
+    if (from > to) return res.status(400).json({ message: 'Invalid period' });
+    const where = { tenantId: req.auth!.tenantId!, ...(req.auth!.unitId ? { unitId: req.auth!.unitId } : {}), createdAt: { gte: from, lte: to } };
+    const [jobs, couriers, openNow] = await Promise.all([
+      prisma.deliveryJob.findMany({ where, select: { status: true, courierId: true, courierName: true, dispatchedAt: true, deliveredAt: true, order: { select: { total: true, deliveryFee: true } } } }),
+      prisma.courier.findMany({ where: { tenantId: req.auth!.tenantId!, ...(req.auth!.unitId ? { OR: [{ unitId: req.auth!.unitId }, { unitId: null }] } : {}) }, select: { id: true, name: true, active: true, paymentPerDelivery: true } }),
+      prisma.deliveryJob.count({ where: { tenantId: req.auth!.tenantId!, ...(req.auth!.unitId ? { unitId: req.auth!.unitId } : {}), status: { in: ['PENDING', 'ASSIGNED', 'PICKED_UP'] } } }),
+    ]);
+    const minutes = (job: (typeof jobs)[number]) => job.dispatchedAt && job.deliveredAt ? (job.deliveredAt.getTime() - job.dispatchedAt.getTime()) / 60_000 : null;
+    const timed = jobs.filter(job => job.status === 'DELIVERED' && minutes(job) !== null);
+    const byCourier = couriers.map(courier => {
+      const mine = jobs.filter(job => job.courierId === courier.id); const done = mine.filter(job => job.status === 'DELIVERED'); const mineTimed = done.filter(job => minutes(job) !== null);
+      return { id: courier.id, name: courier.name, active: courier.active, assigned: mine.length, delivered: done.length, averageMinutes: mineTimed.length ? Math.round(mineTimed.reduce((sum, job) => sum + (minutes(job) ?? 0), 0) / mineTimed.length) : null, paymentPerDelivery: courier.paymentPerDelivery === null ? null : Number(courier.paymentPerDelivery), amountDue: courier.paymentPerDelivery === null ? null : Math.round(Number(courier.paymentPerDelivery) * done.length * 100) / 100 };
+    }).filter(row => row.assigned > 0 || row.active);
+    return res.json({
+      period: { from, to }, openNow, total: jobs.length, delivered: jobs.filter(job => job.status === 'DELIVERED').length, cancelled: jobs.filter(job => job.status === 'CANCELLED').length,
+      averageMinutes: timed.length ? Math.round(timed.reduce((sum, job) => sum + (minutes(job) ?? 0), 0) / timed.length) : null,
+      feesCollected: Math.round(jobs.filter(job => job.status === 'DELIVERED').reduce((sum, job) => sum + Number(job.order.deliveryFee ?? 0), 0) * 100) / 100,
+      deliveredRevenue: Math.round(jobs.filter(job => job.status === 'DELIVERED').reduce((sum, job) => sum + Number(job.order.total), 0) * 100) / 100,
+      byCourier,
+    });
   } catch (error) { return next(error); }
 });
 deliveryRoutes.get('/', async (req, res, next) => {

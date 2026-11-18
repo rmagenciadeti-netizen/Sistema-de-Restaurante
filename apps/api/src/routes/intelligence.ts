@@ -7,6 +7,7 @@ import { loadSettings, type TenantSettingsData } from '../lib/settings';
 import { requireAuth, requireTenant } from '../middleware/auth';
 import { tenantScope } from '../lib/report-helpers';
 import { localParts } from '../lib/scheduling';
+import { currentAiProvider } from '../lib/ai-provider';
 import { addDays, analyzeSales, brl, detectIntent, extractAmount, forecastRevenue, goalProgress, weeklyTrend, type Sale } from '../lib/intelligence';
 
 export const intelligenceRoutes = Router();
@@ -189,5 +190,102 @@ intelligenceRoutes.post('/ask', async (req, res, next) => {
     const intent = detectIntent(input.data.question);
     const result = answer(intent, insights, input.data.question);
     return res.json({ intent, ...result, source: 'Dados registrados do próprio estabelecimento; nenhuma IA externa é usada.', generatedAt: insights.now });
+  } catch (error) { return next(error); }
+});
+
+// Stock intelligence: coverage, suggested purchases, waste and ABC curve, all derived from registered movements and sales.
+intelligenceRoutes.get('/stock', async (req, res, next) => {
+  try {
+    const scope = tenantScope(req);
+    const settings = await loadSettings(prisma, scope.tenantId);
+    const tz = settings.hours.timezone;
+    const now = new Date();
+    const since30 = localMidnight(addDays(localParts(now, tz).day, -30), tz);
+    const [ingredients, moves, sold, products, stockProducts, recipes] = await Promise.all([
+      prisma.ingredient.findMany({ where: { ...scope, active: true }, select: { id: true, name: true, unitOfMeasure: true, currentStock: true, minimumStock: true, averageCost: true } }),
+      prisma.stockMovement.findMany({ where: { ...scope, createdAt: { gte: since30 }, type: { in: ['ORDER_CONSUMPTION', 'ORDER_REVERSAL', 'WASTE'] } }, select: { ingredientId: true, type: true, quantity: true, unitCost: true } }),
+      prisma.orderItem.groupBy({ by: ['productId'], where: { order: { ...scope, status: OrderStatus.COMPLETED, createdAt: { gte: since30 } } }, _sum: { quantity: true, total: true } }),
+      prisma.product.findMany({ where: { ...scope, active: true, isCombo: false }, select: { id: true, name: true } }),
+      prisma.product.findMany({ where: { ...scope, active: true, stockControlled: true, stockMin: { not: null } }, select: { name: true, stockQuantity: true, stockMin: true } }),
+      prisma.recipe.findMany({ where: { tenantId: scope.tenantId }, select: { productId: true } }),
+    ]);
+    const consumed = new Map<string, number>(); const wasted = new Map<string, { quantity: number; cost: number }>();
+    for (const move of moves) {
+      const quantity = n(move.quantity);
+      if (move.type === 'WASTE') {
+        const ingredient = ingredients.find(item => item.id === move.ingredientId);
+        const row = wasted.get(move.ingredientId) ?? { quantity: 0, cost: 0 };
+        row.quantity += Math.abs(quantity); row.cost += Math.abs(quantity) * (n(move.unitCost) || n(ingredient?.averageCost)); wasted.set(move.ingredientId, row);
+      } else consumed.set(move.ingredientId, (consumed.get(move.ingredientId) ?? 0) - quantity);
+    }
+    const items = ingredients.map(item => {
+      const used = Math.max(0, consumed.get(item.id) ?? 0); const daily = used / 30; const current = n(item.currentStock); const minimum = item.minimumStock === null ? null : n(item.minimumStock);
+      const coverageDays = daily > 0 ? round2(current / daily) : null;
+      const critical = minimum !== null && current <= minimum;
+      const target = Math.max(minimum !== null ? minimum * 2 : 0, daily * 14);
+      const suggested = (critical || (coverageDays !== null && coverageDays <= 7)) && target > current ? round2(target - current) : 0;
+      return { id: item.id, name: item.name, unit: item.unitOfMeasure, current, minimum, consumed30: round2(used), coverageDays, critical, suggestedPurchase: suggested, estimatedCost: round2(suggested * n(item.averageCost)) };
+    }).sort((a, b) => Number(b.critical) - Number(a.critical) || (a.coverageDays ?? 1e9) - (b.coverageDays ?? 1e9));
+    const waste = [...wasted.entries()].map(([id, value]) => ({ name: ingredients.find(item => item.id === id)?.name ?? 'Insumo removido', unit: ingredients.find(item => item.id === id)?.unitOfMeasure ?? '', quantity: round2(value.quantity), cost: round2(value.cost) })).sort((a, b) => b.cost - a.cost);
+    const ranked = sold.map(row => ({ name: products.find(product => product.id === row.productId)?.name ?? 'Produto removido', quantity: n(row._sum.quantity), revenue: round2(n(row._sum.total)) })).sort((a, b) => b.revenue - a.revenue);
+    const total = ranked.reduce((sum, row) => sum + row.revenue, 0); let before = 0;
+    const abc = ranked.map(row => {
+      const share = total > 0 ? (row.revenue / total) * 100 : 0;
+      const curve: 'A' | 'B' | 'C' = before < 80 ? 'A' : before < 95 ? 'B' : 'C';
+      before += share;
+      return { ...row, share: round2(share), curve };
+    });
+    const withRecipe = new Set(recipes.map(recipe => recipe.productId));
+    return res.json({
+      generatedAt: now, windowDays: 30, items, waste, wasteCost: round2(waste.reduce((sum, row) => sum + row.cost, 0)), abc,
+      products: { lowStock: stockProducts.filter(product => n(product.stockQuantity) <= n(product.stockMin)).map(product => ({ name: product.name, current: n(product.stockQuantity), minimum: n(product.stockMin) })), withoutRecipe: products.filter(product => !withRecipe.has(product.id)).length, total: products.length },
+      purchaseTotal: round2(items.reduce((sum, row) => sum + row.estimatedCost, 0)),
+      note: 'Cobertura e sugestões usam o consumo real dos últimos 30 dias; insumos sem consumo registrado não têm cobertura estimada.',
+    });
+  } catch (error) { return next(error); }
+});
+
+// Business intelligence: rule-based executive diagnosis from real data; optional generative narrative when an AI provider is configured and limits allow.
+const aiUsage = new Map<string, { day: string; count: number }>();
+const aiDailyLimit = () => Math.max(0, Number(process.env.AI_DAILY_LIMIT ?? 10));
+const aiRemaining = (tenantId: string, day: string) => { const usage = aiUsage.get(tenantId); return Math.max(0, aiDailyLimit() - (usage && usage.day === day ? usage.count : 0)); };
+
+intelligenceRoutes.post('/business', async (req, res, next) => {
+  try {
+    const input = z.object({ useAi: z.boolean().default(false) }).safeParse(req.body ?? {});
+    if (!input.success) return res.status(400).json({ message: 'Invalid request' });
+    const scope = tenantScope(req);
+    const settings = await loadSettings(prisma, scope.tenantId);
+    const insights = await loadInsights(scope, settings);
+    const { analysis, month, trend, forecast, expenses, wasteCost, lowStock, ranked, lessSold, margins } = insights;
+    const diagnosis: { tone: 'good' | 'warning' | 'critical' | 'info'; title: string; detail: string; href?: string }[] = [];
+    if (analysis.monthChangePercent !== null) diagnosis.push({ tone: analysis.monthChangePercent >= 0 ? 'good' : 'warning', title: `Faturamento ${analysis.monthChangePercent >= 0 ? 'acima' : 'abaixo'} do mês anterior`, detail: `${brl(analysis.monthToDate)} no mês até hoje contra ${brl(analysis.previousMonthSamePeriod)} no mesmo período do mês passado (${analysis.monthChangePercent}%).`, href: '/reports?r=sales' });
+    if (trend) diagnosis.push({ tone: trend.changePercent <= -insights.config.salesDropPercent ? 'critical' : trend.changePercent < 0 ? 'warning' : 'good', title: 'Tendência dos últimos 7 dias', detail: `${brl(trend.last7)} contra ${brl(trend.previous7)} nos 7 dias anteriores (${trend.changePercent}%).` });
+    if (month.revenue > 0 && month.coverage > 0) diagnosis.push({ tone: month.grossProfit / Math.max(1, month.revenueWithCost) < 0.3 ? 'warning' : 'good', title: 'Margem bruta do mês', detail: `Lucro bruto estimado de ${brl(month.grossProfit)} sobre ${month.coverage}% do faturamento com custo cadastrado.`, href: '/profit' });
+    if (month.operatingResult < 0) diagnosis.push({ tone: 'critical', title: 'Resultado operacional negativo no mês', detail: `Despesas pagas (${brl(month.expensesPaid)}) superam o faturamento (${brl(month.revenue)}).`, href: '/financial?type=EXPENSE' });
+    if (expenses.previous > 0 && expenses.current > expenses.previous * 1.1) diagnosis.push({ tone: 'warning', title: 'Despesas em alta', detail: `${brl(expenses.current)} neste mês contra ${brl(expenses.previous)} no anterior.`, href: '/financial?type=EXPENSE' });
+    if (lowStock.length > 0) diagnosis.push({ tone: 'warning', title: `${lowStock.length} insumo(s) com estoque crítico`, detail: lowStock.slice(0, 5).map(item => item.name).join(', '), href: '/inventory' });
+    if (wasteCost > 0) diagnosis.push({ tone: 'info', title: 'Desperdício registrado em 30 dias', detail: brl(wasteCost), href: '/inventory' });
+    const lowMargin = margins.filter(item => item.marginPercent < insights.config.marginFloorPercent);
+    if (insights.config.marginFloorPercent > 0 && lowMargin.length > 0) diagnosis.push({ tone: 'warning', title: `${lowMargin.length} produto(s) abaixo da margem mínima`, detail: lowMargin.slice(0, 5).map(item => `${item.name} (${item.marginPercent}%)`).join('; '), href: '/reports?r=profit-margin' });
+    if (insights.alerts.some(alert => alert.key === 'delayed-orders')) diagnosis.push({ tone: 'critical', title: 'Pedidos atrasados na operação', detail: insights.alerts.find(alert => alert.key === 'delayed-orders')!.detail, href: '/kds' });
+    if (diagnosis.length === 0) diagnosis.push({ tone: 'info', title: 'Dados insuficientes', detail: 'Ainda não há vendas, custos ou despesas suficientes para um diagnóstico. Continue operando e registrando.' });
+
+    const day = localParts(insights.now, insights.tz).day;
+    const provider = currentAiProvider();
+    const remaining = aiRemaining(scope.tenantId, day);
+    let ai: { text: string; provider: string } | null = null; let aiNote: string | null = null;
+    if (input.data.useAi) {
+      if (!provider) aiNote = 'IA generativa não configurada neste ambiente (AI_API_KEY/AI_MODEL). O diagnóstico acima usa apenas os dados do sistema.';
+      else if (remaining <= 0) aiNote = 'Limite diário de análises com IA atingido para este estabelecimento.';
+      else {
+        const facts = { hoje: analysis.today, mesAteHoje: analysis.monthToDate, mesAnteriorMesmoPeriodo: analysis.previousMonthSamePeriod, ticketMedioMes: analysis.avgTicketMonth, resultadoMes: month, ultimos7Dias: trend, previsaoMes: forecast?.monthProjection ?? null, despesas: expenses, desperdicio30d: wasteCost, estoqueCritico: lowStock.slice(0, 8), maisVendidos: ranked.slice(0, 5), menosVendidos: lessSold, canais: analysis.byChannel, diagnostico: diagnosis.map(item => `${item.title}: ${item.detail}`) };
+        try {
+          const text = await provider.answer({ system: 'Você é o RM Inteligência, analista de negócios de restaurantes. Responda em português do Brasil, em até 8 linhas, usando SOMENTE os números fornecidos. Não invente valores. Diferencie resultado efetivo de estimativa e termine com 3 ações práticas.', question: JSON.stringify(facts) });
+          if (text) { ai = { text, provider: provider.name }; const usage = aiUsage.get(scope.tenantId); aiUsage.set(scope.tenantId, { day, count: (usage && usage.day === day ? usage.count : 0) + 1 }); } else aiNote = 'A IA não retornou resposta; use o diagnóstico acima.';
+        } catch { aiNote = 'A IA não respondeu agora; use o diagnóstico acima.'; }
+      }
+    }
+    return res.json({ generatedAt: insights.now, diagnosis, ai, aiNote, aiAvailable: Boolean(provider), aiRemainingToday: aiRemaining(scope.tenantId, day), source: 'Dados reais do estabelecimento. A narrativa de IA, quando ativa, recebe apenas números agregados.' });
   } catch (error) { return next(error); }
 });
