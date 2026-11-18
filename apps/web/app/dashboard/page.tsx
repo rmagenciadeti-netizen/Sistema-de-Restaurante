@@ -5,6 +5,8 @@ import { useRouter } from 'next/navigation';
 import { api, ApiError, errorMessage, formatMoney, storedUser } from '../../lib/api';
 import Link from 'next/link';
 import { AppShell, flows, moduleIcon, moduleLabel, Notice, panelClass } from '../../components/app-shell';
+import { AreaChart, DonutChart } from '../../components/charts';
+import { StatCard } from '../../components/ui';
 
 type Summary = {
   totalCompanies?: number; activeCompanies?: number; trialCompanies?: number; suspendedCompanies?: number;
@@ -16,16 +18,15 @@ type Summary = {
   salesTrend?: { day: string; total: string | number }[];
 };
 
+const metricIcons: Record<string, string> = { 'Empresas cadastradas': '🏢', 'Empresas ativas': '✅', 'Em período de teste': '🧪', Suspensas: '⛔', Usuários: '👥', Pedidos: '🧾', 'Receita recorrente (MRR)': '📈', 'Recebido no mês': '💰', 'Em aberto': '⏳', Vencido: '⚠️', 'Vendas concluídas hoje': '💵', 'Vendas concluídas no mês': '📊', 'Pedidos de hoje': '🛎️', 'Ticket médio hoje': '🎟️', 'Mesas ocupadas': '🪑', 'Mesas disponíveis': '✔️', 'Produtos ativos': '🍽️', 'Funcionários ativos': '🧑‍🍳', 'Contas a receber': '📥', 'Contas a pagar': '📤', 'Despesas baixadas no mês': '💳', 'Resultado estimado no mês': '🏦' };
 function Metric({ label, value, detail }: { label: string; value: string | number; detail?: string }) {
-  return <article className={`${panelClass} relative overflow-hidden`}>
-    <div className="absolute inset-x-0 top-0 h-1 bg-gradient-to-r from-brand-400 via-brand-500 to-brand-300" />
-    <p className="text-xs font-semibold uppercase tracking-[0.12em] text-slate-500">{label}</p>
-    <p className="mt-4 text-2xl font-bold tracking-tight text-slate-900">{value}</p>
-    {detail && <p className="mt-2 text-xs text-slate-500">{detail}</p>}
-  </article>;
+  return <StatCard icon={metricIcons[label]} label={label} value={value} hint={detail} tone={label.startsWith('Vendas concluídas') || label.startsWith('Receita') ? 'dark' : 'default'} />;
 }
 
-type CommercialSummary = { revenue: { mrr: number; received: number; open: number; overdue: number }; subscriptions: { active: number; expired: number }; clients: { delinquent: number } };
+type Insight = { sales: { byChannel: { channel: string; total: number }[] }; topProducts: { name: string; quantity: number; revenue: number }[]; alerts: { key: string; severity: string; title: string; detail: string; href: string }[] };
+const channelLabel: Record<string, string> = { POS: 'PDV', TABLE: 'Mesa / QR Code', DELIVERY: 'Delivery', TAKEAWAY: 'Retirada', WHATSAPP: 'WhatsApp' };
+
+type CommercialSummary = { revenue: { mrr: number; received: number; open: number; overdue: number }; subscriptions: { active: number; expired: number }; clients: { delinquent: number }; byPlan: { id: string; name: string; subscriptions: number }[]; evolution: { month: string; received: number }[] };
 function MasterCommercial() {
   const [data, setData] = useState<CommercialSummary | null>(null);
   useEffect(() => { api<CommercialSummary>('/commercial/overview').then(setData).catch(() => undefined); }, []);
@@ -38,12 +39,17 @@ function MasterCommercial() {
       <Metric label="Em aberto" value={formatMoney(data.revenue.open)} detail={`${data.subscriptions.expired} assinatura(s) vencida(s)`} />
       <Metric label="Vencido" value={formatMoney(data.revenue.overdue)} detail={`${data.clients.delinquent} cliente(s) inadimplente(s)`} />
     </div>
+    <div className="mt-4 grid gap-4 xl:grid-cols-2">
+      <article className={panelClass}><h3 className="mb-3 text-sm font-bold uppercase tracking-wider text-slate-700">Evolução do faturamento</h3><AreaChart label="Evolução do faturamento recebido" format={formatMoney} points={data.evolution.map(point => ({ label: `${point.month.slice(5)}/${point.month.slice(2, 4)}`, value: point.received }))} /></article>
+      <article className={panelClass}><h3 className="mb-3 text-sm font-bold uppercase tracking-wider text-slate-700">Planos mais vendidos</h3>{data.byPlan.some(plan => plan.subscriptions > 0) ? <DonutChart centerLabel="Planos mais vendidos" format={value => `${value} assin.`} slices={data.byPlan.filter(plan => plan.subscriptions > 0).map(plan => ({ label: plan.name, value: plan.subscriptions }))} /> : <p className="text-sm text-slate-500">Nenhuma assinatura ativa.</p>}</article>
+    </div>
   </section>;
 }
 
 export default function DashboardPage() {
   const [result, setResult] = useState<{ summary: Summary; isMaster: boolean } | null>(null);
   const [error, setError] = useState('');
+  const [insight, setInsight] = useState<Insight | null>(null);
   const router = useRouter();
 
   useEffect(() => {
@@ -51,7 +57,7 @@ export default function DashboardPage() {
     const user = storedUser();
     const isMaster = user.role === 'MASTER_ADMIN';
     api<Summary>(isMaster ? '/dashboard/master' : '/dashboard/restaurant')
-      .then(summary => { if (active) setResult({ summary, isMaster }); })
+      .then(summary => { if (active) setResult({ summary, isMaster }); if (!isMaster) api<Insight>('/intelligence/summary').then(data => { if (active) setInsight(data); }).catch(() => undefined); })
       .catch(cause => {
         if (!active) return;
         if (cause instanceof ApiError && cause.status === 401) router.replace('/login');
@@ -62,7 +68,6 @@ export default function DashboardPage() {
 
   const summary = result?.summary;
   const isMaster = result?.isMaster ?? false;
-  const maxTrend = Math.max(0, ...(summary?.salesTrend ?? []).map(point => Number(point.total)));
   const formatDay = (day: string) => new Date(`${day}T12:00:00Z`).toLocaleDateString('pt-BR', { weekday: 'short', day: '2-digit' });
 
   return <AppShell title={isMaster ? 'Painel Master' : 'Visão geral'}>
@@ -106,19 +111,14 @@ export default function DashboardPage() {
         </section>}
         <section className={`${panelClass} mt-6`}>
           <div className="mb-5 flex flex-wrap items-end justify-between gap-2"><div><p className="text-xs font-semibold uppercase tracking-[0.2em] text-brand-700">Operação</p><h2 className="mt-1 text-lg font-semibold">Vendas concluídas · últimos 7 dias</h2></div><p className="text-xs text-slate-500">Valores reais de pedidos concluídos</p></div>
-          <div className="grid min-h-48 grid-cols-7 items-end gap-3" role="img" aria-label="Gráfico de vendas concluídas nos últimos sete dias">
-            {(summary.salesTrend ?? []).map(point => {
-              const value = Number(point.total);
-              const height = maxTrend > 0 ? Math.max(4, value / maxTrend * 100) : 0;
-              return <div key={point.day} className="flex h-48 min-w-0 flex-col items-center justify-end gap-2">
-                <span className="max-w-full truncate text-center text-[10px] text-slate-500">{formatMoney(value)}</span>
-                <div className="flex h-32 w-full items-end rounded-t bg-slate-100"><div className="w-full rounded-t bg-brand-500 transition-[height]" style={{ height: `${height}%` }} /></div>
-                <span className="text-center text-[10px] capitalize text-slate-500">{formatDay(point.day)}</span>
-              </div>;
-            })}
-          </div>
+          <AreaChart label="Gráfico de vendas concluídas nos últimos sete dias" format={formatMoney} points={(summary.salesTrend ?? []).map(point => ({ label: formatDay(point.day), value: Number(point.total) }))} />
           {summary.salesTrend?.length === 0 && <p className="text-sm text-slate-500">Ainda não há vendas concluídas nesse período.</p>}
         </section>
+        {insight && <section className="mt-6 grid gap-6 xl:grid-cols-3">
+          <article className={panelClass}><h2 className="mb-4 text-sm font-bold uppercase tracking-wider text-slate-700">Vendas por canal · 90 dias</h2>{insight.sales.byChannel.length === 0 ? <p className="text-sm text-slate-500">Sem vendas concluídas para comparar canais.</p> : <DonutChart centerLabel="Vendas por canal" format={formatMoney} slices={insight.sales.byChannel.map(item => ({ label: channelLabel[item.channel] ?? item.channel, value: item.total }))} />}</article>
+          <article className={panelClass}><h2 className="mb-4 text-sm font-bold uppercase tracking-wider text-slate-700">Mais vendidos · 30 dias</h2>{insight.topProducts.length === 0 ? <p className="text-sm text-slate-500">Sem vendas no período.</p> : <ol className="space-y-2 text-sm">{insight.topProducts.map((item, index) => <li key={item.name} className="flex items-center gap-3"><span className="grid h-6 w-6 place-items-center rounded-full bg-neutral-950 text-xs font-bold text-brand-300">{index + 1}</span><span className="min-w-0 flex-1 truncate">{item.name}</span><span className="text-xs text-slate-500">{item.quantity}×</span><span className="font-semibold">{formatMoney(item.revenue)}</span></li>)}</ol>}</article>
+          <article className={panelClass}><div className="mb-4 flex items-center justify-between"><h2 className="text-sm font-bold uppercase tracking-wider text-slate-700">Alertas inteligentes</h2><Link href="/intelligence" className="text-xs font-semibold text-brand-700 hover:text-brand-600">RM Inteligência ›</Link></div>{insight.alerts.length === 0 ? <p className="text-sm text-slate-500">Nenhum alerta no momento.</p> : <ul className="space-y-2 text-sm">{insight.alerts.slice(0, 4).map(alert => <li key={alert.key}><Link href={alert.href} className="flex gap-2 rounded-lg border border-slate-200 p-2 hover:border-brand-400"><span aria-hidden="true" className={`mt-1 h-2.5 w-2.5 shrink-0 rounded-full ${alert.severity === 'critical' ? 'bg-red-500' : alert.severity === 'warning' ? 'bg-amber-500' : 'bg-sky-500'}`} /><span><strong className="block">{alert.title}</strong><span className="text-xs text-slate-500">{alert.detail}</span></span></Link></li>)}</ul>}</article>
+        </section>}
       </>)}
     {result && !isMaster && <section className="mt-8">
       <div className="mb-4 flex flex-wrap items-end justify-between gap-2"><div><p className="text-xs font-semibold uppercase tracking-[0.2em] text-brand-700">Central de módulos</p><h2 className="mt-1 text-xl font-bold">Tudo conectado em um só lugar</h2></div><p className="text-xs text-slate-500">O acesso a cada módulo respeita as permissões da sua conta.</p></div>

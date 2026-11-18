@@ -1,6 +1,7 @@
 'use client';
 
-import { useState } from 'react';
+import { Suspense, useState } from 'react';
+import { useSearchParams } from 'next/navigation';
 import { AppShell } from '../../components/app-shell';
 import { CommercialOverview } from '../../components/commercial/overview';
 import { ModuleCatalog } from '../../components/commercial/modules';
@@ -14,8 +15,8 @@ const tabs = [
 ] as const;
 type Tab = (typeof tabs)[number]['key'];
 
-export default function CommercialPage() {
-  const [tab, setTab] = useState<Tab>('overview');
+function CommercialContent({ requested }: { requested: string | null }) {
+  const [tab, setTab] = useState<Tab>(() => tabs.find(item => item.key === requested)?.key ?? 'overview');
   return <AppShell title="Gestão comercial">
     <PageHeader title="Gestão comercial — planos, módulos e assinaturas" subtitle="Controle toda a oferta do RM Restaurant sem alterar código. Planos e clientes têm telas próprias em “Planos e preços” e “Clientes e assinaturas”." />
     <Tabs tabs={tabs.map(item => ({ key: item.key, label: item.label }))} value={tab} onChange={setTab} label="Gestão comercial" />
@@ -26,4 +27,14 @@ export default function CommercialPage() {
     {tab === 'billing' && <BillingManager />}
     {tab === 'history' && <CommercialHistory />}
   </AppShell>;
+}
+
+// Keyed by the menu's ?tab= so each sidebar entry opens its own section.
+function CommercialRoute() {
+  const requested = useSearchParams().get('tab');
+  return <CommercialContent key={requested ?? ''} requested={requested} />;
+}
+
+export default function CommercialPage() {
+  return <Suspense fallback={null}><CommercialRoute /></Suspense>;
 }

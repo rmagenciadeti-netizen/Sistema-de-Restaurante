@@ -40,7 +40,7 @@ export type OpsTable = { id: string; unitId: string; label: string; seats: numbe
 export type OpsZone = { id: string; name: string; fee: string | number; minOrder?: string | number | null; active: boolean };
 export type OpsProduct = {
   id: string; name: string; code?: string | null; barcode?: string | null; description?: string | null; price: string | number; active: boolean; isCombo?: boolean; favorite?: boolean;
-  soldByWeight?: boolean; allowFractionalQuantity?: boolean; packagingEnabled?: boolean; packagingPrice?: string | number; scaleCode?: number | null; unitId?: string | null; category?: { id: string; name: string } | null; categoryId?: string | null; allowNotes?: boolean; allowFreePrice?: boolean; alwaysShowDescription?: boolean;
+  soldByWeight?: boolean; allowFractionalQuantity?: boolean; packagingEnabled?: boolean; packagingPrice?: string | number; scaleCode?: number | null; unitId?: string | null; category?: { id: string; name: string } | null; categoryId?: string | null; allowNotes?: boolean; allowFreePrice?: boolean; alwaysShowDescription?: boolean; image?: { updatedAt: string } | null;
 };
 export type OpsPromotion = { id: string; type: 'PERCENT' | 'FIXED'; value: string | number; startsAt: string; endsAt?: string | null; active: boolean; products?: { productId: string }[]; productIds?: string[] };
 export type PaymentMethodOption = { id: string; name: string; equivalent: 'CASH' | 'PIX' | 'CREDIT_CARD' | 'DEBIT_CARD' | 'VOUCHER' | 'OTHER'; allowChange: boolean; showLocal?: boolean; showStore?: boolean; showApp?: boolean };

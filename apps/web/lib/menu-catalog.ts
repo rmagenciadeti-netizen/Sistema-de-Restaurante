@@ -84,9 +84,14 @@ export const menuGroups: MenuGroup[] = [
     { href: '/downloads', label: 'Downloads', icon: '⬇️' }, { href: '/audit', label: 'Auditoria', icon: '🛡️' }, { href: '/support', label: 'Suporte e chamados', icon: '🎧' },
   ] },
   { title: 'Gestão comercial', icon: '💼', items: [
-    { href: '/commercial', label: 'Visão geral, módulos, promoções e cobranças', icon: '📊', masterOnly: true },
+    { href: '/commercial', label: 'Visão geral comercial', icon: '📊', masterOnly: true },
     { href: '/plans', label: 'Planos e montador', icon: '💎', masterOnly: true },
+    { href: '/commercial?tab=modules', label: 'Módulos', icon: '🧩', masterOnly: true },
+    { href: '/commercial?tab=campaigns', label: 'Promoções', icon: '🔖', masterOnly: true },
+    { href: '/commercial?tab=coupons', label: 'Cupons', icon: '🏷️', masterOnly: true },
     { href: '/licenses', label: 'Clientes e assinaturas', icon: '🔑', masterOnly: true },
+    { href: '/commercial?tab=billing', label: 'Cobranças e financeiro', icon: '🧾', masterOnly: true },
+    { href: '/commercial?tab=history', label: 'Auditoria comercial', icon: '🛡️', masterOnly: true },
     { href: '/support', label: 'Suporte e interessados', icon: '🎧', masterOnly: true },
   ] },
 ];

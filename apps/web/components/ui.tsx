@@ -64,11 +64,14 @@ export function Badge({ tone = 'neutral', children }: { tone?: keyof typeof badg
   return <span className={`inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-semibold ${badgeTones[tone]}`}>{children}</span>;
 }
 
-export function StatCard({ label, value, hint, tone = 'default' }: { label: string; value: ReactNode; hint?: string; tone?: 'default' | 'dark' }) {
-  return <div className={`rounded-2xl border p-4 shadow-sm ${tone === 'dark' ? 'border-neutral-800 bg-neutral-950 text-white' : 'border-slate-200 bg-white text-slate-900'}`}>
-    <p className={`text-[11px] font-semibold uppercase tracking-wider ${tone === 'dark' ? 'text-brand-300' : 'text-slate-500'}`}>{label}</p>
-    <p className="mt-1 text-2xl font-bold tracking-tight">{value}</p>
-    {hint && <p className={`mt-1 text-xs ${tone === 'dark' ? 'text-neutral-400' : 'text-slate-500'}`}>{hint}</p>}
+export function StatCard({ label, value, hint, tone = 'default', icon }: { label: string; value: ReactNode; hint?: string; tone?: 'default' | 'dark'; icon?: string }) {
+  return <div className={`flex items-start gap-3 rounded-2xl border p-4 shadow-sm ${tone === 'dark' ? 'border-neutral-800 bg-neutral-950 text-white' : 'border-slate-200 bg-white text-slate-900'}`}>
+    {icon && <span aria-hidden="true" className={`grid h-11 w-11 shrink-0 place-items-center rounded-full border text-xl ${tone === 'dark' ? 'border-brand-400/60 bg-brand-500/10' : 'border-brand-300 bg-brand-50'}`}>{icon}</span>}
+    <div className="min-w-0">
+      <p className={`text-[11px] font-semibold uppercase tracking-wider ${tone === 'dark' ? 'text-brand-300' : 'text-slate-500'}`}>{label}</p>
+      <p className="mt-1 text-2xl font-bold tracking-tight">{value}</p>
+      {hint && <p className={`mt-1 text-xs ${tone === 'dark' ? 'text-neutral-400' : 'text-slate-500'}`}>{hint}</p>}
+    </div>
   </div>;
 }
 

@@ -10,6 +10,7 @@ import { parseQuantity } from '../../lib/quantity';
 import { AppShell, buttonClass, Check, Field, inputClass, Notice, secondaryButtonClass, Select } from '../../components/app-shell';
 import { ModifierPicker, ModifierSelection, modifiersPayload, selectionError } from '../../components/modifier-picker';
 import { OpsNav } from '../../components/ops-nav';
+import { ProductPhoto } from '../../components/product-photo';
 import { OrderReceipt, PickupTicket, pickupTicketItems } from '../../components/order-receipt';
 import { OnlineCharges } from '../../components/online-charges';
 import { PasswordReleaseDialog } from '../../components/password-release';
@@ -431,9 +432,10 @@ export default function PdvPage() {
             <div className="mt-3 grid max-h-[62vh] grid-cols-2 gap-2 overflow-y-auto sm:grid-cols-3 xl:grid-cols-4">
               {shown.map(product => {
                 const price = unitPrice(product); const promo = price < Number(product.price);
-                return <button key={product.id} type="button" onClick={() => void addProduct(product)} className="relative flex min-h-28 flex-col justify-between rounded-xl border border-slate-200 bg-white p-3 text-left shadow-sm transition hover:border-brand-500 hover:bg-brand-50 focus-visible:outline focus-visible:outline-2 focus-visible:outline-brand-500 active:scale-[0.98]">
+                return <button key={product.id} type="button" onClick={() => void addProduct(product)} className="relative flex min-h-28 flex-col justify-between overflow-hidden rounded-xl border border-slate-200 bg-white p-3 text-left shadow-sm transition hover:border-brand-500 hover:bg-brand-50 focus-visible:outline focus-visible:outline-2 focus-visible:outline-brand-500 active:scale-[0.98]">
                   {product.allowFreePrice && !product.soldByWeight && <span className="absolute right-2 top-2 rounded-full bg-amber-100 px-2 py-0.5 text-[10px] font-bold uppercase text-amber-900">Preço livre</span>}
                   {promo && <span className="absolute right-2 top-8 rounded-full bg-red-600 px-2 py-0.5 text-[10px] font-bold uppercase text-white">Promo</span>}
+                  <ProductPhoto productId={product.id} version={product.image?.updatedAt} name={product.name} />
                   <span className="pr-10 text-sm font-semibold leading-tight text-slate-900">{product.name}</span>
                   {product.alwaysShowDescription && product.description && <span className="mt-1 line-clamp-2 text-xs leading-snug text-slate-500">{product.description}</span>}
                   <span className="mt-2 block text-xs text-slate-500">{product.code || product.category?.name || ''}</span>
