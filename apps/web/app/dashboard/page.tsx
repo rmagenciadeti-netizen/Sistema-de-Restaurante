@@ -7,6 +7,7 @@ import Link from 'next/link';
 import { AppShell, flows, moduleIcon, moduleLabel, Notice, panelClass } from '../../components/app-shell';
 import { AreaChart, DonutChart } from '../../components/charts';
 import { GoldCard, HeroBanner, StatCard } from '../../components/ui';
+import { AssistantPanel, BarList, GoalRing } from '../../components/dashboard-widgets';
 import { hrefAllowed } from '../../lib/menu-catalog';
 
 type Summary = {
@@ -34,7 +35,8 @@ const rmModules = [
   { href: '/profit', icon: '💹', title: 'RM Controle de Lucro', text: 'Faturamento, margem, CMV, despesas e resultado — faturamento não é lucro.' },
 ];
 
-type Insight = { sales: { byChannel: { channel: string; total: number }[] }; topProducts: { name: string; quantity: number; revenue: number }[]; alerts: { key: string; severity: string; title: string; detail: string; href: string }[] };
+type Goal = { goal: number; monthToDate: number; missing: number; remainingDays: number; perDay: number; reached: boolean };
+type Insight = { goal: Goal | null; sales: { byChannel: { channel: string; total: number }[] }; topProducts: { name: string; quantity: number; revenue: number }[]; alerts: { key: string; severity: string; title: string; detail: string; href: string }[] };
 const channelLabel: Record<string, string> = { POS: 'PDV', TABLE: 'Mesa / QR Code', DELIVERY: 'Delivery', TAKEAWAY: 'Retirada', WHATSAPP: 'WhatsApp' };
 
 type CommercialSummary = { revenue: { mrr: number; received: number; open: number; overdue: number }; subscriptions: { active: number; expired: number }; clients: { delinquent: number }; byPlan: { id: string; name: string; subscriptions: number }[]; evolution: { month: string; received: number }[] };
@@ -102,6 +104,36 @@ export default function DashboardPage() {
       </>
       : <>
         <HeroBanner title="RM Restaurant" highlight="Gestão gastronômica completa e conectada" text="Acompanhe o atendimento, a cozinha e os resultados em um só lugar." tiles={[{ href: '/pdv', icon: '🖥️', label: 'PDV Interativo' }, { href: '/comandas', icon: '🍽️', label: 'Mesas e Comandas' }, { href: '/kds', icon: '👨‍🍳', label: 'Painel de Produção' }, { href: '/inventory', icon: '📦', label: 'Estoque Inteligente' }, { href: '/intelligence', icon: '🧠', label: 'RM Inteligência' }]} />
+        <section className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4" aria-label="Indicadores do dia">
+          <Metric label="Vendas concluídas hoje" value={formatMoney(summary.daily?.sales)} detail={`${summary.daily?.completedOrders ?? 0} pedido(s) concluído(s)`} />
+          <Metric label="Pedidos de hoje" value={summary.daily?.orders ?? 0} detail={`${summary.openOrders ?? 0} em andamento agora`} />
+          <Metric label="Ticket médio hoje" value={formatMoney(summary.daily?.averageTicket)} detail="Pedidos concluídos" />
+          <Metric label="Vendas concluídas no mês" value={formatMoney(summary.monthly?.sales)} detail={`${summary.monthly?.completedOrders ?? 0} pedido(s) concluído(s)`} />
+        </section>
+        <section className="mt-4 grid gap-4 xl:grid-cols-3">
+          <article className={`${panelClass} xl:col-span-2`}>
+            <div className="mb-3 flex flex-wrap items-end justify-between gap-2"><div><p className="text-xs font-semibold uppercase tracking-[0.2em] text-brand-700">Operação</p><h2 className="mt-1 text-lg font-semibold">Vendas concluídas · últimos 7 dias</h2></div><p className="text-xs text-slate-500">Valores reais de pedidos concluídos</p></div>
+            <AreaChart label="Gráfico de vendas concluídas nos últimos sete dias" format={formatMoney} points={(summary.salesTrend ?? []).map(point => ({ label: formatDay(point.day), value: Number(point.total) }))} />
+            {(summary.salesTrend ?? []).every(point => Number(point.total) === 0) && <p className="mt-2 text-sm text-slate-500">Ainda não há vendas concluídas nesse período.</p>}
+          </article>
+          {insight ? <article className={panelClass}><h2 className="mb-4 text-sm font-bold uppercase tracking-wider text-slate-700">Vendas por canal · 90 dias</h2>{insight.sales.byChannel.length === 0 ? <p className="text-sm text-slate-500">Sem vendas concluídas para comparar canais.</p> : <DonutChart centerLabel="Vendas por canal" format={formatMoney} slices={insight.sales.byChannel.map(item => ({ label: channelLabel[item.channel] ?? item.channel, value: item.total }))} />}</article> : <article className={panelClass}><p className="text-sm text-slate-500">Carregando canais…</p></article>}
+        </section>
+        <section className="mt-4 grid gap-4 md:grid-cols-2 xl:grid-cols-4">
+          <article className={panelClass}><AssistantPanel allowed={hrefAllowed('/intelligence', enabledModules)} /></article>
+          <article className={panelClass}><h2 className="mb-3 text-sm font-bold uppercase tracking-wider text-slate-700">Meta do mês</h2><GoalRing goal={insight?.goal ?? null} /></article>
+          <article className={panelClass}><h2 className="mb-3 text-sm font-bold uppercase tracking-wider text-slate-700">Fluxo financeiro</h2>{summary.financial
+            ? <><BarList rows={[{ label: 'Vendas no mês', value: Number(summary.monthly?.sales ?? 0), tone: 'good' }, { label: 'A receber', value: Number(summary.financial.openReceivables) }, { label: 'A pagar', value: Number(summary.financial.openPayables), tone: 'warn' }, { label: 'Despesas pagas no mês', value: Number(summary.financial.monthlyExpenses), tone: 'warn' }]} /><p className="mt-3 border-t border-slate-200 pt-2 text-xs text-slate-600">Resultado estimado: <strong className="text-slate-900">{formatMoney(summary.financial.estimatedOperatingBalance)}</strong></p></>
+            : <p className="text-sm text-slate-500">Visível apenas para perfis com acesso financeiro.</p>}</article>
+          {insight ? <article className={panelClass}><h2 className="mb-4 text-sm font-bold uppercase tracking-wider text-slate-700">Mais vendidos · 30 dias</h2>{insight.topProducts.length === 0 ? <p className="text-sm text-slate-500">Sem vendas no período.</p> : <ol className="space-y-2 text-sm">{insight.topProducts.map((item, index) => <li key={item.name} className="flex items-center gap-3"><span className="grid h-6 w-6 place-items-center rounded-full bg-neutral-950 text-xs font-bold text-brand-300">{index + 1}</span><span className="min-w-0 flex-1 truncate">{item.name}</span><span className="text-xs text-slate-500">{item.quantity}×</span><span className="font-semibold">{formatMoney(item.revenue)}</span></li>)}</ol>}</article> : <article className={panelClass}><p className="text-sm text-slate-500">Carregando mais vendidos…</p></article>}
+        </section>
+        {insight && <section className="mt-4"><article className={panelClass}><div className="mb-4 flex items-center justify-between"><h2 className="text-sm font-bold uppercase tracking-wider text-slate-700">Alertas inteligentes</h2><Link href="/intelligence" className="text-xs font-semibold text-brand-700 hover:text-brand-600">RM Inteligência ›</Link></div>{insight.alerts.length === 0 ? <p className="text-sm text-slate-500">Nenhum alerta no momento.</p> : <ul className="space-y-2 text-sm">{insight.alerts.slice(0, 4).map(alert => <li key={alert.key}><Link href={alert.href} className="flex gap-2 rounded-lg border border-slate-200 p-2 hover:border-brand-400"><span aria-hidden="true" className={`mt-1 h-2.5 w-2.5 shrink-0 rounded-full ${alert.severity === 'critical' ? 'bg-red-500' : alert.severity === 'warning' ? 'bg-amber-500' : 'bg-sky-500'}`} /><span><strong className="block">{alert.title}</strong><span className="text-xs text-slate-500">{alert.detail}</span></span></Link></li>)}</ul>}</article></section>}
+        <section className="mt-4 grid gap-4 sm:grid-cols-2 xl:grid-cols-4" aria-label="Estrutura">
+          <Metric label="Mesas ocupadas" value={summary.tables?.occupied ?? 0} detail={`${summary.tables?.active ?? 0} mesas ativas`} />
+          <Metric label="Mesas disponíveis" value={summary.tables?.available ?? 0} />
+          <Metric label="Produtos ativos" value={summary.products ?? 0} />
+          <Metric label="Funcionários ativos" value={summary.employees ?? 0} />
+        </section>
+        <div className="mt-6">
         <GoldCard number={1} title="Módulos RM" subtitle="Inteligência, produção, delivery e lucro">
           <ul className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
             {rmModules.map(item => { const allowed = hrefAllowed(item.href, enabledModules); return <li key={item.href}>
@@ -111,35 +143,7 @@ export default function DashboardPage() {
               </Link></li>; })}
           </ul>
         </GoldCard>
-        <section className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
-          <Metric label="Vendas concluídas hoje" value={formatMoney(summary.daily?.sales)} detail={`${summary.daily?.completedOrders ?? 0} pedido(s) concluído(s)`} />
-          <Metric label="Vendas concluídas no mês" value={formatMoney(summary.monthly?.sales)} detail={`${summary.monthly?.completedOrders ?? 0} pedido(s) concluído(s)`} />
-          <Metric label="Pedidos de hoje" value={summary.daily?.orders ?? 0} detail={`${summary.openOrders ?? 0} em andamento agora`} />
-          <Metric label="Ticket médio hoje" value={formatMoney(summary.daily?.averageTicket)} detail="Pedidos concluídos" />
-          <Metric label="Mesas ocupadas" value={summary.tables?.occupied ?? 0} detail={`${summary.tables?.active ?? 0} mesas ativas`} />
-          <Metric label="Mesas disponíveis" value={summary.tables?.available ?? 0} />
-          <Metric label="Produtos ativos" value={summary.products ?? 0} />
-          <Metric label="Funcionários ativos" value={summary.employees ?? 0} />
-        </section>
-        {summary.financial && <section className="mt-6">
-          <div className="mb-3 flex items-end justify-between"><div><p className="text-xs font-semibold uppercase tracking-[0.2em] text-brand-700">Acesso financeiro</p><h2 className="mt-1 text-lg font-semibold">Resumo do período</h2></div><p className="text-xs text-slate-500">Contas registradas e vendas concluídas</p></div>
-          <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
-            <Metric label="Contas a receber" value={formatMoney(summary.financial.openReceivables)} />
-            <Metric label="Contas a pagar" value={formatMoney(summary.financial.openPayables)} />
-            <Metric label="Despesas baixadas no mês" value={formatMoney(summary.financial.monthlyExpenses)} />
-            <Metric label="Resultado estimado no mês" value={formatMoney(summary.financial.estimatedOperatingBalance)} detail="Vendas concluídas menos despesas baixadas" />
-          </div>
-        </section>}
-        <section className={`${panelClass} mt-6`}>
-          <div className="mb-5 flex flex-wrap items-end justify-between gap-2"><div><p className="text-xs font-semibold uppercase tracking-[0.2em] text-brand-700">Operação</p><h2 className="mt-1 text-lg font-semibold">Vendas concluídas · últimos 7 dias</h2></div><p className="text-xs text-slate-500">Valores reais de pedidos concluídos</p></div>
-          <AreaChart label="Gráfico de vendas concluídas nos últimos sete dias" format={formatMoney} points={(summary.salesTrend ?? []).map(point => ({ label: formatDay(point.day), value: Number(point.total) }))} />
-          {summary.salesTrend?.length === 0 && <p className="text-sm text-slate-500">Ainda não há vendas concluídas nesse período.</p>}
-        </section>
-        {insight && <section className="mt-6 grid gap-6 xl:grid-cols-3">
-          <article className={panelClass}><h2 className="mb-4 text-sm font-bold uppercase tracking-wider text-slate-700">Vendas por canal · 90 dias</h2>{insight.sales.byChannel.length === 0 ? <p className="text-sm text-slate-500">Sem vendas concluídas para comparar canais.</p> : <DonutChart centerLabel="Vendas por canal" format={formatMoney} slices={insight.sales.byChannel.map(item => ({ label: channelLabel[item.channel] ?? item.channel, value: item.total }))} />}</article>
-          <article className={panelClass}><h2 className="mb-4 text-sm font-bold uppercase tracking-wider text-slate-700">Mais vendidos · 30 dias</h2>{insight.topProducts.length === 0 ? <p className="text-sm text-slate-500">Sem vendas no período.</p> : <ol className="space-y-2 text-sm">{insight.topProducts.map((item, index) => <li key={item.name} className="flex items-center gap-3"><span className="grid h-6 w-6 place-items-center rounded-full bg-neutral-950 text-xs font-bold text-brand-300">{index + 1}</span><span className="min-w-0 flex-1 truncate">{item.name}</span><span className="text-xs text-slate-500">{item.quantity}×</span><span className="font-semibold">{formatMoney(item.revenue)}</span></li>)}</ol>}</article>
-          <article className={panelClass}><div className="mb-4 flex items-center justify-between"><h2 className="text-sm font-bold uppercase tracking-wider text-slate-700">Alertas inteligentes</h2><Link href="/intelligence" className="text-xs font-semibold text-brand-700 hover:text-brand-600">RM Inteligência ›</Link></div>{insight.alerts.length === 0 ? <p className="text-sm text-slate-500">Nenhum alerta no momento.</p> : <ul className="space-y-2 text-sm">{insight.alerts.slice(0, 4).map(alert => <li key={alert.key}><Link href={alert.href} className="flex gap-2 rounded-lg border border-slate-200 p-2 hover:border-brand-400"><span aria-hidden="true" className={`mt-1 h-2.5 w-2.5 shrink-0 rounded-full ${alert.severity === 'critical' ? 'bg-red-500' : alert.severity === 'warning' ? 'bg-amber-500' : 'bg-sky-500'}`} /><span><strong className="block">{alert.title}</strong><span className="text-xs text-slate-500">{alert.detail}</span></span></Link></li>)}</ul>}</article>
-        </section>}
+        </div>
       </>)}
     {result && !isMaster && <section className="mt-8">
       <div className="mb-4 flex flex-wrap items-end justify-between gap-2"><div><p className="text-xs font-semibold uppercase tracking-[0.2em] text-brand-700">Central de módulos</p><h2 className="mt-1 text-xl font-bold">Tudo conectado em um só lugar</h2></div><p className="text-xs text-slate-500">O acesso a cada módulo respeita as permissões da sua conta.</p></div>
