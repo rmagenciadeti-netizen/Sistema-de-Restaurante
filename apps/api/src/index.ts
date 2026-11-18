@@ -60,6 +60,7 @@ import { auditRoutes } from './routes/audit';
 import { registerProviders } from './providers.config';
 
 export const app = express();
+app.set('trust proxy', 1);
 app.disable('x-powered-by');
 app.use(helmet());
 export function parseAllowedOrigins(config: string | undefined): string[] {
