@@ -404,7 +404,7 @@ export default function PdvPage() {
   return <AppShell title="PDV">
     <div className="print:hidden">
       <OpsNav />
-      <div ref={shell} className={fullscreen ? 'h-screen overflow-auto bg-[var(--rm-workspace)] p-3' : ''}>
+      <div ref={shell} className={fullscreen ? 'h-screen overflow-auto bg-[var(--canvas)] p-3' : ''}>
         <div className="mb-3 flex flex-wrap items-center justify-between gap-2 rounded-2xl bg-neutral-950 px-3 py-2 text-white shadow-md">
           <div className="min-w-0"><p className="text-[10px] font-semibold uppercase tracking-[0.2em] text-brand-300">Ponto de venda</p><p className="truncate text-sm text-neutral-300">{isTable ? (channel === 'TABLE' ? `Mesa ${table?.label ?? '—'}` : `Comanda ${tabLabel || '—'}`) : channelOptions.find(option => option.key === channel)?.label}{unit ? ` · ${unit.name}` : ''}</p></div>
           <div className="flex items-center gap-2" role="toolbar" aria-label="Ações do PDV">

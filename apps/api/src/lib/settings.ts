@@ -5,6 +5,11 @@ const hhmm = z.string().regex(/^([01]\d|2[0-3]):[0-5]\d$/, 'Use HH:mm');
 const weekday = z.number().int().min(0).max(6);
 const slot = z.object({ day: weekday, start: hhmm, end: hhmm });
 
+export const APPEARANCE_MODES = ['LIGHT', 'DARK', 'AUTO'] as const;
+export const APPEARANCE_PRIMARIES = ['GOLD', 'BLUE', 'GREEN', 'RED', 'YELLOW', 'PURPLE', 'ORANGE'] as const;
+export const APPEARANCE_SIDEBARS = ['BLACK', 'WHITE', 'GRAY', 'GRAPHITE', 'NAVY', 'FOREST'] as const;
+export const appearancePreferenceSchema = z.object({ mode: z.enum(APPEARANCE_MODES), primary: z.enum(APPEARANCE_PRIMARIES), sidebar: z.enum(APPEARANCE_SIDEBARS) });
+
 export const SETTINGS_SECTIONS = {
   company: z.object({
     legalName: z.string().max(160).default(''), tradeName: z.string().max(160).default(''), document: z.string().max(20).default(''), activity: z.string().max(80).default(''),
@@ -78,6 +83,11 @@ export const SETTINGS_SECTIONS = {
     payableDays: z.number().int().min(0).max(30).default(3),
     delayedMinutes: z.number().int().min(5).max(240).default(30),
     marginFloorPercent: z.number().min(0).max(100).default(15),
+  }),
+  // Visual identity of the restaurant (RM default: dark, gold, black sidebar). Users may override it for themselves unless allowUserOverride is off.
+  appearance: z.object({
+    mode: z.enum(APPEARANCE_MODES).default('DARK'), primary: z.enum(APPEARANCE_PRIMARIES).default('GOLD'), sidebar: z.enum(APPEARANCE_SIDEBARS).default('BLACK'),
+    allowUserOverride: z.boolean().default(true),
   }),
   menuLayout: z.object({ hidden: z.array(z.string().max(60)).max(100).default([]) }),
   // The bot is opt-in: nothing is answered automatically until the restaurant turns it on.

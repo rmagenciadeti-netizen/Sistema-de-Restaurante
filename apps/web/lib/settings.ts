@@ -14,6 +14,7 @@ export type TenantSettings = {
   financial: { monthlyInterestPercent: number; latePenaltyPercent: number; graceDays: number; earlyDiscountPercent: number; earlyMinDays: number; installmentDays: number };
   products: { defaultMarginPercent: number };
   orders: { resetCounterDaily: boolean };
+  appearance: { mode: 'LIGHT' | 'DARK' | 'AUTO'; primary: 'GOLD' | 'BLUE' | 'GREEN' | 'RED' | 'YELLOW' | 'PURPLE' | 'ORANGE'; sidebar: 'BLACK' | 'WHITE' | 'GRAY' | 'GRAPHITE' | 'NAVY' | 'FOREST'; allowUserOverride: boolean };
   menuLayout: { hidden: string[] };
   whatsapp: { botEnabled: boolean; autoMessagesEnabled: boolean; greetingCooldownHours: number; handoffMinutes: number; replyOutsideHours: boolean; aiFallback: boolean; replyDelaySeconds: number; humanizeTyping: boolean; menuFooter: string };
   orderStatuses: { items: { key: string; title: string; active: boolean }[] };

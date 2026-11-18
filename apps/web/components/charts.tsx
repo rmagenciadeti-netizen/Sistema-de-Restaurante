@@ -2,9 +2,9 @@
 
 import { useId } from 'react';
 
-// Dependency-free SVG charts in the RM identity (gold on black/white). They only render the values they receive.
+// Dependency-free SVG charts in the RM identity (primary color on the theme surface). They only render the values they receive.
 
-export const chartPalette = ['#b89235', '#171612', '#dec17e', '#5e5a52', '#987425', '#a5a198'];
+export const chartPalette = ['rgb(var(--b-500))', 'rgb(var(--s-900))', 'rgb(var(--b-300))', 'rgb(var(--s-600))', 'rgb(var(--b-700))', 'rgb(var(--s-400))'];
 
 export function AreaChart({ points, format, label }: { points: { label: string; value: number }[]; format: (value: number) => string; label: string }) {
   const gradient = useId();
@@ -16,11 +16,11 @@ export function AreaChart({ points, format, label }: { points: { label: string; 
   const area = coords.length > 0 ? `${line} L${coords[coords.length - 1].x.toFixed(1)},${height - pad.bottom} L${coords[0].x.toFixed(1)},${height - pad.bottom} Z` : '';
   return <figure>
     <svg viewBox={`0 0 ${width} ${height}`} role="img" aria-label={label} className="h-44 w-full">
-      <defs><linearGradient id={gradient} x1="0" x2="0" y1="0" y2="1"><stop offset="0%" stopColor="#b89235" stopOpacity="0.45" /><stop offset="100%" stopColor="#b89235" stopOpacity="0.02" /></linearGradient></defs>
-      {[0.25, 0.5, 0.75].map(fraction => <line key={fraction} x1={pad.left} x2={width - pad.right} y1={pad.top + fraction * (height - pad.top - pad.bottom)} y2={pad.top + fraction * (height - pad.top - pad.bottom)} stroke="#e8e6e1" strokeDasharray="4 4" />)}
+      <defs><linearGradient id={gradient} x1="0" x2="0" y1="0" y2="1"><stop offset="0%" stopColor="rgb(var(--b-500))" stopOpacity="0.45" /><stop offset="100%" stopColor="rgb(var(--b-500))" stopOpacity="0.02" /></linearGradient></defs>
+      {[0.25, 0.5, 0.75].map(fraction => <line key={fraction} x1={pad.left} x2={width - pad.right} y1={pad.top + fraction * (height - pad.top - pad.bottom)} y2={pad.top + fraction * (height - pad.top - pad.bottom)} stroke="rgb(var(--s-200))" strokeDasharray="4 4" />)}
       {area && <path d={area} fill={`url(#${gradient})`} />}
-      {line && <path d={line} fill="none" stroke="#987425" strokeWidth="2.5" strokeLinejoin="round" strokeLinecap="round" />}
-      {coords.map((point, index) => <circle key={points[index].label} cx={point.x} cy={point.y} r="4" fill="#171612" stroke="#dec17e" strokeWidth="2"><title>{`${points[index].label}: ${format(points[index].value)}`}</title></circle>)}
+      {line && <path d={line} fill="none" stroke="rgb(var(--b-600))" strokeWidth="2.5" strokeLinejoin="round" strokeLinecap="round" />}
+      {coords.map((point, index) => <circle key={points[index].label} cx={point.x} cy={point.y} r="4" fill="var(--panel)" stroke="rgb(var(--b-400))" strokeWidth="2"><title>{`${points[index].label}: ${format(points[index].value)}`}</title></circle>)}
     </svg>
     <figcaption className="mt-1 flex justify-between gap-1 text-[10px] uppercase tracking-wide text-slate-500">{points.map(point => <span key={point.label} className="min-w-0 flex-1 truncate text-center">{point.label}</span>)}</figcaption>
   </figure>;
@@ -32,7 +32,7 @@ export function DonutChart({ slices, format, centerLabel }: { slices: { label: s
   let offset = 0;
   return <div className="flex flex-wrap items-center gap-6">
     <svg viewBox="0 0 120 120" role="img" aria-label={centerLabel} className="h-36 w-36 shrink-0 -rotate-90">
-      <circle cx="60" cy="60" r={radius} fill="none" stroke="#f4f3f0" strokeWidth="16" />
+      <circle cx="60" cy="60" r={radius} fill="none" stroke="rgb(var(--s-100))" strokeWidth="16" />
       {total > 0 && slices.map((slice, index) => {
         const length = (slice.value / total) * circumference;
         const segment = <circle key={slice.label} cx="60" cy="60" r={radius} fill="none" stroke={chartPalette[index % chartPalette.length]} strokeWidth="16" strokeDasharray={`${length} ${circumference - length}`} strokeDashoffset={-offset}><title>{`${slice.label}: ${format(slice.value)}`}</title></circle>;

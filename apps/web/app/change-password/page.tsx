@@ -30,7 +30,7 @@ export default function ChangePasswordPage() {
 
   return <main className="grid min-h-screen bg-[var(--rm-workspace)] lg:grid-cols-2">
     <section className="relative flex min-h-56 flex-col justify-center overflow-hidden bg-neutral-950 px-8 py-8 text-white sm:px-12 lg:min-h-screen lg:px-16">
-      <div aria-hidden="true" className="pointer-events-none absolute -right-36 top-1/4 h-96 w-96 rounded-full border border-brand-400/20 shadow-[0_0_100px_rgba(184,146,53,0.12)]" />
+      <div aria-hidden="true" className="pointer-events-none absolute -right-36 top-1/4 h-96 w-96 rounded-full border border-brand-400/20 shadow-[0_0_100px_rgb(var(--b-500)/0.12)]" />
       <p className="text-sm font-semibold uppercase tracking-[0.25em]"><span className="text-brand-300">RM</span> {isAdminApp ? 'Painel Admin' : 'Restaurant'}</p>
       <div className="mt-8 h-1 w-16 rounded-full bg-brand-400" />
       <h1 className="mt-5 max-w-lg text-3xl font-semibold leading-tight sm:text-4xl">Proteja sua conta.</h1>

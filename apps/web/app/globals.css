@@ -2,116 +2,169 @@
 @tailwind components;
 @tailwind utilities;
 
-:root {
+/* ---------- Central theme: data-theme (light|dark), data-primary (palettes.css) and data-sidebar are set on <html> by lib/theme.ts. ---------- */
+:root, [data-theme='light'] {
   color-scheme: light;
   --rm-black: #171612;
-  --rm-gold: #b89235;
-  --rm-gold-light: #dec17e;
-  --rm-white: #ffffff;
   --rm-workspace: #0b0a08;
+  --canvas: #f1efe9;
+  --fg: #171612;
+  --fg-muted: #5e5a52;
+  --panel: #ffffff;
+  --s-50: 250 250 249; --s-100: 244 243 240; --s-200: 232 230 225; --s-300: 210 207 200; --s-400: 165 161 152;
+  --s-500: 119 115 106; --s-600: 94 90 82; --s-700: 69 66 60; --s-800: 48 46 41; --s-900: 23 22 18;
 }
+:root, [data-sidebar='black'] { --sb: 11 10 8; }
+
+[data-sidebar='white'] { --sb: 255 255 255; }
+[data-sidebar='gray'] { --sb: 58 58 64; }
+[data-sidebar='graphite'] { --sb: 35 38 43; }
+[data-sidebar='navy'] { --sb: 15 31 61; }
+[data-sidebar='forest'] { --sb: 13 43 31; }
+
+/* White surfaces follow the theme panel color (nested previews included). */
+.bg-white, .hover\:bg-white:hover { background-color: var(--panel); }
+
+/* Public customer pages (virtual store, QR menu) keep their own black identity and ignore the restaurant theme. */
+[data-public='1'] { --canvas: #0b0a08; --fg: #f4f3f0; --fg-muted: #b9b5aa; }
 
 body {
-  background: var(--rm-workspace);
-  color: #f4f3f0;
+  background: var(--canvas);
+  color: var(--fg);
 }
 
-/* Black canvas with a soft gold glow; white panels sit on it with gold frames (RM visual identity). */
+/* Canvas behind the panels, with a soft glow in the primary color. */
 .rm-canvas {
   background:
-    radial-gradient(ellipse 60% 40% at 85% 0%, rgb(184 146 53 / 16%), transparent 70%),
-    radial-gradient(ellipse 50% 35% at 0% 100%, rgb(184 146 53 / 10%), transparent 70%),
-    var(--rm-workspace);
-  color: #f4f3f0;
+    radial-gradient(ellipse 60% 40% at 85% 0%, rgb(var(--b-500) / 14%), transparent 70%),
+    radial-gradient(ellipse 50% 35% at 0% 100%, rgb(var(--b-500) / 9%), transparent 70%),
+    var(--canvas);
+  color: var(--fg);
 }
 
+.rm-title { color: var(--fg); }
+.rm-muted { color: var(--fg-muted); }
+
 .rm-gold-card {
-  border: 1px solid rgb(184 146 53 / 65%);
+  border: 1px solid rgb(var(--b-500) / 65%);
   border-radius: 1rem;
-  box-shadow: 0 0 22px rgb(184 146 53 / 14%), inset 0 0 0 1px rgb(222 193 126 / 6%);
+  box-shadow: 0 0 22px rgb(var(--b-500) / 14%), inset 0 0 0 1px rgb(var(--b-300) / 6%);
 }
 
 .rm-gold-line {
   height: 2px;
-  background: linear-gradient(90deg, transparent, #b89235 20%, #f3dd9b 50%, #b89235 80%, transparent);
+  background: linear-gradient(90deg, transparent, rgb(var(--b-500)) 20%, rgb(var(--b-300)) 50%, rgb(var(--b-500)) 80%, transparent);
 }
 
-/* Text placed directly on the black canvas turns light; anything inside a light surface keeps the original dark palette. */
+/* Top bar and side menu share the sidebar color chosen in the appearance settings. */
+.rm-chrome { background-color: rgb(var(--sb)); }
+.rm-chrome-card { background-color: rgb(0 0 0 / 30%); }
+.rm-chrome-menu { background-color: rgb(var(--sb)); border-color: rgb(255 255 255 / 12%); }
+
 @media screen {
-  .rm-canvas main .text-slate-900,
-  .rm-canvas main .text-slate-800,
-  .rm-canvas main .text-slate-700 { color: #f4f3f0; }
-  .rm-canvas main .text-slate-600,
-  .rm-canvas main .text-slate-500,
-  .rm-canvas main .text-slate-400 { color: #b9b5aa; }
-  .rm-canvas main .text-brand-700,
-  .rm-canvas main .text-brand-600 { color: #dec17e; }
-
-  .rm-canvas main :is(.bg-white, .bg-slate-50, .bg-slate-100, .bg-slate-200, .bg-brand-50, .bg-brand-100, .bg-red-50, .bg-emerald-50, .bg-amber-50, .bg-sky-50, .bg-sky-100, .bg-emerald-100, .bg-red-100, .bg-amber-100) { color: #171612; }
-  .rm-canvas main :is(.bg-white, .bg-slate-50, .bg-slate-100, .bg-slate-200, .bg-brand-50, .bg-brand-100, .bg-red-50, .bg-emerald-50, .bg-amber-50, .bg-sky-50, .bg-sky-100, .bg-emerald-100, .bg-red-100, .bg-amber-100):is(.text-slate-900, .text-slate-800, .text-slate-700),
-  .rm-canvas main :is(.bg-white, .bg-slate-50, .bg-slate-100, .bg-slate-200, .bg-brand-50, .bg-brand-100, .bg-red-50, .bg-emerald-50, .bg-amber-50, .bg-sky-50, .bg-sky-100, .bg-emerald-100, .bg-red-100, .bg-amber-100) :is(.text-slate-900, .text-slate-800, .text-slate-700) { color: #171612; }
-  .rm-canvas main :is(.bg-white, .bg-slate-50, .bg-slate-100, .bg-slate-200, .bg-brand-50, .bg-brand-100, .bg-red-50, .bg-emerald-50, .bg-amber-50, .bg-sky-50, .bg-sky-100, .bg-emerald-100, .bg-red-100, .bg-amber-100):is(.text-slate-600, .text-slate-500, .text-slate-400),
-  .rm-canvas main :is(.bg-white, .bg-slate-50, .bg-slate-100, .bg-slate-200, .bg-brand-50, .bg-brand-100, .bg-red-50, .bg-emerald-50, .bg-amber-50, .bg-sky-50, .bg-sky-100, .bg-emerald-100, .bg-red-100, .bg-amber-100) :is(.text-slate-600, .text-slate-500, .text-slate-400) { color: #5e5a52; }
-  .rm-canvas main :is(.bg-white, .bg-slate-50, .bg-slate-100, .bg-brand-50, .bg-brand-100) :is(.text-brand-700, .text-brand-600) { color: #72561c; }
+  [data-theme='dark'] {
+    color-scheme: dark;
+    --canvas: #0b0a08;
+    --fg: #f4f3f0;
+    --fg-muted: #b9b5aa;
+    --panel: #14130e;
+    --s-50: 27 25 19; --s-100: 36 33 26; --s-200: 51 47 39; --s-300: 72 68 58; --s-400: 143 139 128;
+    --s-500: 170 166 155; --s-600: 194 191 181; --s-700: 216 213 205; --s-800: 233 231 225; --s-900: 244 243 240;
+  }
+  [data-theme='dark'] .border-slate-700,
+  [data-theme='dark'] .border-slate-800 { border-color: #332f27; }
+  [data-theme='dark'] .bg-slate-800 { background-color: #24211a; }
+  [data-theme='dark'] .text-slate-200,
+  [data-theme='dark'] .text-slate-300 { color: #d2cfc8; }
+  [data-theme='dark'] .shadow-black\/\[0\.03\],
+  [data-theme='dark'] .shadow-black\/\[0\.04\] { --tw-shadow-color: transparent; }
+  /* Status colors keep their meaning but turn into translucent tints on dark panels. */
+  [data-theme='dark'] :is(.bg-red-50, .bg-red-100) { background-color: rgb(239 68 68 / 14%); }
+  [data-theme='dark'] :is(.bg-emerald-50, .bg-emerald-100) { background-color: rgb(16 185 129 / 14%); }
+  [data-theme='dark'] :is(.bg-amber-50, .bg-amber-100) { background-color: rgb(245 158 11 / 14%); }
+  [data-theme='dark'] :is(.bg-sky-50, .bg-sky-100) { background-color: rgb(14 165 233 / 14%); }
+  [data-theme='dark'] :is(.text-red-600, .text-red-700, .text-red-800, .text-red-900) { color: #fca5a5; }
+  [data-theme='dark'] :is(.text-emerald-600, .text-emerald-700, .text-emerald-800, .text-emerald-900) { color: #6ee7b7; }
+  [data-theme='dark'] :is(.text-amber-600, .text-amber-700, .text-amber-800, .text-amber-900) { color: #fcd34d; }
+  [data-theme='dark'] :is(.text-sky-600, .text-sky-700, .text-sky-800, .text-sky-900) { color: #7dd3fc; }
+  [data-theme='dark'] :is(.border-red-200, .border-red-300) { border-color: rgb(239 68 68 / 35%); }
+  [data-theme='dark'] :is(.border-emerald-200, .border-emerald-300) { border-color: rgb(16 185 129 / 35%); }
+  [data-theme='dark'] :is(.border-amber-200, .border-amber-300) { border-color: rgb(245 158 11 / 35%); }
+  [data-theme='dark'] :is(.border-sky-200, .border-sky-300) { border-color: rgb(14 165 233 / 35%); }
 }
 
-.rm-surface .text-slate-300 {
+/* White sidebar: the chrome flips to dark text and subtle dark overlays so contrast holds on any color pair. */
+[data-sidebar='white'] .rm-chrome { color: #1f1d18; }
+[data-sidebar='white'] .rm-chrome :is(.text-white, .text-neutral-100, .text-neutral-200, .text-neutral-300) { color: #1f1d18; }
+[data-sidebar='white'] .rm-chrome :is(.text-neutral-400, .text-neutral-500) { color: #6b675d; }
+[data-sidebar='white'] .rm-chrome :is(.text-brand-300, .text-brand-400) { color: rgb(var(--b-700)); }
+[data-sidebar='white'] .rm-chrome :is(.text-red-300) { color: #b91c1c; }
+[data-sidebar='white'] .rm-chrome :is(.text-emerald-300) { color: #047857; }
+[data-sidebar='white'] .rm-chrome :is(.border-white\/10, .border-white\/15) { border-color: rgb(0 0 0 / 12%); }
+[data-sidebar='white'] .rm-chrome :is(.hover\:bg-white\/10:hover, .hover\:bg-white\/\[0\.07\]:hover) { background-color: rgb(0 0 0 / 6%); }
+[data-sidebar='white'] .rm-chrome :is(.bg-neutral-950, .bg-black) { background-color: #f4f3f0; }
+[data-sidebar='white'] .rm-chrome-card { background-color: #f4f3f0; }
+[data-sidebar='white'] .rm-chrome-menu { border-color: rgb(0 0 0 / 12%); box-shadow: 0 12px 32px rgb(0 0 0 / 18%); }
+[data-sidebar='white'] .rm-chrome input::placeholder { color: #8a867b; }
+[data-sidebar='white'] .rm-chrome input { color: #1f1d18; }
+
+[data-theme='light'] .rm-surface .text-slate-300 {
   color: #5e5a52;
 }
 
-.rm-surface .text-slate-200 {
+[data-theme='light'] .rm-surface .text-slate-200 {
   color: #45423c;
 }
 
-.rm-surface .text-slate-400 {
+[data-theme='light'] .rm-surface .text-slate-400 {
   color: #77736a;
 }
 
-.rm-surface .text-blue-300 {
+[data-theme='light'] .rm-surface .text-blue-300 {
   color: #72561c;
 }
 
-.rm-surface .text-blue-200 {
+[data-theme='light'] .rm-surface .text-blue-200 {
   color: #5f491b;
 }
 
-.rm-surface .text-purple-300 {
+[data-theme='light'] .rm-surface .text-purple-300 {
   color: #7e22ce;
 }
 
-.rm-surface .text-emerald-300 {
+[data-theme='light'] .rm-surface .text-emerald-300 {
   color: #047857;
 }
 
-.rm-surface .text-red-300 {
+[data-theme='light'] .rm-surface .text-red-300 {
   color: #b91c1c;
 }
 
-.rm-surface .text-amber-100,
-.rm-surface .text-amber-200 {
+[data-theme='light'] .rm-surface .text-amber-100,
+[data-theme='light'] .rm-surface .text-amber-200 {
   color: #92400e;
 }
 
-.rm-surface .border-slate-700,
-.rm-surface .border-slate-800 {
+[data-theme='light'] .rm-surface .border-slate-700,
+[data-theme='light'] .rm-surface .border-slate-800 {
   border-color: #e8e6e1;
 }
 
-.rm-surface input.bg-slate-950,
-.rm-surface select.bg-slate-950,
-.rm-surface textarea.bg-slate-950 {
+[data-theme='light'] .rm-surface input.bg-slate-950,
+[data-theme='light'] .rm-surface select.bg-slate-950,
+[data-theme='light'] .rm-surface textarea.bg-slate-950 {
   border-color: #d2cfc8;
   background-color: #ffffff;
   color: var(--rm-black);
 }
 
-.rm-surface input::placeholder,
-.rm-surface textarea::placeholder {
+[data-theme='light'] .rm-surface input::placeholder,
+[data-theme='light'] .rm-surface textarea::placeholder {
   color: #77736a;
 }
 
-.rm-surface :focus-visible {
-  outline: 2px solid rgb(184 146 53 / 55%);
+[data-theme='light'] .rm-surface :focus-visible {
+  outline: 2px solid rgb(var(--b-500) / 55%);
   outline-offset: 2px;
 }
 
@@ -121,7 +174,7 @@ body {
 }
 
 .rm-surface table thead th {
-  color: var(--rm-gold-light);
+  color: rgb(var(--b-300));
   font-size: 11px;
   font-weight: 600;
   letter-spacing: 0.06em;
@@ -139,7 +192,7 @@ body {
 
 ::selection {
   color: var(--rm-black);
-  background: var(--rm-gold-light);
+  background: rgb(var(--b-300));
 }
 
 @media (prefers-reduced-motion: reduce) {

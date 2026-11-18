@@ -117,7 +117,7 @@ export default function LoginPage() {
   return (
     <main className="rm-canvas grid min-h-screen lg:grid-cols-2">
       <section className="relative flex min-h-56 flex-col justify-between overflow-hidden bg-black/60 px-8 py-8 text-white sm:px-12 lg:min-h-screen lg:px-16 lg:py-14">
-        <div aria-hidden="true" className="pointer-events-none absolute -right-36 top-1/4 h-96 w-96 rounded-full border border-brand-400/20 shadow-[0_0_100px_rgba(184,146,53,0.12)]" />
+        <div aria-hidden="true" className="pointer-events-none absolute -right-36 top-1/4 h-96 w-96 rounded-full border border-brand-400/20 shadow-[0_0_100px_rgb(var(--b-500)/0.12)]" />
         <RmLogo className="h-24 w-28 text-white" />
         <div className="my-10 max-w-lg">
           <div className="mb-5 h-1 w-16 rounded-full bg-brand-400" />

@@ -99,8 +99,8 @@ export function AppShell({ title, children }: { title: string; children: React.R
   const sidebarVisible = mobileOpen ? 'block' : 'hidden';
 
   return (
-    <div className="rm-canvas min-h-screen text-neutral-100 print:bg-white print:text-black">
-      <header className="sticky top-0 z-40 flex min-h-16 items-center gap-2 border-b border-brand-500/50 bg-black px-3 text-white shadow-[0_4px_24px_rgba(184,146,53,0.15)] sm:gap-3 sm:px-4 print:hidden">
+    <div className="rm-canvas min-h-screen print:bg-white print:text-black">
+      <header className="sticky top-0 z-40 flex min-h-16 items-center gap-2 border-b border-brand-500/50 rm-chrome px-3 text-white shadow-[0_4px_24px_rgb(var(--b-500)/0.15)] sm:gap-3 sm:px-4 print:hidden">
         <button type="button" className="grid h-10 w-10 shrink-0 place-items-center rounded-lg border border-white/15 text-brand-300 hover:bg-white/10 md:hidden" onClick={() => { setCollapsed(false); setMobileOpen(value => !value); }} aria-label={mobileOpen ? 'Fechar menu' : 'Abrir menu'} aria-expanded={mobileOpen}><MenuIcon /></button>
         <button type="button" className="hidden h-10 w-10 shrink-0 place-items-center rounded-lg border border-white/15 text-brand-300 hover:bg-white/10 md:grid" onClick={() => setCollapsed(value => !value)} aria-label={collapsed ? 'Expandir menu' : 'Recolher menu'} aria-expanded={!collapsed}><MenuIcon /></button>
         <Link href="/dashboard" className="flex min-w-0 shrink-0 items-center gap-2.5 font-semibold" title={brand}>
@@ -108,7 +108,7 @@ export function AppShell({ title, children }: { title: string; children: React.R
           <span className="hidden max-w-44 truncate text-sm lg:block">{brand}</span>
         </Link>
         {!masterMode && <nav aria-label="Acesso rápido" className="flex min-w-0 flex-1 items-center gap-1 overflow-x-auto">
-          {topTabs.filter(item => hrefAllowed(item.href, user?.enabledModules)).map(item => <Link key={item.href} href={item.href} aria-current={pathname === item.href ? 'page' : undefined} className={`flex shrink-0 flex-col items-center gap-0.5 rounded-lg border px-3 py-1.5 text-[11px] font-semibold leading-tight transition sm:px-4 ${pathname === item.href ? 'border-brand-400 bg-brand-500/10 text-brand-300 shadow-[0_0_12px_rgba(184,146,53,0.3)]' : 'border-transparent text-neutral-200 hover:border-brand-500/40 hover:bg-white/10'}`}>
+          {topTabs.filter(item => hrefAllowed(item.href, user?.enabledModules)).map(item => <Link key={item.href} href={item.href} aria-current={pathname === item.href ? 'page' : undefined} className={`flex shrink-0 flex-col items-center gap-0.5 rounded-lg border px-3 py-1.5 text-[11px] font-semibold leading-tight transition sm:px-4 ${pathname === item.href ? 'border-brand-400 bg-brand-500/10 text-brand-300 shadow-[0_0_12px_rgb(var(--b-500)/0.3)]' : 'border-transparent text-neutral-200 hover:border-brand-500/40 hover:bg-white/10'}`}>
             <span aria-hidden="true" className="text-lg leading-none">{item.icon}</span>{item.label}
             <span className={`h-0.5 w-6 rounded-full ${pathname === item.href ? 'bg-brand-400' : 'bg-transparent'}`} />
           </Link>)}
@@ -124,8 +124,9 @@ export function AppShell({ title, children }: { title: string; children: React.R
               <span className="grid h-8 w-8 place-items-center rounded-full bg-brand-500 text-xs font-bold text-neutral-950">{initials}</span>
               <span className="hidden max-w-28 truncate sm:block">{user?.name ?? 'Perfil'}</span>
             </button>
-            {profileOpen && <div role="menu" className="absolute right-0 mt-2 w-60 overflow-hidden rounded-xl border border-white/10 bg-neutral-900 text-sm text-neutral-100 shadow-2xl">
+            {profileOpen && <div role="menu" className="absolute right-0 mt-2 w-60 overflow-hidden rounded-xl border rm-chrome-menu text-sm text-neutral-100 shadow-2xl">
               <div className="border-b border-white/10 px-4 py-3"><p className="truncate font-semibold">{user?.name ?? 'Usuário'}</p><p className="mt-0.5 text-[10px] uppercase tracking-wider text-neutral-400">{user?.role ?? ''}</p></div>
+              <Link role="menuitem" href="/settings?tab=appearance" onClick={() => setProfileOpen(false)} className="block px-4 py-2.5 hover:bg-white/10">🎨 Aparência e personalização</Link>
               <Link role="menuitem" href="/change-password" onClick={() => setProfileOpen(false)} className="block px-4 py-2.5 hover:bg-white/10">Alterar senha</Link>
               {!masterMode && <Link role="menuitem" href="/downloads" onClick={() => setProfileOpen(false)} className="block px-4 py-2.5 hover:bg-white/10">Downloads e ajuda</Link>}
               <button role="menuitem" type="button" onClick={signOut} className="block w-full px-4 py-2.5 text-left text-red-300 hover:bg-white/10">Sair da conta</button>
@@ -134,9 +135,9 @@ export function AppShell({ title, children }: { title: string; children: React.R
         </div>
       </header>
       <div className="md:flex">
-        <aside className={`${sidebarVisible} print:hidden w-full shrink-0 overflow-y-auto border-b border-brand-500/30 bg-neutral-950 p-3 text-neutral-200 md:sticky md:top-16 md:block md:h-[calc(100vh-4rem)] md:border-b-0 md:border-r md:border-brand-500/30 ${collapsed ? 'md:w-[72px] md:px-2' : 'md:w-[264px]'}`}>
+        <aside className={`${sidebarVisible} print:hidden w-full shrink-0 overflow-y-auto border-b border-brand-500/30 rm-chrome p-3 text-neutral-200 md:sticky md:top-16 md:block md:h-[calc(100vh-4rem)] md:border-b-0 md:border-r md:border-brand-500/30 ${collapsed ? 'md:w-[72px] md:px-2' : 'md:w-[264px]'}`}>
           {!collapsed && <label className="sr-only" htmlFor="menu-search">Buscar no menu</label>}
-          {!collapsed && <input id="menu-search" type="search" value={query} onChange={event => setQuery(event.target.value)} placeholder="Buscar no menu…" className="mb-3 w-full rounded-lg border border-white/10 bg-neutral-950 px-3 py-2 text-xs text-white outline-none placeholder:text-neutral-500 focus:border-brand-500" />}
+          {!collapsed && <input id="menu-search" type="search" value={query} onChange={event => setQuery(event.target.value)} placeholder="Buscar no menu…" className="mb-3 w-full rounded-lg border border-white/10 bg-black/20 px-3 py-2 text-xs text-white outline-none placeholder:text-neutral-500 focus:border-brand-500" />}
           <nav aria-label="Menu principal" className="space-y-1">
             {visibleGroups.map(group => {
               const single = group.items.length === 1 && group.title === 'Início';
@@ -157,7 +158,7 @@ export function AppShell({ title, children }: { title: string; children: React.R
             })}
             {visibleGroups.length === 0 && <p className="px-3 py-4 text-xs text-neutral-500">Nenhum item encontrado.</p>}
           </nav>
-          {!collapsed && <div className="mt-6 rounded-xl border border-brand-500/40 bg-black p-4 text-center">
+          {!collapsed && <div className="mt-6 rounded-xl border border-brand-500/40 rm-chrome-card p-4 text-center">
             <RmLogo className="mx-auto h-16 w-20 text-white" />
             <p className="mt-1 text-[10px] uppercase tracking-[0.22em] text-neutral-500">Tecnologia que impulsiona seu negócio</p>
             {license && <p className={`mt-3 text-xs ${license.tone}`}>{license.text}</p>}
@@ -165,8 +166,8 @@ export function AppShell({ title, children }: { title: string; children: React.R
         </aside>
         <main className="min-w-0 flex-1 p-3 sm:p-5 md:p-6 print:p-0">
           <div className="mb-4 flex flex-wrap items-center gap-2 text-xs text-slate-500 print:hidden">
-            <Link href="/dashboard" className="font-semibold text-brand-300 hover:text-brand-400">🏠 Início</Link><span aria-hidden="true">/</span>
-            <span className="text-base font-bold tracking-tight text-white">{title}</span>
+            <Link href="/dashboard" className="font-semibold text-brand-700 hover:text-brand-500">🏠 Início</Link><span aria-hidden="true">/</span>
+            <span className="text-base font-bold tracking-tight rm-title">{title}</span>
             {statusError && <span role="status" className="ml-auto text-red-700">{statusError}</span>}
           </div>
           <h1 className="sr-only">{title}</h1>
@@ -178,7 +179,7 @@ export function AppShell({ title, children }: { title: string; children: React.R
             </span>)}
           </nav>)}
           {children}
-          <footer className="mt-8 print:hidden"><div className="rm-gold-line" /><p className="mt-3 flex flex-wrap items-center justify-center gap-x-3 text-center text-xs text-neutral-400"><RmLogo variant="mark" className="h-6 w-7" /><span>RM Agência de TI · Tecnologia que impulsiona seu negócio</span></p></footer>
+          <footer className="mt-8 print:hidden"><div className="rm-gold-line" /><p className="mt-3 flex flex-wrap items-center justify-center gap-x-3 text-center text-xs rm-muted"><RmLogo variant="mark" className="h-6 w-7" /><span>RM Agência de TI · Tecnologia que impulsiona seu negócio</span></p></footer>
         </main>
       </div>
     </div>
@@ -204,5 +205,5 @@ export function Check({ label, ...props }: React.InputHTMLAttributes<HTMLInputEl
   return <label className="flex items-center gap-2 text-sm text-slate-700"><input type="checkbox" {...props} className="h-4 w-4 accent-brand-600" />{label}</label>;
 }
 
-export const panelClass = 'rm-surface rounded-2xl border border-brand-500/40 bg-white p-5 shadow-[0_0_18px_rgba(184,146,53,0.12)] sm:p-6';
+export const panelClass = 'rm-surface rounded-2xl border border-brand-500/40 bg-white p-5 shadow-[0_0_18px_rgb(var(--b-500)/0.12)] sm:p-6';
 export const buttonClass = 'rounded-xl bg-brand-500 px-4 py-2.5 text-sm font-semibold text-neutral-950 shadow-sm transition hover:bg-brand-400 hover:shadow-md disabled:cursor-not-allowed disabled:opacity-50';

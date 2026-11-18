@@ -42,7 +42,7 @@ export function HeroBanner({ title, highlight, text, tiles }: { title: string; h
     </div>
     <nav aria-label="Atalhos" className="flex flex-wrap gap-2.5">
       {tiles.map(tile => <Link key={tile.href} href={tile.href} className="group flex w-[5.5rem] flex-col items-center gap-1.5 text-center text-[11px] font-medium leading-tight text-neutral-200 hover:text-brand-300">
-        <span aria-hidden="true" className="grid h-14 w-14 place-items-center rounded-xl border border-brand-500/70 bg-gradient-to-b from-neutral-900 to-black text-2xl shadow-[0_0_14px_rgba(184,146,53,0.25)] transition group-hover:border-brand-300">{tile.icon}</span>{tile.label}
+        <span aria-hidden="true" className="grid h-14 w-14 place-items-center rounded-xl border border-brand-500/70 bg-gradient-to-b from-neutral-900 to-black text-2xl shadow-[0_0_14px_rgb(var(--b-500)/0.25)] transition group-hover:border-brand-300">{tile.icon}</span>{tile.label}
       </Link>)}
     </nav>
   </section>;
@@ -97,7 +97,7 @@ export function Badge({ tone = 'neutral', children }: { tone?: keyof typeof badg
 }
 
 export function StatCard({ label, value, hint, tone = 'default', icon }: { label: string; value: ReactNode; hint?: string; tone?: 'default' | 'dark'; icon?: string }) {
-  return <div className={`flex items-start gap-3 rounded-2xl border p-4 shadow-sm ${tone === 'dark' ? 'border-brand-500/60 bg-neutral-950 text-white shadow-[0_0_18px_rgba(184,146,53,0.18)]' : 'border-brand-500/30 bg-white text-slate-900'}`}>
+  return <div className={`flex items-start gap-3 rounded-2xl border p-4 shadow-sm ${tone === 'dark' ? 'border-brand-500/60 bg-neutral-950 text-white shadow-[0_0_18px_rgb(var(--b-500)/0.18)]' : 'border-brand-500/30 bg-white text-slate-900'}`}>
     {icon && <span aria-hidden="true" className={`grid h-11 w-11 shrink-0 place-items-center rounded-full border text-xl ${tone === 'dark' ? 'border-brand-400/60 bg-brand-500/10' : 'border-brand-300 bg-brand-50'}`}>{icon}</span>}
     <div className="min-w-0">
       <p className={`text-[11px] font-semibold uppercase tracking-wider ${tone === 'dark' ? 'text-brand-300' : 'text-slate-500'}`}>{label}</p>

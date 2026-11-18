@@ -84,7 +84,7 @@ export const menuGroups: MenuGroup[] = [
     { href: '/cst-map', label: 'Correlação CST ICMS x Entrada', icon: '🔁' },
   ] },
   { title: 'Configurações gerais', icon: '⚙️', items: [
-    { href: '/settings', label: 'Empresa', icon: '⚙️' }, { href: '/schedule-settings', label: 'Agendamento de pedidos', icon: '⏰' },
+    { href: '/settings', label: 'Empresa', icon: '⚙️' }, { href: '/settings?tab=appearance', label: 'Aparência e personalização', icon: '🎨' }, { href: '/schedule-settings', label: 'Agendamento de pedidos', icon: '⏰' },
     { href: '/users', label: 'Cadastros de usuários', icon: '🔐' }, { href: '/cover-events', label: 'Couvert artístico', icon: '🎤' },
     { href: '/order-statuses', label: 'Status dos pedidos', icon: '📝' }, { href: '/production', label: 'Gerenciadores de pedidos', icon: '🖨️' },
     { href: '/downloads', label: 'Downloads', icon: '⬇️' }, { href: '/audit', label: 'Auditoria', icon: '🛡️' }, { href: '/support', label: 'Suporte e chamados', icon: '🎧' },
