@@ -9,7 +9,7 @@ export const metadata = {
 export default function RootLayout({ children }: Readonly<{ children: ReactNode }>) {
   return (
     <html lang="pt-BR">
-      <body className="bg-[var(--rm-workspace)] text-slate-900">{children}</body>
+      <body className="bg-[var(--rm-workspace)] text-neutral-100">{children}</body>
     </html>
   );
 }

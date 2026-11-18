@@ -2,30 +2,62 @@
 
 import Link from 'next/link';
 import type { ReactNode } from 'react';
+import { RmLogo } from './rm-logo';
 
 // Shared building blocks of the RM visual language: dark chrome (top bar/sidebar), light work surface, gold accent.
 
 export function PageHeader({ title, subtitle, actions, backHref }: { title: string; subtitle?: string; actions?: ReactNode; backHref?: string }) {
-  return <section className="mb-4 flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-slate-200 bg-white p-4 shadow-sm sm:p-5 print:hidden">
+  return <section className="rm-gold-card mb-4 flex flex-wrap items-center justify-between gap-3 bg-neutral-950 p-4 text-white sm:p-5 print:hidden">
     <div className="min-w-0">
-      {backHref && <Link href={backHref} className="mb-1 inline-flex items-center gap-1 text-xs font-semibold text-brand-700 hover:text-brand-600">‹ Voltar</Link>}
-      <h2 className="truncate text-lg font-bold tracking-tight text-slate-900 sm:text-xl">{title}</h2>
-      {subtitle && <p className="mt-1 max-w-3xl text-sm text-slate-500">{subtitle}</p>}
+      {backHref && <Link href={backHref} className="mb-1 inline-flex items-center gap-1 text-xs font-semibold text-brand-300 hover:text-brand-400">‹ Voltar</Link>}
+      <h2 className="truncate text-lg font-bold tracking-tight text-white sm:text-xl"><span className="text-brand-300">◆</span> {title}</h2>
+      {subtitle && <p className="mt-1 max-w-3xl text-sm text-neutral-300">{subtitle}</p>}
     </div>
     {actions && <div className="flex flex-wrap items-center gap-2">{actions}</div>}
   </section>;
 }
 
+// Black card with gold frame and an optional numbered badge; the content sits on a light panel (the PDF's "numbered section" pattern).
+export function GoldCard({ number, title, subtitle, actions, children }: { number?: number; title: string; subtitle?: string; actions?: ReactNode; children: ReactNode }) {
+  return <section className="rm-gold-card mb-6 bg-neutral-950 p-2 text-white">
+    <header className="flex flex-wrap items-center justify-between gap-3 px-3 py-2.5">
+      <div className="flex min-w-0 items-center gap-3">
+        {number !== undefined && <span aria-hidden="true" className="grid h-8 w-8 shrink-0 place-items-center rounded-full bg-gradient-to-b from-brand-300 to-brand-600 text-sm font-extrabold text-neutral-950 ring-2 ring-brand-400/40">{number}</span>}
+        <div className="min-w-0"><h2 className="truncate text-base font-bold text-white">{title}</h2>{subtitle && <p className="truncate text-xs text-neutral-400">{subtitle}</p>}</div>
+      </div>
+      {actions && <div className="flex flex-wrap gap-2">{actions}</div>}
+    </header>
+    <div className="rounded-xl bg-white p-4 text-slate-900 sm:p-5">{children}</div>
+  </section>;
+}
+
+// Page banner: brand logo, headline and gold-framed shortcut tiles, as in the PDF's header.
+export function HeroBanner({ title, highlight, text, tiles }: { title: string; highlight: string; text: string; tiles: { href: string; icon: string; label: string }[] }) {
+  return <section className="rm-gold-card mb-6 flex flex-wrap items-center gap-x-8 gap-y-5 bg-neutral-950 p-5 text-white print:hidden">
+    <RmLogo className="h-24 w-28 shrink-0 text-white" />
+    <div className="min-w-0 flex-1 basis-72 border-brand-500/30 lg:border-l lg:pl-8">
+      <h2 className="text-2xl font-extrabold tracking-tight sm:text-3xl">{title}</h2>
+      <p className="mt-1 text-base font-semibold text-white">{highlight}</p>
+      <p className="mt-2 max-w-xl text-sm text-neutral-300">{text}</p>
+    </div>
+    <nav aria-label="Atalhos" className="flex flex-wrap gap-2.5">
+      {tiles.map(tile => <Link key={tile.href} href={tile.href} className="group flex w-[5.5rem] flex-col items-center gap-1.5 text-center text-[11px] font-medium leading-tight text-neutral-200 hover:text-brand-300">
+        <span aria-hidden="true" className="grid h-14 w-14 place-items-center rounded-xl border border-brand-500/70 bg-gradient-to-b from-neutral-900 to-black text-2xl shadow-[0_0_14px_rgba(184,146,53,0.25)] transition group-hover:border-brand-300">{tile.icon}</span>{tile.label}
+      </Link>)}
+    </nav>
+  </section>;
+}
+
 export function Tabs<T extends string>({ tabs, value, onChange, label = 'Seções' }: { tabs: { key: T; label: string }[]; value: T; onChange: (key: T) => void; label?: string }) {
-  return <div role="tablist" aria-label={label} className="mb-4 flex gap-1 overflow-x-auto rounded-xl border border-slate-200 bg-white p-1 shadow-sm print:hidden">
-    {tabs.map(tab => <button key={tab.key} type="button" role="tab" aria-selected={value === tab.key} onClick={() => onChange(tab.key)} className={`whitespace-nowrap rounded-lg px-4 py-2 text-sm font-semibold transition ${value === tab.key ? 'bg-neutral-950 text-brand-300 shadow' : 'text-slate-600 hover:bg-slate-100 hover:text-slate-900'}`}>{tab.label}</button>)}
+  return <div role="tablist" aria-label={label} className="mb-4 flex gap-1 overflow-x-auto rounded-xl border border-brand-500/40 bg-neutral-950 p-1 shadow-sm print:hidden">
+    {tabs.map(tab => <button key={tab.key} type="button" role="tab" aria-selected={value === tab.key} onClick={() => onChange(tab.key)} className={`whitespace-nowrap rounded-lg px-4 py-2 text-sm font-semibold transition ${value === tab.key ? 'bg-gradient-to-b from-brand-300 to-brand-500 text-neutral-950 shadow' : 'text-neutral-300 hover:bg-white/10 hover:text-white'}`}>{tab.label}</button>)}
   </div>;
 }
 
 // Vertical section list used by the settings screens.
 export function SideTabs<T extends string>({ tabs, value, onChange }: { tabs: { key: T; label: string; icon?: string }[]; value: T; onChange: (key: T) => void }) {
-  return <nav aria-label="Seções" className="flex gap-2 overflow-x-auto rounded-2xl border border-slate-200 bg-white p-2 shadow-sm lg:w-64 lg:shrink-0 lg:flex-col lg:overflow-visible">
-    {tabs.map(tab => <button key={tab.key} type="button" aria-current={value === tab.key ? 'page' : undefined} onClick={() => onChange(tab.key)} className={`flex items-center gap-3 whitespace-nowrap rounded-xl px-3 py-2.5 text-left text-sm font-medium transition ${value === tab.key ? 'bg-neutral-950 text-brand-300' : 'text-slate-700 hover:bg-slate-100'}`}>{tab.icon && <span aria-hidden="true" className="w-5 text-center">{tab.icon}</span>}{tab.label}</button>)}
+  return <nav aria-label="Seções" className="flex gap-2 overflow-x-auto rounded-2xl border border-brand-500/40 bg-neutral-950 p-2 shadow-sm lg:w-64 lg:shrink-0 lg:flex-col lg:overflow-visible">
+    {tabs.map(tab => <button key={tab.key} type="button" aria-current={value === tab.key ? 'page' : undefined} onClick={() => onChange(tab.key)} className={`flex items-center gap-3 whitespace-nowrap rounded-xl px-3 py-2.5 text-left text-sm font-medium transition ${value === tab.key ? 'bg-gradient-to-b from-brand-300 to-brand-500 font-semibold text-neutral-950' : 'text-neutral-300 hover:bg-white/10 hover:text-white'}`}>{tab.icon && <span aria-hidden="true" className="w-5 text-center">{tab.icon}</span>}{tab.label}</button>)}
   </nav>;
 }
 
@@ -50,7 +82,7 @@ export function EmptyState({ icon = '📭', title, hint, action }: { icon?: stri
 }
 
 export function DataTable({ columns, children, footer }: { columns: { label: string; className?: string }[]; children: ReactNode; footer?: ReactNode }) {
-  return <div className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
+  return <div className="overflow-hidden rounded-2xl border border-brand-500/40 bg-white shadow-sm">
     <div className="overflow-x-auto"><table className="w-full min-w-[560px] text-left text-sm">
       <thead className="bg-neutral-950 text-[11px] font-semibold uppercase tracking-wider text-brand-300"><tr>{columns.map(column => <th key={column.label} scope="col" className={`px-4 py-3 ${column.className ?? ''}`}>{column.label}</th>)}</tr></thead>
       <tbody className="divide-y divide-slate-100 [&_td]:px-4 [&_td]:py-3 [&_tr:hover]:bg-brand-50/40">{children}</tbody>
@@ -65,7 +97,7 @@ export function Badge({ tone = 'neutral', children }: { tone?: keyof typeof badg
 }
 
 export function StatCard({ label, value, hint, tone = 'default', icon }: { label: string; value: ReactNode; hint?: string; tone?: 'default' | 'dark'; icon?: string }) {
-  return <div className={`flex items-start gap-3 rounded-2xl border p-4 shadow-sm ${tone === 'dark' ? 'border-neutral-800 bg-neutral-950 text-white' : 'border-slate-200 bg-white text-slate-900'}`}>
+  return <div className={`flex items-start gap-3 rounded-2xl border p-4 shadow-sm ${tone === 'dark' ? 'border-brand-500/60 bg-neutral-950 text-white shadow-[0_0_18px_rgba(184,146,53,0.18)]' : 'border-brand-500/30 bg-white text-slate-900'}`}>
     {icon && <span aria-hidden="true" className={`grid h-11 w-11 shrink-0 place-items-center rounded-full border text-xl ${tone === 'dark' ? 'border-brand-400/60 bg-brand-500/10' : 'border-brand-300 bg-brand-50'}`}>{icon}</span>}
     <div className="min-w-0">
       <p className={`text-[11px] font-semibold uppercase tracking-wider ${tone === 'dark' ? 'text-brand-300' : 'text-slate-500'}`}>{label}</p>

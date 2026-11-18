@@ -8,12 +8,51 @@
   --rm-gold: #b89235;
   --rm-gold-light: #dec17e;
   --rm-white: #ffffff;
-  --rm-workspace: #f7f6f3;
+  --rm-workspace: #0b0a08;
 }
 
 body {
   background: var(--rm-workspace);
-  color: var(--rm-black);
+  color: #f4f3f0;
+}
+
+/* Black canvas with a soft gold glow; white panels sit on it with gold frames (RM visual identity). */
+.rm-canvas {
+  background:
+    radial-gradient(ellipse 60% 40% at 85% 0%, rgb(184 146 53 / 16%), transparent 70%),
+    radial-gradient(ellipse 50% 35% at 0% 100%, rgb(184 146 53 / 10%), transparent 70%),
+    var(--rm-workspace);
+  color: #f4f3f0;
+}
+
+.rm-gold-card {
+  border: 1px solid rgb(184 146 53 / 65%);
+  border-radius: 1rem;
+  box-shadow: 0 0 22px rgb(184 146 53 / 14%), inset 0 0 0 1px rgb(222 193 126 / 6%);
+}
+
+.rm-gold-line {
+  height: 2px;
+  background: linear-gradient(90deg, transparent, #b89235 20%, #f3dd9b 50%, #b89235 80%, transparent);
+}
+
+/* Text placed directly on the black canvas turns light; anything inside a light surface keeps the original dark palette. */
+@media screen {
+  .rm-canvas main .text-slate-900,
+  .rm-canvas main .text-slate-800,
+  .rm-canvas main .text-slate-700 { color: #f4f3f0; }
+  .rm-canvas main .text-slate-600,
+  .rm-canvas main .text-slate-500,
+  .rm-canvas main .text-slate-400 { color: #b9b5aa; }
+  .rm-canvas main .text-brand-700,
+  .rm-canvas main .text-brand-600 { color: #dec17e; }
+
+  .rm-canvas main :is(.bg-white, .bg-slate-50, .bg-slate-100, .bg-slate-200, .bg-brand-50, .bg-brand-100, .bg-red-50, .bg-emerald-50, .bg-amber-50, .bg-sky-50, .bg-sky-100, .bg-emerald-100, .bg-red-100, .bg-amber-100) { color: #171612; }
+  .rm-canvas main :is(.bg-white, .bg-slate-50, .bg-slate-100, .bg-slate-200, .bg-brand-50, .bg-brand-100, .bg-red-50, .bg-emerald-50, .bg-amber-50, .bg-sky-50, .bg-sky-100, .bg-emerald-100, .bg-red-100, .bg-amber-100):is(.text-slate-900, .text-slate-800, .text-slate-700),
+  .rm-canvas main :is(.bg-white, .bg-slate-50, .bg-slate-100, .bg-slate-200, .bg-brand-50, .bg-brand-100, .bg-red-50, .bg-emerald-50, .bg-amber-50, .bg-sky-50, .bg-sky-100, .bg-emerald-100, .bg-red-100, .bg-amber-100) :is(.text-slate-900, .text-slate-800, .text-slate-700) { color: #171612; }
+  .rm-canvas main :is(.bg-white, .bg-slate-50, .bg-slate-100, .bg-slate-200, .bg-brand-50, .bg-brand-100, .bg-red-50, .bg-emerald-50, .bg-amber-50, .bg-sky-50, .bg-sky-100, .bg-emerald-100, .bg-red-100, .bg-amber-100):is(.text-slate-600, .text-slate-500, .text-slate-400),
+  .rm-canvas main :is(.bg-white, .bg-slate-50, .bg-slate-100, .bg-slate-200, .bg-brand-50, .bg-brand-100, .bg-red-50, .bg-emerald-50, .bg-amber-50, .bg-sky-50, .bg-sky-100, .bg-emerald-100, .bg-red-100, .bg-amber-100) :is(.text-slate-600, .text-slate-500, .text-slate-400) { color: #5e5a52; }
+  .rm-canvas main :is(.bg-white, .bg-slate-50, .bg-slate-100, .bg-brand-50, .bg-brand-100) :is(.text-brand-700, .text-brand-600) { color: #72561c; }
 }
 
 .rm-surface .text-slate-300 {

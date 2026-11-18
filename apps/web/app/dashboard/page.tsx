@@ -6,7 +6,7 @@ import { api, ApiError, errorMessage, formatMoney, storedUser } from '../../lib/
 import Link from 'next/link';
 import { AppShell, flows, moduleIcon, moduleLabel, Notice, panelClass } from '../../components/app-shell';
 import { AreaChart, DonutChart } from '../../components/charts';
-import { StatCard } from '../../components/ui';
+import { GoldCard, HeroBanner, StatCard } from '../../components/ui';
 
 type Summary = {
   totalCompanies?: number; activeCompanies?: number; trialCompanies?: number; suspendedCompanies?: number;
@@ -75,21 +75,21 @@ export default function DashboardPage() {
     {!summary && !error && <p className="text-sm text-slate-500">Carregando indicadores…</p>}
     {summary && (isMaster
       ? <>
-        <section className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
-          <Metric label="Empresas cadastradas" value={summary.totalCompanies ?? 0} />
-          <Metric label="Empresas ativas" value={summary.activeCompanies ?? 0} />
-          <Metric label="Em período de teste" value={summary.trialCompanies ?? 0} />
-          <Metric label="Suspensas" value={summary.suspendedCompanies ?? 0} />
-          <Metric label="Usuários" value={summary.users ?? 0} />
-          <Metric label="Pedidos" value={summary.orders ?? 0} />
-        </section>
+        <HeroBanner title="RM Painel Admin" highlight="Gestão Comercial Completa, Inteligente e Dinâmica" text="Crie, gerencie e potencialize planos, módulos, promoções e clientes em um só lugar." tiles={[{ href: '/plans', icon: '💎', label: 'Planos Personalizados' }, { href: '/commercial?tab=modules', icon: '🧩', label: 'Módulos Flexíveis' }, { href: '/commercial?tab=campaigns', icon: '🔖', label: 'Promoções e Cupons' }, { href: '/licenses', icon: '🏢', label: 'Clientes Organizados' }, { href: '/commercial?tab=billing', icon: '💳', label: 'Financeiro Integrado' }]} />
+        <GoldCard number={1} title="Visão geral da plataforma" subtitle="Estabelecimentos e uso em tempo real">
+          <section className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
+            <Metric label="Empresas cadastradas" value={summary.totalCompanies ?? 0} />
+            <Metric label="Empresas ativas" value={summary.activeCompanies ?? 0} />
+            <Metric label="Em período de teste" value={summary.trialCompanies ?? 0} />
+            <Metric label="Suspensas" value={summary.suspendedCompanies ?? 0} />
+            <Metric label="Usuários" value={summary.users ?? 0} />
+            <Metric label="Pedidos" value={summary.orders ?? 0} />
+          </section>
+        </GoldCard>
         <MasterCommercial />
       </>
       : <>
-        <section className="mb-6 flex flex-wrap items-center justify-between gap-4 rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
-          <div><p className="text-xs font-semibold uppercase tracking-wider text-brand-700">RM Restaurant · Gestão gastronômica</p><h2 className="mt-2 text-2xl font-bold">Seu restaurante em movimento</h2><p className="mt-1 text-sm text-slate-600">Acompanhe o atendimento, a cozinha e os resultados em um só lugar.</p></div>
-          <div className="flex flex-wrap gap-3"><Link href="/orders" className="rounded-lg bg-brand-500 px-4 py-2.5 text-sm font-semibold text-neutral-950 hover:bg-brand-400">Abrir pedidos</Link><Link href="/tables" className="rounded-lg border border-brand-400 px-4 py-2.5 text-sm font-semibold text-brand-700 hover:bg-brand-50">Ver mesas</Link></div>
-        </section>
+        <HeroBanner title="RM Restaurant" highlight="Gestão gastronômica completa e conectada" text="Acompanhe o atendimento, a cozinha e os resultados em um só lugar." tiles={[{ href: '/pdv', icon: '🖥️', label: 'PDV Interativo' }, { href: '/comandas', icon: '🍽️', label: 'Mesas e Comandas' }, { href: '/kds', icon: '👨‍🍳', label: 'Painel de Produção' }, { href: '/inventory', icon: '📦', label: 'Estoque Inteligente' }, { href: '/intelligence', icon: '🧠', label: 'RM Inteligência' }]} />
         <section className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
           <Metric label="Vendas concluídas hoje" value={formatMoney(summary.daily?.sales)} detail={`${summary.daily?.completedOrders ?? 0} pedido(s) concluído(s)`} />
           <Metric label="Vendas concluídas no mês" value={formatMoney(summary.monthly?.sales)} detail={`${summary.monthly?.completedOrders ?? 0} pedido(s) concluído(s)`} />

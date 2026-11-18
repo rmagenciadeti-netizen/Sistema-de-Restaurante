@@ -3,7 +3,7 @@
 import { useState, type ReactNode } from 'react';
 import { saveText } from '../../lib/api';
 import { buttonClass, secondaryButtonClass } from '../app-shell';
-import { textareaClass } from '../ui';
+import { GoldCard, textareaClass } from '../ui';
 
 export type Period = 'MONTHLY' | 'QUARTERLY' | 'SEMIANNUAL' | 'ANNUAL';
 export const periodLabels: Record<Period, string> = { MONTHLY: 'Mensal', QUARTERLY: 'Trimestral', SEMIANNUAL: 'Semestral', ANNUAL: 'Anual' };
@@ -53,11 +53,8 @@ export function ReasonDialog({ title, confirmLabel = 'Confirmar', danger, onCanc
   </div>;
 }
 
-export function Section({ title, actions, children }: { title: string; actions?: ReactNode; children: ReactNode }) {
-  return <section className="mb-6 rounded-2xl border border-slate-200 bg-white p-4 shadow-sm sm:p-5">
-    <div className="mb-3 flex flex-wrap items-center justify-between gap-2"><h2 className="text-base font-bold text-slate-900">{title}</h2>{actions && <div className="flex flex-wrap gap-2">{actions}</div>}</div>
-    {children}
-  </section>;
+export function Section({ title, actions, number, children }: { title: string; actions?: ReactNode; number?: number; children: ReactNode }) {
+  return <GoldCard title={title} actions={actions} number={number}>{children}</GoldCard>;
 }
 
 export function MultiPick({ label, options, value, onChange }: { label: string; options: { key: string; name: string }[]; value: string[]; onChange: (next: string[]) => void }) {
