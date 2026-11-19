@@ -4,6 +4,8 @@ import { FormEvent, useCallback, useEffect, useMemo, useState } from 'react';
 import { api, ListResponse, Order, Unit } from '../../lib/api';
 import { OnlineCharges } from '../../components/online-charges';
 import { AppShell, buttonClass, Field, Notice, panelClass } from '../../components/app-shell';
+import { TefPaymentDialog } from '../../components/tef/tef-payment-dialog';
+import type { TefProvider, TefStartResponse, TefTransaction } from '../../lib/types-tef';
 
 type OrderWithPayments = Order & {
   unitId: string | null;
@@ -64,15 +66,21 @@ export default function CashPage() {
   const [paymentAmount, setPaymentAmount] = useState('');
   const [message, setMessage] = useState<{ text: string; kind: 'success' | 'error' } | null>(null);
   const [busy, setBusy] = useState(false);
+  // Card payments go through the TEF when a usable provider is enabled for the method; otherwise the manual record is unchanged.
+  const [tefProviders, setTefProviders] = useState<TefProvider[]>([]);
+  const [tefPending, setTefPending] = useState<{ transaction: TefTransaction; orderLabel: string } | null>(null);
+  const [tefKey, setTefKey] = useState<string | null>(null);
 
   const load = useCallback(async () => {
     try {
-      const [orderResult, sessionResult, paymentResult, unitResult] = await Promise.all([
-        api<ListResponse<OrderWithPayments>>('/orders?pageSize=100'),
+      const [orderResult, sessionResult, paymentResult, unitResult, tefResult] = await Promise.all([
+        api<ListResponse<OrderWithPayments>>('/orders?scope=unpaid&pageSize=100'),
         api<ListResponse<CashSession>>('/cash/sessions'),
         api<ListResponse<Payment>>('/cash/payments'),
         api<ListResponse<Unit>>('/units'),
+        api<{ items: TefProvider[] }>('/tef/providers').catch(() => ({ items: [] as TefProvider[] })),
       ]);
+      setTefProviders(tefResult.items.filter(item => ['IN_TESTING', 'HOMOLOGATED', 'PRODUCTION_ENABLED'].includes(item.integrationStatus)));
       setOrders(orderResult.items);
       setSessions(sessionResult.items);
       setPayments(paymentResult.items);
@@ -88,13 +96,15 @@ export default function CashPage() {
     let active = true;
     async function initialLoad() {
       try {
-        const [orderResult, sessionResult, paymentResult, unitResult] = await Promise.all([
-          api<ListResponse<OrderWithPayments>>('/orders?pageSize=100'),
+        const [orderResult, sessionResult, paymentResult, unitResult, tefResult] = await Promise.all([
+          api<ListResponse<OrderWithPayments>>('/orders?scope=unpaid&pageSize=100'),
           api<ListResponse<CashSession>>('/cash/sessions'),
           api<ListResponse<Payment>>('/cash/payments'),
           api<ListResponse<Unit>>('/units'),
+          api<{ items: TefProvider[] }>('/tef/providers').catch(() => ({ items: [] as TefProvider[] })),
         ]);
         if (!active) return;
+        setTefProviders(tefResult.items.filter(item => ['IN_TESTING', 'HOMOLOGATED', 'PRODUCTION_ENABLED'].includes(item.integrationStatus)));
         setOrders(orderResult.items);
         setSessions(sessionResult.items);
         setPayments(paymentResult.items);
@@ -178,6 +188,16 @@ export default function CashPage() {
     setBusy(true);
     setMessage(null);
     try {
+      const tefProvider = paymentMethod === 'CREDIT_CARD' || paymentMethod === 'DEBIT_CARD' ? tefProviders.find(item => item.enabledMethods.includes(paymentMethod) && item.capabilities.methods.includes(paymentMethod)) : undefined;
+      if (tefProvider) {
+        // The key lives until the attempt ends: repeating the click returns the same transaction instead of charging the card twice.
+        const key = tefKey ?? `cash-${crypto.randomUUID()}`; if (!tefKey) setTefKey(key);
+        const result = await api<TefStartResponse>('/tef/transactions', { method: 'POST', body: JSON.stringify({ orderId: selectedOrder.id, provider: tefProvider.provider, method: paymentMethod, amount: Number(paymentAmount), idempotencyKey: key, ...(matchingCashSession ? { cashSessionId: matchingCashSession.id } : {}) }) });
+        if (result.paid) { setTefKey(null); setMessage({ text: 'Pagamento aprovado no TEF e registrado. Imprima o comprovante em Integrações › TEF.', kind: 'success' }); setPaymentAmount(''); }
+        else { if (!['PENDING', 'TIMEOUT', 'UNKNOWN'].includes(result.transaction.status)) setTefKey(null); setTefPending({ transaction: result.transaction, orderLabel: selectedOrder.code }); }
+        await load();
+        return;
+      }
       await api('/cash/payments', {
         method: 'POST',
         body: JSON.stringify({
@@ -240,14 +260,14 @@ export default function CashPage() {
           <Field label="Valor recebido (R$)" type="number" min="0.01" max={remainingBalance.toFixed(2)} step="0.01" required value={paymentAmount} onChange={event => setPaymentAmount(event.target.value)} />
           {selectedOrder && <p className="text-sm text-slate-400 md:col-span-2 xl:col-span-3">Total: {money(selectedOrder.total)} · pago: {money(paidAmount(selectedOrder))} · saldo: {money(remainingBalance)}{paymentMethod === 'CASH' ? (matchingCashSession ? ' · será vinculado ao caixa aberto da unidade' : ' · nenhum caixa compatível está aberto') : ''}</p>}
           <div className="flex items-end"><button className={buttonClass} disabled={busy || !selectedOrder || (paymentMethod === 'CASH' && !matchingCashSession)}>{busy ? 'Processando...' : 'Registrar pagamento'}</button></div>
-          <p className="text-xs text-slate-500 md:col-span-2 xl:col-span-4">PIX e cartões são apenas registros manuais; nenhuma cobrança ou confirmação é enviada a provedores externos.</p>
+          <p className="text-xs text-slate-500 md:col-span-2 xl:col-span-4">{tefProviders.length > 0 ? 'Cartão de crédito/débito habilitado no TEF é cobrado pelo provedor e só entra como pago após a aprovação. PIX e as demais formas continuam como registro manual.' : 'PIX e cartões são apenas registros manuais; nenhuma cobrança ou confirmação é enviada a provedores externos.'} Pagamento misto: registre uma forma por vez; o saldo é recalculado a cada pagamento.</p>
         </form>
       </section>
 
       <OnlineCharges key={orderId} orderId={orderId} onPaid={load} />
 
       <section className={`${panelClass} xl:col-span-2`}>
-        <h2 className="mb-4 text-lg font-semibold">Pedidos recentes e saldos ({orders.length})</h2>
+        <h2 className="mb-4 text-lg font-semibold">Pedidos com saldo pendente ({orders.length})</h2>
         <div className="overflow-x-auto"><table className="w-full text-left text-sm"><thead className="text-slate-400"><tr><th className="p-3">Pedido</th><th className="p-3">Estado</th><th className="p-3">Total</th><th className="p-3">Pago</th><th className="p-3">Pendente</th></tr></thead><tbody>{orders.map(order => <tr key={order.id} className="border-t border-slate-800"><td className="p-3">{order.code}</td><td className="p-3">{order.status}</td><td className="p-3">{money(order.total)}</td><td className="p-3">{money(paidAmount(order))}</td><td className="p-3">{money(Math.max(0, Number(order.total) - paidAmount(order)))}</td></tr>)}</tbody></table>{orders.length === 0 && <p className="p-4 text-slate-400">Nenhum pedido encontrado.</p>}</div>
       </section>
 
@@ -256,5 +276,6 @@ export default function CashPage() {
         <div className="overflow-x-auto"><table className="w-full text-left text-sm"><thead className="text-slate-400"><tr><th className="p-3">Data</th><th className="p-3">Pedido</th><th className="p-3">Forma</th><th className="p-3">Valor</th><th className="p-3">Estado</th><th className="p-3">Ações</th></tr></thead><tbody>{payments.map(payment => <tr key={payment.id} className="border-t border-slate-800"><td className="p-3">{new Date(payment.paidAt).toLocaleString('pt-BR')}</td><td className="p-3">{payment.order?.code ?? '—'}</td><td className="p-3">{paymentMethods.find(method => method.value === payment.method)?.label ?? payment.method}</td><td className="p-3">{money(payment.amount)}</td><td className="p-3">{payment.status}</td><td className="p-3">{payment.status === 'CONFIRMED' && <button className="rounded-lg border border-red-500/50 px-3 py-1 text-xs text-red-200 hover:bg-red-500/10" onClick={() => void refund(payment)}>Estornar</button>}</td></tr>)}</tbody></table>{payments.length === 0 && <p className="p-4 text-slate-400">Nenhum pagamento registrado.</p>}</div>
       </section>
     </div>
+  {tefPending && <TefPaymentDialog transaction={tefPending.transaction} orderLabel={tefPending.orderLabel} onClose={() => setTefPending(null)} onApproved={() => { setTefKey(null); setMessage({ text: `Pagamento TEF do pedido ${tefPending.orderLabel} aprovado.`, kind: 'success' }); setTefPending(null); void load(); }} />}
   </AppShell>;
 }

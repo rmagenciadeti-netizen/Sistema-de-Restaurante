@@ -1,6 +1,6 @@
 'use client';
 
-import Link from 'next/link';
+import Link from './nav-link';
 import { useRef, useState, type ReactNode } from 'react';
 import { alwaysVisibleHrefs, menuCatalog } from '../lib/menu-catalog';
 import { type TenantSettings } from '../lib/settings';
@@ -142,6 +142,7 @@ export function FulfillmentSection({ value, onChange, disabled }: SectionProps<'
       <Toggle label="Retirada no balcão" checked={value.allowPickup} disabled={disabled} onChange={allowPickup => onChange({ allowPickup })} />
       <Toggle label="Entrega" checked={value.allowDelivery} disabled={disabled} onChange={allowDelivery => onChange({ allowDelivery })} />
       <Toggle label="Consumo no local" checked={value.allowDineIn} disabled={disabled} onChange={allowDineIn => onChange({ allowDineIn })} />
+      <Toggle label="Pedidos do QR Code da mesa dependem de confirmação do atendente" hint="Desligado: o pedido vai direto para a cozinha. Ligado: aparece em Mesas › Solicitações para o atendente aceitar ou recusar." checked={value.qrConfirmation} disabled={disabled} onChange={qrConfirmation => onChange({ qrConfirmation })} />
       <Toggle label="Exibir tempo estimado" hint="Mostra os minutos abaixo ao cliente." checked={value.estimatedTime} disabled={disabled} onChange={estimatedTime => onChange({ estimatedTime })} />
     </Grid>
     <Subtitle>Tempos estimados</Subtitle>
@@ -405,10 +406,16 @@ export function PrintingSection({ value, onChange, disabled }: SectionProps<'pri
     </Grid>
     <Subtitle>Papel e fonte</Subtitle>
     <Grid>
-      <Select label="Largura do papel" value={value.paper} disabled={disabled} onChange={event => onChange({ paper: event.target.value as typeof value.paper })}><option value="58mm">Bobina 58 mm</option><option value="80mm">Bobina 80 mm</option><option value="A4">A4</option></Select>
+      <Select label="Largura do papel" value={value.paper} disabled={disabled} onChange={event => onChange({ paper: event.target.value as typeof value.paper })}><option value="55mm">Bobina 55 mm</option><option value="58mm">Bobina 58 mm</option><option value="80mm">Bobina 80 mm</option><option value="A4">A4</option></Select>
       <NumberField label="Tamanho da fonte (1 a 20)" value={value.fontSize} min={1} max={20} disabled={disabled} onChange={fontSize => onChange({ fontSize })} />
       <Select label="Papel da promissória" value={value.promissoryPaper} disabled={disabled} onChange={event => onChange({ promissoryPaper: event.target.value as typeof value.promissoryPaper })}><option value="A4">A4</option><option value="80mm">Bobina 80 mm</option></Select>
       <Toggle label="Imprimir promissória automaticamente" checked={value.autoPrintPromissory} disabled={disabled} onChange={autoPrintPromissory => onChange({ autoPrintPromissory })} />
+    </Grid>
+    <Subtitle>Recibos e comprovantes</Subtitle>
+    <Grid>
+      <NumberField label="Vias do recibo de venda (1 a 3)" value={value.receiptCopies} min={1} max={3} disabled={disabled} onChange={receiptCopies => onChange({ receiptCopies })} />
+      <Select label="Vias do comprovante TEF" value={value.tefCopies} disabled={disabled} onChange={event => onChange({ tefCopies: event.target.value as typeof value.tefCopies })}><option value="BOTH">Cliente e estabelecimento</option><option value="CUSTOMER">Somente cliente</option></Select>
+      <Field label="Rodapé dos comprovantes" value={value.footer} maxLength={200} disabled={disabled} onChange={event => onChange({ footer: event.target.value })} />
     </Grid>
     <p className="mt-4 text-sm text-slate-500">Impressoras e agentes: <Link href="/production" className="font-semibold text-brand-700 hover:underline">Setores e impressão</Link> · instalação do agente em <Link href="/downloads" className="font-semibold text-brand-700 hover:underline">Downloads</Link>.</p>
   </div>;

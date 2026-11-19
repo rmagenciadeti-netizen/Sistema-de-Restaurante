@@ -1,6 +1,6 @@
 'use client';
 
-import Link from 'next/link';
+import Link from './nav-link';
 import { useState } from 'react';
 import { api, errorMessage, formatMoney } from '../lib/api';
 

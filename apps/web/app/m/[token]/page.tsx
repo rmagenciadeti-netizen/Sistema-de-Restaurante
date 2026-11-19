@@ -6,6 +6,7 @@ import { ApiError, formatMoney, PublicMenu, PublicOrderResult, PublicProduct, pu
 import { useAutoLoad } from '../../../lib/use-auto-load';
 import { ModifierPicker, ModifierSelection, modifiersPayload, modifiersUnitTotal, selectionError } from '../../../components/modifier-picker';
 import { parseQuantity } from '../../../lib/quantity';
+import { TableAccount } from '../../../components/table-account';
 
 type CartLine = { quantity: number | string; notes: string; mods: ModifierSelection; withPackaging: boolean };
 const MAX_QTY = 20;
@@ -26,7 +27,7 @@ export default function PublicMenuPage() {
   const [menu, setMenu] = useState<PublicMenu | null>(null); const [error, setError] = useState(''); const [loading, setLoading] = useState(true);
   const [cart, setCart] = useState<Record<string, CartLine>>({});
   const [name, setName] = useState(''); const [phone, setPhone] = useState(''); const [consent, setConsent] = useState(false);
-  const [busy, setBusy] = useState(false); const [confirmation, setConfirmation] = useState<PublicOrderResult | null>(null); const [formError, setFormError] = useState('');
+  const [busy, setBusy] = useState(false); const [confirmation, setConfirmation] = useState<PublicOrderResult | null>(null); const [formError, setFormError] = useState(''); const [sent, setSent] = useState(0);
 
   async function load() {
     try { setMenu(await publicApi<PublicMenu>(`/public/tables/${encodeURIComponent(token)}/menu`)); setError(''); } catch (e) { setError(friendlyError(e)); } finally { setLoading(false); }
@@ -69,18 +70,19 @@ export default function PublicMenuPage() {
         customerName: hasContact ? name.trim() : undefined, customerPhone: hasContact && phone.trim() ? phone.trim() : undefined, marketingConsent: hasContact && phone.trim() ? consent : undefined,
         items: lines.map(product => ({ productId: product.id, quantity: parseQuantity(cart[product.id].quantity, Boolean(product.allowFractionalQuantity), MAX_QTY), withPackaging: cart[product.id].withPackaging || undefined, notes: cart[product.id].notes.trim() || undefined, modifiers: modifiersPayload(cart[product.id].mods).length ? modifiersPayload(cart[product.id].mods) : undefined })),
       }) });
-      setConfirmation(result); setCart({});
+      setConfirmation(result); setCart({}); setSent(value => value + 1);
     } catch (e) { setFormError(friendlyError(e)); } finally { setBusy(false); }
   }
 
   if (loading) return <main className="grid min-h-screen place-items-center bg-[var(--rm-workspace)] p-6 text-slate-600">Carregando cardápio...</main>;
   if (error || !menu) return <main className="grid min-h-screen place-items-center bg-[var(--rm-workspace)] p-6"><div role="alert" className="max-w-sm rounded-2xl border border-red-200 bg-red-50 p-6 text-center text-red-800 shadow-sm">{error || 'Cardápio indisponível.'}</div></main>;
 
-  if (confirmation) return <main className="mx-auto grid min-h-screen max-w-md place-items-center bg-[var(--rm-workspace)] p-6"><div role="status" className="w-full rounded-3xl border border-emerald-200 bg-white p-7 text-center shadow-xl shadow-black/[0.06]"><span className="mx-auto grid h-12 w-12 place-items-center rounded-full bg-emerald-50 text-2xl text-emerald-700">✓</span><p className="mt-4 text-xs font-semibold uppercase tracking-[0.2em] text-emerald-700">Pedido enviado</p><h1 className="mt-2 text-4xl font-bold tracking-tight text-slate-900">{confirmation.code}</h1><p className="mt-3 text-slate-600">Mesa {menu.table} · {menu.restaurant}</p><p className="mt-4 text-lg font-semibold text-slate-900">Total: {formatMoney(confirmation.total)}</p>{Number(confirmation.serviceFee) > 0 && <p className="text-sm text-slate-500">Inclui taxa de serviço de {formatMoney(confirmation.serviceFee)}</p>}<p className="mt-4 text-sm text-slate-600">Seu pedido foi enviado para a cozinha. O pagamento é feito no atendimento.</p><button className="mt-6 w-full rounded-xl bg-brand-500 px-4 py-3 font-semibold text-neutral-950 transition hover:bg-brand-400" onClick={() => setConfirmation(null)}>Fazer novo pedido</button></div></main>;
+  if (confirmation) return <main className="mx-auto grid min-h-screen max-w-md place-items-center bg-[var(--rm-workspace)] p-6"><div role="status" className="w-full rounded-3xl border border-emerald-200 bg-white p-7 text-center shadow-xl shadow-black/[0.06]"><span className="mx-auto grid h-12 w-12 place-items-center rounded-full bg-emerald-50 text-2xl text-emerald-700">✓</span><p className="mt-4 text-xs font-semibold uppercase tracking-[0.2em] text-emerald-700">Pedido enviado</p><h1 className="mt-2 text-4xl font-bold tracking-tight text-slate-900">{confirmation.code}</h1><p className="mt-3 text-slate-600">Mesa {menu.table} · {menu.restaurant}</p><p className="mt-4 text-lg font-semibold text-slate-900">Total: {formatMoney(confirmation.total)}</p>{Number(confirmation.serviceFee) > 0 && <p className="text-sm text-slate-500">Inclui taxa de serviço de {formatMoney(confirmation.serviceFee)}</p>}<p className="mt-4 text-sm text-slate-600">{confirmation.awaitingConfirmation ? 'Recebemos seu pedido. Ele será enviado para a cozinha assim que um atendente confirmar; acompanhe abaixo.' : 'Seu pedido foi enviado para a cozinha. O pagamento é feito no atendimento.'}</p><button className="mt-6 w-full rounded-xl bg-brand-500 px-4 py-3 font-semibold text-neutral-950 transition hover:bg-brand-400" onClick={() => setConfirmation(null)}>Fazer novo pedido</button><div className="mt-5 text-left"><TableAccount token={token} refreshKey={sent} /></div></div></main>;
 
   return <main className="mx-auto min-h-screen max-w-2xl bg-[var(--rm-workspace)] px-4 pb-10 text-slate-900">
     <header className="sticky top-0 z-10 -mx-4 border-b border-white/10 bg-neutral-950/95 px-4 py-4 shadow-lg shadow-black/10 backdrop-blur"><p className="text-xs font-semibold uppercase tracking-[0.22em] text-brand-300">{menu.restaurant}</p><h1 className="mt-1 text-xl font-bold text-white">Mesa {menu.table} <span className="text-sm font-normal text-neutral-400">· {menu.unit}</span></h1></header>
     {menu.categories.length === 0 && <p className="mt-6 text-slate-400">Nenhum produto disponível no momento.</p>}
+    <TableAccount token={token} refreshKey={sent} />
     {menu.categories.map(category => <section key={category.id ?? 'none'} className="mt-6"><h2 className="mb-3 flex items-center gap-3 text-lg font-bold tracking-tight text-slate-900 before:h-6 before:w-1 before:rounded-full before:bg-brand-500">{category.name}</h2><div className="grid gap-3">{category.products.map(product => {
       const line = cart[product.id];
       return <article key={product.id} className="rm-surface rounded-2xl border border-slate-200 bg-white p-4 shadow-sm shadow-black/[0.03]"><div className="flex items-start justify-between gap-3"><div><h3 className="font-semibold text-slate-900">{product.name}</h3>{product.description && <p className="mt-1 text-sm text-slate-500">{product.description}</p>}{product.isCombo && product.comboComponents && product.comboComponents.length > 0 && <p className="mt-1 text-sm text-brand-700">Combo inclui: {product.comboComponents.map(component => `${component.quantity}× ${component.product.name}`).join(', ')}</p>}<p className="mt-2 font-semibold text-brand-700">{formatMoney(product.price)}</p></div>

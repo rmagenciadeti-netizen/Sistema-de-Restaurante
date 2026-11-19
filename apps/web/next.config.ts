@@ -4,6 +4,8 @@ const apiTarget = (process.env.API_INTERNAL_URL ?? 'http://127.0.0.1:4000/api/v1
 
 const nextConfig: NextConfig = {
   reactStrictMode: true,
+  poweredByHeader: false,
+  compress: true,
   async rewrites() {
     return [{ source: '/api-proxy/:path*', destination: `${apiTarget}/:path*` }];
   },

@@ -1,7 +1,7 @@
 'use client';
 
 import { useState } from 'react';
-import Link from 'next/link';
+import Link from '../../components/nav-link';
 import { api, errorMessage, formatDateTime, formatMoney } from '../../lib/api';
 import { useAutoLoad } from '../../lib/use-auto-load';
 import { AppShell, buttonClass, Field, Notice } from '../../components/app-shell';

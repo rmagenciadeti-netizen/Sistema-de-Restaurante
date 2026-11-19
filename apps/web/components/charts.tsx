@@ -19,7 +19,7 @@ export function AreaChart({ points, format, label }: { points: { label: string; 
       <defs><linearGradient id={gradient} x1="0" x2="0" y1="0" y2="1"><stop offset="0%" stopColor="rgb(var(--b-500))" stopOpacity="0.45" /><stop offset="100%" stopColor="rgb(var(--b-500))" stopOpacity="0.02" /></linearGradient></defs>
       {[0.25, 0.5, 0.75].map(fraction => <line key={fraction} x1={pad.left} x2={width - pad.right} y1={pad.top + fraction * (height - pad.top - pad.bottom)} y2={pad.top + fraction * (height - pad.top - pad.bottom)} stroke="rgb(var(--s-200))" strokeDasharray="4 4" />)}
       {area && <path d={area} fill={`url(#${gradient})`} />}
-      {line && <path d={line} fill="none" stroke="rgb(var(--b-600))" strokeWidth="2.5" strokeLinejoin="round" strokeLinecap="round" />}
+      {line && <path className="rm-chart-glow" d={line} fill="none" stroke="rgb(var(--b-400))" strokeWidth="2.5" strokeLinejoin="round" strokeLinecap="round" />}
       {coords.map((point, index) => <circle key={points[index].label} cx={point.x} cy={point.y} r="4" fill="var(--panel)" stroke="rgb(var(--b-400))" strokeWidth="2"><title>{`${points[index].label}: ${format(points[index].value)}`}</title></circle>)}
     </svg>
     <figcaption className="mt-1 flex justify-between gap-1 text-[10px] uppercase tracking-wide text-slate-500">{points.map(point => <span key={point.label} className="min-w-0 flex-1 truncate text-center">{point.label}</span>)}</figcaption>
@@ -35,7 +35,7 @@ export function DonutChart({ slices, format, centerLabel }: { slices: { label: s
       <circle cx="60" cy="60" r={radius} fill="none" stroke="rgb(var(--s-100))" strokeWidth="16" />
       {total > 0 && slices.map((slice, index) => {
         const length = (slice.value / total) * circumference;
-        const segment = <circle key={slice.label} cx="60" cy="60" r={radius} fill="none" stroke={chartPalette[index % chartPalette.length]} strokeWidth="16" strokeDasharray={`${length} ${circumference - length}`} strokeDashoffset={-offset}><title>{`${slice.label}: ${format(slice.value)}`}</title></circle>;
+        const segment = <circle className="rm-chart-glow" key={slice.label} cx="60" cy="60" r={radius} fill="none" stroke={chartPalette[index % chartPalette.length]} strokeWidth="16" strokeDasharray={`${length} ${circumference - length}`} strokeDashoffset={-offset}><title>{`${slice.label}: ${format(slice.value)}`}</title></circle>;
         offset += length;
         return segment;
       })}

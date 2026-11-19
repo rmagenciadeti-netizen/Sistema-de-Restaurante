@@ -146,12 +146,12 @@ export default function ProductionPage() {
       <section className={`${panelClass} mb-6`}><h2 className="mb-4 text-lg font-semibold">{printerId ? 'Editar impressora' : 'Nova impressora'}</h2>
         <form onSubmit={savePrinter} className="grid gap-4 md:grid-cols-3">
           <Field label="Nome" required minLength={2} value={printerForm.name} onChange={e => setPrinterForm({ ...printerForm, name: e.target.value })} />
-          <Select label="Tipo" value={printerForm.kind} onChange={e => setPrinterForm({ ...printerForm, kind: e.target.value })}><option value="KITCHEN">Cozinha</option><option value="RECEIPT">Recibo</option><option value="LABEL">Etiqueta</option></Select>
+          <Select label="Tipo" value={printerForm.kind} onChange={e => setPrinterForm({ ...printerForm, kind: e.target.value })}><option value="KITCHEN">Cozinha</option><option value="RECEIPT">Recibo / cupom / comprovante</option><option value="LABEL">Etiqueta</option></Select>
           <Select label="Conexão" value={printerForm.connectionType} onChange={e => setPrinterForm({ ...printerForm, connectionType: e.target.value })}><option value="NETWORK">Rede</option><option value="WINDOWS">Windows (impressoras instaladas)</option><option value="USB">USB</option><option value="SHARED">Compartilhada</option><option value="SERIAL">Serial</option></Select>
           {printerForm.connectionType === 'WINDOWS' ? WindowsPrinterField()
             : <><Field label="Endereço (IP, nome compartilhado ou porta)" maxLength={255} value={printerForm.address} onChange={e => setPrinterForm({ ...printerForm, address: e.target.value })} />
               <Field label="Porta" type="number" min="1" max="65535" value={printerForm.port} onChange={e => setPrinterForm({ ...printerForm, port: e.target.value })} /></>}
-          <Select label="Papel" value={printerForm.paperWidthMm} onChange={e => setPrinterForm({ ...printerForm, paperWidthMm: e.target.value })}><option value="58">58 mm</option><option value="80">80 mm</option></Select>
+          <Select label="Papel" value={printerForm.paperWidthMm} onChange={e => setPrinterForm({ ...printerForm, paperWidthMm: e.target.value })}><option value="55">55 mm</option><option value="58">58 mm</option><option value="80">80 mm</option></Select>
           <Select label="Setor" value={printerForm.sectorId} onChange={e => setPrinterForm({ ...printerForm, sectorId: e.target.value })}><option value="">Sem setor</option>{sectors.map(item => <option key={item.id} value={item.id}>{item.name}</option>)}</Select>
           <div className="flex flex-wrap items-center gap-4 md:col-span-3">
             <Check label="Principal do setor" checked={printerForm.isPrimary} onChange={e => setPrinterForm({ ...printerForm, isPrimary: e.target.checked })} />

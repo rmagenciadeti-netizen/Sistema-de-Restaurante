@@ -7,6 +7,10 @@ const PUBLIC_PREFIXES = ['/login', '/forgot-password', '/reset-password', '/loja
 const CHECK_TTL_MS = 15_000;
 const verified = new Map<string, number>();
 
+// Screens that belong to the RM Painel Admin only: the restaurant app answers 404 for them (the API enforces MASTER_ADMIN regardless).
+const MASTER_ONLY_PREFIXES = ['/migrations'];
+export const isMasterOnlyPath = (pathname: string) => MASTER_ONLY_PREFIXES.some(prefix => pathname === prefix || pathname.startsWith(`${prefix}/`));
+
 export const isPublicPath = (pathname: string) => PUBLIC_PREFIXES.some(prefix => pathname === prefix || pathname.startsWith(`${prefix}/`));
 
 export function tokenExpired(token: string, now = Date.now()): boolean {

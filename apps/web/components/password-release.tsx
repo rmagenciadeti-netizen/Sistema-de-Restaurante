@@ -1,6 +1,6 @@
 'use client';
 
-import Link from 'next/link';
+import Link from './nav-link';
 import { useEffect, useId, useRef, useState } from 'react';
 import { api, ApiError } from '../lib/api';
 import { releaseActionLabels, type ReleaseAction, type ReleaseResult } from '../lib/types-settings';

@@ -1,7 +1,7 @@
 'use client';
 
 import { useState } from 'react';
-import Link from 'next/link';
+import Link from './nav-link';
 import { useSearchParams } from 'next/navigation';
 import { api, errorMessage, ListResponse, Product } from '../lib/api';
 import { useAutoLoad } from '../lib/use-auto-load';

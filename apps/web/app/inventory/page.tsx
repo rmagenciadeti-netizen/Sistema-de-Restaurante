@@ -1,9 +1,10 @@
 'use client';
 
 import { FormEvent, useEffect, useRef, useState } from 'react';
-import Link from 'next/link';
+import Link from '../../components/nav-link';
 import { ApiError, api, ListResponse, Product } from '../../lib/api';
 import { StockTransfer } from '../../components/stock-transfer';
+import { StockPlanning } from '../../components/stock/planning';
 import { AppShell, buttonClass, Field, Notice, panelClass } from '../../components/app-shell';
 
 type Ingredient = {
@@ -12,6 +13,9 @@ type Ingredient = {
   unitOfMeasure: string;
   currentStock: number | string;
   minimumStock?: number | string | null;
+  maximumStock?: number | string | null;
+  category?: string | null;
+  expiresAt?: string | null;
   unitId?: string | null;
 };
 
@@ -40,8 +44,8 @@ export default function InventoryPage() {
   const [products, setProducts] = useState<Product[]>([]);
   const [movements, setMovements] = useState<Movement[]>([]);
   const [message, setMessage] = useState<Message | null>(null);
-  const [ingredientForm, setIngredientForm] = useState({ name: '', unitOfMeasure: '', minimumStock: '' });
-  const [movementForm, setMovementForm] = useState({ ingredientId: '', type: 'PURCHASE', quantity: '', unitCost: '', note: '' });
+  const [ingredientForm, setIngredientForm] = useState({ name: '', unitOfMeasure: '', minimumStock: '', maximumStock: '', category: '' });
+  const [movementForm, setMovementForm] = useState({ ingredientId: '', type: 'PURCHASE', quantity: '', unitCost: '', note: '', reason: 'OTHER', expiresAt: '' });
   const [productId, setProductId] = useState('');
   const [recipeYield, setRecipeYield] = useState('1');
   const [recipeNotes, setRecipeNotes] = useState('');
@@ -110,9 +114,11 @@ export default function InventoryPage() {
           name: ingredientForm.name,
           unitOfMeasure: ingredientForm.unitOfMeasure,
           minimumStock: ingredientForm.minimumStock ? Number(ingredientForm.minimumStock) : undefined,
+          maximumStock: ingredientForm.maximumStock ? Number(ingredientForm.maximumStock) : undefined,
+          category: ingredientForm.category.trim() || undefined,
         }),
       });
-      setIngredientForm({ name: '', unitOfMeasure: '', minimumStock: '' });
+      setIngredientForm({ name: '', unitOfMeasure: '', minimumStock: '', maximumStock: '', category: '' });
       setMessage({ text: 'Ingrediente cadastrado. Registre uma entrada para atualizar o saldo.', kind: 'success' });
       await load();
     } catch (error) {
@@ -134,9 +140,11 @@ export default function InventoryPage() {
           quantity: Number(movementForm.quantity),
           unitCost: movementForm.unitCost ? Number(movementForm.unitCost) : undefined,
           note: movementForm.note || undefined,
+          ...(movementForm.type === 'WASTE' ? { reason: movementForm.reason } : {}),
+          ...(movementForm.type === 'PURCHASE' && movementForm.expiresAt ? { expiresAt: movementForm.expiresAt } : {}),
         }),
       });
-      setMovementForm(current => ({ ...current, quantity: '', unitCost: '', note: '' }));
+      setMovementForm(current => ({ ...current, quantity: '', unitCost: '', note: '', expiresAt: '' }));
       setMessage({ text: 'Movimentação registrada.', kind: 'success' });
       await load();
     } catch (error) {
@@ -208,6 +216,8 @@ export default function InventoryPage() {
   return <AppShell title="Estoque e fichas técnicas">
     {message && <Notice message={message.text} kind={message.kind} />}
 
+    <StockPlanning onChanged={load} />
+
     <div className="grid gap-6 xl:grid-cols-2">
       <section className={panelClass}>
         <h2 className="mb-4 text-lg font-semibold">Novo ingrediente</h2>
@@ -215,6 +225,8 @@ export default function InventoryPage() {
           <Field label="Ingrediente" required minLength={2} value={ingredientForm.name} onChange={event => setIngredientForm({ ...ingredientForm, name: event.target.value })} />
           <Field label="Unidade (kg, g, L, un.)" required maxLength={20} value={ingredientForm.unitOfMeasure} onChange={event => setIngredientForm({ ...ingredientForm, unitOfMeasure: event.target.value })} />
           <Field label="Estoque mínimo (opcional)" type="number" min="0" step="0.001" value={ingredientForm.minimumStock} onChange={event => setIngredientForm({ ...ingredientForm, minimumStock: event.target.value })} />
+          <Field label="Estoque máximo (opcional)" type="number" min="0" step="0.001" value={ingredientForm.maximumStock} onChange={event => setIngredientForm({ ...ingredientForm, maximumStock: event.target.value })} />
+          <Field label="Categoria (opcional, usada no inventário)" maxLength={60} value={ingredientForm.category} onChange={event => setIngredientForm({ ...ingredientForm, category: event.target.value })} />
           <div className="flex items-end"><button className={buttonClass} disabled={busy}>Cadastrar ingrediente</button></div>
         </form>
       </section>
@@ -226,7 +238,9 @@ export default function InventoryPage() {
           <label className="text-sm text-slate-300">Tipo<select className="mt-1 w-full rounded-lg border border-slate-700 bg-slate-950 px-3 py-2" value={movementForm.type} onChange={event => setMovementForm({ ...movementForm, type: event.target.value })}>{movementTypes.map(type => <option key={type.value} value={type.value}>{type.label}</option>)}</select></label>
           <Field label="Quantidade" type="number" min="0.001" step="0.001" required value={movementForm.quantity} onChange={event => setMovementForm({ ...movementForm, quantity: event.target.value })} />
           <Field label="Custo unitário (opcional)" type="number" min="0" step="0.0001" value={movementForm.unitCost} onChange={event => setMovementForm({ ...movementForm, unitCost: event.target.value })} />
-          <Field label="Observação (opcional)" maxLength={500} value={movementForm.note} onChange={event => setMovementForm({ ...movementForm, note: event.target.value })} />
+          <Field label={movementForm.type === 'ADJUSTMENT' || movementForm.type === 'WASTE' ? 'Justificativa (obrigatória)' : 'Observação (opcional)'} maxLength={500} required={movementForm.type === 'ADJUSTMENT' || movementForm.type === 'WASTE'} minLength={movementForm.type === 'ADJUSTMENT' || movementForm.type === 'WASTE' ? 3 : undefined} value={movementForm.note} onChange={event => setMovementForm({ ...movementForm, note: event.target.value })} />
+          {movementForm.type === 'WASTE' && <label className="text-sm text-slate-300">Motivo da perda<select className="mt-1 w-full rounded-lg border border-slate-700 bg-slate-950 px-3 py-2" value={movementForm.reason} onChange={event => setMovementForm({ ...movementForm, reason: event.target.value })}><option value="EXPIRED">Vencido</option><option value="DAMAGED">Danificado</option><option value="PRODUCTION">Perda na produção</option><option value="OTHER">Outro</option></select></label>}
+          {movementForm.type === 'PURCHASE' && <Field label="Validade do lote (opcional)" type="date" value={movementForm.expiresAt} onChange={event => setMovementForm({ ...movementForm, expiresAt: event.target.value })} />}
           <div className="flex items-end"><button className={buttonClass} disabled={busy || !movementForm.ingredientId}>Registrar movimentação</button></div>
         </form>
       </section>

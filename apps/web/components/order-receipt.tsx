@@ -6,7 +6,7 @@ import type { TenantSettings } from '../lib/settings';
 export function OrderReceipt({ order, serviceFeeName = 'Taxa de serviço', printing, company }: { order: OpsOrder; serviceFeeName?: string; printing?: TenantSettings['printing']; company?: TenantSettings['company'] }) {
   const discount = Number(order.discount ?? 0);
   const line = (label: string, value: string, strong = false) => <div className={`flex justify-between gap-4 ${strong ? 'text-base font-bold' : ''}`}><span>{label}</span><span>{value}</span></div>;
-  const width = printing?.paper === 'A4' ? '210mm' : printing?.paper === '58mm' ? '58mm' : '80mm';
+  const width = printing?.paper === 'A4' ? '210mm' : printing?.paper === '58mm' ? '58mm' : printing?.paper === '55mm' ? '55mm' : '80mm';
   const fontSize = 8 + (printing?.fontSize ?? 5);
   const companyLines = printing?.companyHeader && company ? [company.tradeName || company.legalName, company.document, [company.address, company.number, company.district, company.city, company.state].filter(Boolean).join(', '), company.phone].filter(Boolean) : [];
   return <section aria-hidden="true" className="hidden bg-white p-2 font-mono leading-snug text-black print:mx-auto print:block" style={{ width, fontSize: `${fontSize}px` }}>
@@ -39,7 +39,7 @@ export function pickupTicketItems(order: OpsOrder) {
 }
 
 export function PickupTicket({ order, printing }: { order: OpsOrder; printing?: TenantSettings['printing'] }) {
-  const width = printing?.paper === 'A4' ? '210mm' : printing?.paper === '58mm' ? '58mm' : '80mm';
+  const width = printing?.paper === 'A4' ? '210mm' : printing?.paper === '58mm' ? '58mm' : printing?.paper === '55mm' ? '55mm' : '80mm';
   return <section aria-hidden="true" className="hidden bg-white p-2 font-mono leading-snug text-black print:mx-auto print:block" style={{ width, fontSize: `${8 + (printing?.fontSize ?? 5)}px`, breakBefore: 'page' }}>
     <h2 className="text-center text-base font-bold">Ticket de retirada</h2>
     <p className="text-center text-xl font-bold">{orderTitle(order)}</p>

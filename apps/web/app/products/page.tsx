@@ -1,13 +1,14 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import Link from 'next/link';
+import Link from '../../components/nav-link';
 import { api, formatMoney, ListResponse, ProductCategory, Sector } from '../../lib/api';
 import type { SettingsResponse } from '../../lib/settings';
 import type { CatalogProduct as Product, TaxRuleOption } from '../../lib/types-catalog';
 import { AppShell, buttonClass, Check, Field, Notice, panelClass, Select, secondaryButtonClass } from '../../components/app-shell';
 import { Badge, Tabs, textareaClass, Toggle } from '../../components/ui';
 import { fileToDataUrl } from '../../lib/image-resize';
+import { ProductPricingTab } from '../../components/pricing/product-pricing';
 import { attachTemplateGroups, findTemplate, productTemplates } from '../../lib/product-templates';
 
 const emptyForm = {
@@ -16,8 +17,8 @@ const emptyForm = {
   description: '', prepTimeMinutes: '', margin: '', gtin: '', measureUnit: 'UN', localOnly: false, isComponent: false, allowNotes: true, allowFreePrice: false, alwaysShowDescription: false, allowFractionalQuantity: false, pickupTicket: false, packagingEnabled: false, packagingPrice: '', stockControlled: false, stockMin: '', initialStock: '', productType: 'FINISHED',
 };
 const measureUnits = [['UN', 'Unidade'], ['KG', 'Quilo'], ['G', 'Grama'], ['L', 'Litro'], ['ML', 'Mililitro'], ['CX', 'Caixa'], ['PCT', 'Pacote'], ['PORC', 'Porção']] as const;
-type FormTab = 'data' | 'groups' | 'photo' | 'scale' | 'tax';
-const formTabs: { key: FormTab; label: string }[] = [{ key: 'data', label: 'Dados' }, { key: 'groups', label: 'Adicionais' }, { key: 'photo', label: 'Foto' }, { key: 'scale', label: 'Balança' }, { key: 'tax', label: 'Fiscal' }];
+type FormTab = 'data' | 'groups' | 'photo' | 'scale' | 'tax' | 'pricing';
+const formTabs: { key: FormTab; label: string }[] = [{ key: 'data', label: 'Dados' }, { key: 'groups', label: 'Adicionais' }, { key: 'photo', label: 'Foto' }, { key: 'scale', label: 'Balança' }, { key: 'tax', label: 'Fiscal' }, { key: 'pricing', label: 'Custos e margens' }];
 const productTypes = [['FINISHED', 'Produto acabado'], ['MERCHANDISE', 'Mercadoria para revenda'], ['RAW_MATERIAL', 'Matéria-prima'], ['PACKAGING', 'Embalagem'], ['IN_PROCESS', 'Produto em processo'], ['BY_PRODUCT', 'Subproduto'], ['CONSUMABLE', 'Uso e consumo'], ['SERVICE', 'Serviço'], ['OTHER', 'Outros']] as const;
 type ModifierGroupRow = { id: string; name: string; minSelect: number; maxSelect: number; active: boolean; options: { id: string }[]; products: { productId: string }[] };
 const optionalInt = (value: string) => (value.trim() === '' ? null : Number(value));
@@ -52,6 +53,13 @@ export default function ProductsPage() {
     } catch (e) { setMessage(e instanceof Error ? e.message : 'Erro ao carregar catálogo'); return false; }
   }
   useEffect(() => { void load(); }, []);
+  // Deep link from the profitability panel: /products?edit=<id> opens the product on its costs tab.
+  useEffect(() => {
+    const wanted = new URLSearchParams(window.location.search).get('edit');
+    const target = wanted ? items.find(item => item.id === wanted) : undefined;
+    if (target && editingId !== target.id) { startEdit(target); setFormTab('pricing'); }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [items]);
   function startEdit(item: Product) {
     setForm({
       name: item.name, code: item.code ?? '', price: String(item.price), cost: item.cost == null ? '' : String(item.cost), sectorId: item.sector?.id ?? '', categoryId: item.category?.id ?? '',
@@ -200,7 +208,7 @@ export default function ProductsPage() {
         <Select label="Começar de um modelo" value={templateKey} onChange={e => setTemplateKey(e.target.value)}><option value="">Cadastro básico (sem modelo)</option>{productTemplates.map(template => <option key={template.key} value={template.key}>{template.icon} {template.label}</option>)}</Select>
         {findTemplate(templateKey) && <p className="mt-2 text-xs text-slate-600">{findTemplate(templateKey)!.hint}{findTemplate(templateKey)!.groups.length > 0 && <> Ao salvar, vincula os grupos: <strong>{findTemplate(templateKey)!.groups.map(group => group.name).join(', ')}</strong> (grupos que já existem são reaproveitados).</>}</p>}
       </div>}
-      <Tabs tabs={formTabs} value={formTab} onChange={setFormTab} label="Seções do produto" />
+      <Tabs tabs={editingId ? formTabs : formTabs.filter(tab => tab.key !== 'pricing')} value={formTab} onChange={setFormTab} label="Seções do produto" />
       <form onSubmit={submit} className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
         {formTab === 'data' && <>
           <Field label="Nome" required value={form.name} onChange={e => setForm({ ...form, name: e.target.value })} />
@@ -267,6 +275,7 @@ export default function ProductsPage() {
           <label className="block text-sm font-medium text-slate-700 md:col-span-2 xl:col-span-3">Observações da balança<textarea className={textareaClass} rows={2} maxLength={500} value={form.scaleNotes} onChange={e => setForm({ ...form, scaleNotes: e.target.value })} /></label>
           <p className="text-xs text-slate-500 md:col-span-2 xl:col-span-3">Produtos de balança normalmente são vendidos por peso. O código da balança é único em todo o restaurante. <Link href="/scale-file" className="font-semibold text-brand-700 underline">Gerar arquivo para a balança</Link></p>
         </>}
+        {formTab === 'pricing' && editingId && <ProductPricingTab productId={editingId} onSynced={product => { setForm(current => ({ ...current, price: String(product.price), cost: product.cost === null ? '' : String(product.cost) })); void load(); }} />}
         {formTab === 'tax' && <>
           <Field label="NCM" inputMode="numeric" placeholder="8 dígitos" maxLength={10} value={form.ncm} onChange={e => setForm({ ...form, ncm: e.target.value })} />
           <Field label="CEST" inputMode="numeric" placeholder="7 dígitos" maxLength={9} value={form.cest} onChange={e => setForm({ ...form, cest: e.target.value })} />

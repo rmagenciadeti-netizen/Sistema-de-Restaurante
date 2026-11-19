@@ -116,12 +116,12 @@ export default function LoginPage() {
 
   return (
     <main className="rm-canvas grid min-h-screen lg:grid-cols-2">
-      <section className="relative flex min-h-56 flex-col justify-between overflow-hidden bg-black/60 px-8 py-8 text-white sm:px-12 lg:min-h-screen lg:px-16 lg:py-14">
-        <div aria-hidden="true" className="pointer-events-none absolute -right-36 top-1/4 h-96 w-96 rounded-full border border-brand-400/20 shadow-[0_0_100px_rgb(var(--b-500)/0.12)]" />
+      <section className="rm-auth-bg relative flex min-h-56 flex-col justify-between overflow-hidden px-8 py-8 text-white sm:px-12 lg:min-h-screen lg:px-16 lg:py-14">
+        <div aria-hidden="true" className="rm-orbit pointer-events-none absolute -right-36 top-1/4 h-96 w-96"><span /><span /><span /></div>
         <RmLogo className="h-24 w-28 text-white" />
         <div className="my-10 max-w-lg">
-          <div className="mb-5 h-1 w-16 rounded-full bg-brand-400" />
-          <h1 className="text-3xl font-semibold leading-tight sm:text-4xl">{isAdminApp ? <>Controle da plataforma.<br />Clientes conectados.</> : <>Gestão completa.<br />Operação conectada.</>}</h1>
+          <div className="rm-gold-line mb-5 w-24" />
+          <h1 className="bg-gradient-to-br from-white via-brand-300 to-brand-400 bg-clip-text text-3xl font-semibold leading-tight text-transparent sm:text-4xl">{isAdminApp ? <>Controle da plataforma.<br />Clientes conectados.</> : <>Gestão completa.<br />Operação conectada.</>}</h1>
           <p className="mt-4 max-w-md text-sm leading-6 text-neutral-300">{isAdminApp ? 'Área exclusiva dos administradores autorizados do RM Restaurant SaaS.' : 'Acesse o ambiente de gestão do seu restaurante com segurança.'}</p>
         </div>
         <p className="text-xs tracking-wide text-neutral-500">RM Agência de TI · Restaurant SaaS</p>

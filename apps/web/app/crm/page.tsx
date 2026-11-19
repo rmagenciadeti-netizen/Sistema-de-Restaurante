@@ -3,7 +3,8 @@
 import { useEffect, useMemo, useState } from 'react';
 import { api, errorMessage, formatDateTime, formatMoney } from '../../lib/api';
 import { AppShell, Field, Notice, secondaryButtonClass } from '../../components/app-shell';
-import { Badge, DataTable, EmptyState, PageHeader } from '../../components/ui';
+import { Badge, DataTable, EmptyState, PageHeader, Tabs } from '../../components/ui';
+import { CampaignsPanel, LoyaltyPanel } from '../../components/crm/loyalty-panels';
 import { exportCsv, Section } from '../../components/commercial/common';
 
 type Segment = 'VIP' | 'RECURRING' | 'NEW' | 'AT_RISK' | 'INACTIVE';
@@ -12,8 +13,10 @@ type Response = { items: Row[]; counts: Partial<Record<Segment, number>>; rules:
 const labels: Record<Segment, string> = { VIP: '👑 VIP', RECURRING: '🔁 Recorrentes', NEW: '🌱 Novos', AT_RISK: '⚠️ Em risco', INACTIVE: '💤 Inativos' };
 const tones = { VIP: 'gold', RECURRING: 'green', NEW: 'blue', AT_RISK: 'red', INACTIVE: 'neutral' } as const;
 const whatsapp = (phone: string) => `https://wa.me/${phone.replace(/\D/g, '').replace(/^(?!55)/, '55')}`;
+const tabs: { key: 'segments' | 'loyalty' | 'campaigns'; label: string }[] = [{ key: 'segments', label: '👑 Segmentos' }, { key: 'loyalty', label: '🎁 Fidelidade' }, { key: 'campaigns', label: '📣 Campanhas' }];
 
 export default function CrmPage() {
+  const [tab, setTab] = useState<'segments' | 'loyalty' | 'campaigns'>('segments');
   const [data, setData] = useState<Response | null>(null);
   const [segment, setSegment] = useState<Segment | ''>('');
   const [query, setQuery] = useState('');
@@ -23,7 +26,11 @@ export default function CrmPage() {
   const rows = useMemo(() => (data?.items ?? []).filter(item => (!segment || item.segment === segment) && (!query || `${item.name} ${item.phone}`.toLowerCase().includes(query.toLowerCase()))), [data, segment, query]);
   const consented = rows.filter(item => item.marketingConsent);
   return <AppShell title="Clientes VIP e fidelização">
-    <PageHeader title="RM Cliente VIP" subtitle="Segmentação automática pelo histórico real de pedidos concluídos. As regras são fixas e transparentes; os pontos de fidelidade vêm do cadastro." />
+    <PageHeader title="RM Cliente VIP" subtitle="Segmentação automática pelo histórico real de pedidos concluídos, programa de fidelidade com extrato e resgate, e campanhas para quem autorizou comunicações." />
+    <Tabs tabs={tabs} value={tab} onChange={setTab} label="RM Cliente VIP" />
+    {tab === 'loyalty' && <LoyaltyPanel />}
+    {tab === 'campaigns' && <CampaignsPanel />}
+    {tab === 'segments' && <>
     {error && <Notice message={error} />}
     {!data && !error && <p className="text-sm text-slate-500">Carregando…</p>}
     {data && <>
@@ -41,6 +48,7 @@ export default function CrmPage() {
         </DataTable>}
         {rows.length > 300 && <p className="mt-2 text-xs text-slate-500">Mostrando 300 de {rows.length}; use os filtros ou a exportação.</p>}
       </Section>
+    </>}
     </>}
   </AppShell>;
 }

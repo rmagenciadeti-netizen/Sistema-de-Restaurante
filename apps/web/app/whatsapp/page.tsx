@@ -8,16 +8,18 @@ import { MANAGEMENT_ROLES } from '../../lib/settings-helpers';
 import type { WhatsappSession, WhatsappStats } from '../../lib/types-whatsapp';
 import { useAutoLoad } from '../../lib/use-auto-load';
 import { AppShell, Notice } from '../../components/app-shell';
-import { PageHeader, StatCard, Tabs } from '../../components/ui';
-import { AutoMessagesTab } from '../../components/whatsapp/auto-messages-tab';
-import { BotSettingsPanel } from '../../components/whatsapp/bot-settings-panel';
+import { PageHeader, PanelSkeleton, StatCard, Tabs } from '../../components/ui';
+import dynamic from 'next/dynamic';
 import { Flash, friendlyError } from '../../components/whatsapp/common';
-import { ConnectionTab } from '../../components/whatsapp/connection-tab';
-import { ConversationsTab } from '../../components/whatsapp/conversations-tab';
-import { GeneralSwitches } from '../../components/whatsapp/general-switches';
-import { KnowledgePanel } from '../../components/whatsapp/knowledge-panel';
-import { OutboxTab } from '../../components/whatsapp/outbox-tab';
-import { SimulatorTab } from '../../components/whatsapp/simulator-tab';
+
+const AutoMessagesTab = dynamic(() => import('../../components/whatsapp/auto-messages-tab').then(module => module.AutoMessagesTab), { loading: () => <PanelSkeleton lines={5} /> });
+const BotSettingsPanel = dynamic(() => import('../../components/whatsapp/bot-settings-panel').then(module => module.BotSettingsPanel), { loading: () => <PanelSkeleton lines={5} /> });
+const ConnectionTab = dynamic(() => import('../../components/whatsapp/connection-tab').then(module => module.ConnectionTab), { loading: () => <PanelSkeleton lines={5} /> });
+const ConversationsTab = dynamic(() => import('../../components/whatsapp/conversations-tab').then(module => module.ConversationsTab), { loading: () => <PanelSkeleton lines={5} /> });
+const GeneralSwitches = dynamic(() => import('../../components/whatsapp/general-switches').then(module => module.GeneralSwitches), { loading: () => <PanelSkeleton lines={5} /> });
+const KnowledgePanel = dynamic(() => import('../../components/whatsapp/knowledge-panel').then(module => module.KnowledgePanel), { loading: () => <PanelSkeleton lines={5} /> });
+const OutboxTab = dynamic(() => import('../../components/whatsapp/outbox-tab').then(module => module.OutboxTab), { loading: () => <PanelSkeleton lines={5} /> });
+const SimulatorTab = dynamic(() => import('../../components/whatsapp/simulator-tab').then(module => module.SimulatorTab), { loading: () => <PanelSkeleton lines={5} /> });
 
 type WhatsappSettings = TenantSettings['whatsapp'];
 const tabs = [

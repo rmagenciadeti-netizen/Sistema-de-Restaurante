@@ -1,6 +1,6 @@
 'use client';
 
-import Link from 'next/link';
+import Link from '../../components/nav-link';
 import { useState } from 'react';
 import { AppShell, panelClass, secondaryButtonClass } from '../../components/app-shell';
 import { Badge, PageHeader } from '../../components/ui';

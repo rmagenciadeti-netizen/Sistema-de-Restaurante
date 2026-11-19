@@ -3,10 +3,11 @@
 import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { api, ApiError, errorMessage, formatMoney, storedUser } from '../../lib/api';
-import Link from 'next/link';
+import Link from '../../components/nav-link';
 import { AppShell, flows, moduleIcon, moduleLabel, Notice, panelClass } from '../../components/app-shell';
 import { AreaChart, DonutChart } from '../../components/charts';
-import { GoldCard, HeroBanner, StatCard } from '../../components/ui';
+import { GoldCard, HeroBanner, PanelSkeleton, Skeleton, StatCard } from '../../components/ui';
+import { useShellProfile } from '../../lib/shell-profile';
 import { AssistantPanel, BarList, GoalRing } from '../../components/dashboard-widgets';
 import { hrefAllowed } from '../../lib/menu-catalog';
 
@@ -59,11 +60,21 @@ function MasterCommercial() {
   </section>;
 }
 
+function InsightPlaceholder({ state }: { state: 'loading' | 'denied' | 'error' | 'ok' }) {
+  if (state === 'loading') return <PanelSkeleton lines={4} label="Carregando" />;
+  if (state === 'denied') return <p className="text-sm text-slate-500">Visível apenas para perfis com acesso à inteligência de negócios.</p>;
+  return <p role="status" className="text-sm text-slate-500">Não foi possível carregar agora. Atualize a página para tentar de novo.</p>;
+}
+
 export default function DashboardPage() {
   const [result, setResult] = useState<{ summary: Summary; isMaster: boolean } | null>(null);
   const [error, setError] = useState('');
-  const [insight, setInsight] = useState<Insight | null>(null);
-  const [enabledModules, setEnabledModules] = useState<string[] | null>(null);
+  // Smart insights come from an API reserved to financial profiles: "loading", "not permitted" and "failed" are different situations and are shown as such (never as an endless "loading").
+  const [insightState, setInsightState] = useState<{ status: 'loading' | 'denied' | 'error' } | { status: 'ok'; data: Insight }>({ status: 'loading' });
+  const insight = insightState.status === 'ok' ? insightState.data : null;
+  // Licensed modules come from the shared profile (cached, one request for the whole shell), so the tiles are final from the first paint.
+  const profile = useShellProfile(false);
+  const enabledModules = profile.enabledModules;
   const router = useRouter();
 
   useEffect(() => {
@@ -71,7 +82,10 @@ export default function DashboardPage() {
     const user = storedUser();
     const isMaster = user.role === 'MASTER_ADMIN';
     api<Summary>(isMaster ? '/dashboard/master' : '/dashboard/restaurant')
-      .then(summary => { if (active) setResult({ summary, isMaster }); if (!isMaster) api<{ user: { enabledModules?: string[] | null } }>('/auth/me').then(me => { if (active) setEnabledModules(me.user.enabledModules ?? null); }).catch(() => undefined); if (!isMaster) api<Insight>('/intelligence/summary').then(data => { if (active) setInsight(data); }).catch(() => undefined); })
+      .then(summary => {
+        if (active) setResult({ summary, isMaster });
+        if (!isMaster) api<Insight>('/intelligence/summary').then(data => { if (active) setInsightState({ status: 'ok', data }); }).catch(cause => { if (active) setInsightState({ status: cause instanceof ApiError && (cause.status === 403 || cause.status === 404) ? 'denied' : 'error' }); });
+      })
       .catch(cause => {
         if (!active) return;
         if (cause instanceof ApiError && cause.status === 401) router.replace('/login');
@@ -86,7 +100,11 @@ export default function DashboardPage() {
 
   return <AppShell title={isMaster ? 'Painel Master' : 'Visão geral'}>
     {error && <Notice message={error} />}
-    {!summary && !error && <p className="text-sm text-slate-500">Carregando indicadores…</p>}
+    {!summary && !error && <div role="status" aria-label="Carregando indicadores" className="space-y-4">
+      <Skeleton className="h-40 w-full rounded-2xl" />
+      <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">{[0, 1, 2, 3].map(index => <Skeleton key={index} className="h-28 rounded-2xl" />)}</div>
+      <div className="grid gap-4 xl:grid-cols-3"><Skeleton className="h-72 rounded-2xl xl:col-span-2" /><Skeleton className="h-72 rounded-2xl" /></div>
+    </div>}
     {summary && (isMaster
       ? <>
         <HeroBanner title="RM Painel Admin" highlight="Gestão Comercial Completa, Inteligente e Dinâmica" text="Crie, gerencie e potencialize planos, módulos, promoções e clientes em um só lugar." tiles={[{ href: '/plans', icon: '💎', label: 'Planos Personalizados' }, { href: '/commercial?tab=modules', icon: '🧩', label: 'Módulos Flexíveis' }, { href: '/commercial?tab=campaigns', icon: '🔖', label: 'Promoções e Cupons' }, { href: '/licenses', icon: '🏢', label: 'Clientes Organizados' }, { href: '/commercial?tab=billing', icon: '💳', label: 'Financeiro Integrado' }]} />
@@ -116,16 +134,17 @@ export default function DashboardPage() {
             <AreaChart label="Gráfico de vendas concluídas nos últimos sete dias" format={formatMoney} points={(summary.salesTrend ?? []).map(point => ({ label: formatDay(point.day), value: Number(point.total) }))} />
             {(summary.salesTrend ?? []).every(point => Number(point.total) === 0) && <p className="mt-2 text-sm text-slate-500">Ainda não há vendas concluídas nesse período.</p>}
           </article>
-          {insight ? <article className={panelClass}><h2 className="mb-4 text-sm font-bold uppercase tracking-wider text-slate-700">Vendas por canal · 90 dias</h2>{insight.sales.byChannel.length === 0 ? <p className="text-sm text-slate-500">Sem vendas concluídas para comparar canais.</p> : <DonutChart centerLabel="Vendas por canal" format={formatMoney} slices={insight.sales.byChannel.map(item => ({ label: channelLabel[item.channel] ?? item.channel, value: item.total }))} />}</article> : <article className={panelClass}><p className="text-sm text-slate-500">Carregando canais…</p></article>}
+          {insight ? <article className={panelClass}><h2 className="mb-4 text-sm font-bold uppercase tracking-wider text-slate-700">Vendas por canal · 90 dias</h2>{insight.sales.byChannel.length === 0 ? <p className="text-sm text-slate-500">Sem vendas concluídas para comparar canais.</p> : <DonutChart centerLabel="Vendas por canal" format={formatMoney} slices={insight.sales.byChannel.map(item => ({ label: channelLabel[item.channel] ?? item.channel, value: item.total }))} />}</article> : <article className={panelClass}><h2 className="mb-4 text-sm font-bold uppercase tracking-wider text-slate-700">Vendas por canal · 90 dias</h2><InsightPlaceholder state={insightState.status} /></article>}
         </section>
         <section className="mt-4 grid gap-4 md:grid-cols-2 xl:grid-cols-4">
           <article className={panelClass}><AssistantPanel allowed={hrefAllowed('/intelligence', enabledModules)} /></article>
-          <article className={panelClass}><h2 className="mb-3 text-sm font-bold uppercase tracking-wider text-slate-700">Meta do mês</h2><GoalRing goal={insight?.goal ?? null} /></article>
+          <article className={panelClass}><h2 className="mb-3 text-sm font-bold uppercase tracking-wider text-slate-700">Meta do mês</h2>{insight ? <GoalRing goal={insight.goal} /> : <InsightPlaceholder state={insightState.status} />}</article>
           <article className={panelClass}><h2 className="mb-3 text-sm font-bold uppercase tracking-wider text-slate-700">Fluxo financeiro</h2>{summary.financial
             ? <><BarList rows={[{ label: 'Vendas no mês', value: Number(summary.monthly?.sales ?? 0), tone: 'good' }, { label: 'A receber', value: Number(summary.financial.openReceivables) }, { label: 'A pagar', value: Number(summary.financial.openPayables), tone: 'warn' }, { label: 'Despesas pagas no mês', value: Number(summary.financial.monthlyExpenses), tone: 'warn' }]} /><p className="mt-3 border-t border-slate-200 pt-2 text-xs text-slate-600">Resultado estimado: <strong className="text-slate-900">{formatMoney(summary.financial.estimatedOperatingBalance)}</strong></p></>
             : <p className="text-sm text-slate-500">Visível apenas para perfis com acesso financeiro.</p>}</article>
-          {insight ? <article className={panelClass}><h2 className="mb-4 text-sm font-bold uppercase tracking-wider text-slate-700">Mais vendidos · 30 dias</h2>{insight.topProducts.length === 0 ? <p className="text-sm text-slate-500">Sem vendas no período.</p> : <ol className="space-y-2 text-sm">{insight.topProducts.map((item, index) => <li key={item.name} className="flex items-center gap-3"><span className="grid h-6 w-6 place-items-center rounded-full bg-neutral-950 text-xs font-bold text-brand-300">{index + 1}</span><span className="min-w-0 flex-1 truncate">{item.name}</span><span className="text-xs text-slate-500">{item.quantity}×</span><span className="font-semibold">{formatMoney(item.revenue)}</span></li>)}</ol>}</article> : <article className={panelClass}><p className="text-sm text-slate-500">Carregando mais vendidos…</p></article>}
+          {insight ? <article className={panelClass}><h2 className="mb-4 text-sm font-bold uppercase tracking-wider text-slate-700">Mais vendidos · 30 dias</h2>{insight.topProducts.length === 0 ? <p className="text-sm text-slate-500">Sem vendas no período.</p> : <ol className="space-y-2 text-sm">{insight.topProducts.map((item, index) => <li key={item.name} className="flex items-center gap-3"><span className="grid h-6 w-6 place-items-center rounded-full bg-neutral-950 text-xs font-bold text-brand-300">{index + 1}</span><span className="min-w-0 flex-1 truncate">{item.name}</span><span className="text-xs text-slate-500">{item.quantity}×</span><span className="font-semibold">{formatMoney(item.revenue)}</span></li>)}</ol>}</article> : <article className={panelClass}><h2 className="mb-4 text-sm font-bold uppercase tracking-wider text-slate-700">Mais vendidos · 30 dias</h2><InsightPlaceholder state={insightState.status} /></article>}
         </section>
+        {insightState.status === 'loading' && <section className="mt-4"><article className={panelClass}><h2 className="mb-4 text-sm font-bold uppercase tracking-wider text-slate-700">Alertas inteligentes</h2><PanelSkeleton lines={3} label="Carregando alertas" /></article></section>}
         {insight && <section className="mt-4"><article className={panelClass}><div className="mb-4 flex items-center justify-between"><h2 className="text-sm font-bold uppercase tracking-wider text-slate-700">Alertas inteligentes</h2><Link href="/intelligence" className="text-xs font-semibold text-brand-700 hover:text-brand-600">RM Inteligência ›</Link></div>{insight.alerts.length === 0 ? <p className="text-sm text-slate-500">Nenhum alerta no momento.</p> : <ul className="space-y-2 text-sm">{insight.alerts.slice(0, 4).map(alert => <li key={alert.key}><Link href={alert.href} className="flex gap-2 rounded-lg border border-slate-200 p-2 hover:border-brand-400"><span aria-hidden="true" className={`mt-1 h-2.5 w-2.5 shrink-0 rounded-full ${alert.severity === 'critical' ? 'bg-red-500' : alert.severity === 'warning' ? 'bg-amber-500' : 'bg-sky-500'}`} /><span><strong className="block">{alert.title}</strong><span className="text-xs text-slate-500">{alert.detail}</span></span></Link></li>)}</ul>}</article></section>}
         <section className="mt-4 grid gap-4 sm:grid-cols-2 xl:grid-cols-4" aria-label="Estrutura">
           <Metric label="Mesas ocupadas" value={summary.tables?.occupied ?? 0} detail={`${summary.tables?.active ?? 0} mesas ativas`} />
@@ -136,7 +155,7 @@ export default function DashboardPage() {
         <div className="mt-6">
         <GoldCard number={1} title="Módulos RM" subtitle="Inteligência, produção, delivery e lucro">
           <ul className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
-            {rmModules.map(item => { const allowed = hrefAllowed(item.href, enabledModules); return <li key={item.href}>
+            {rmModules.map(item => { if (!profile.ready) return <li key={item.href}><Skeleton className="h-[4.5rem] rounded-xl" /></li>; const allowed = hrefAllowed(item.href, enabledModules); return <li key={item.href}>
               <Link href={allowed ? item.href : '/support'} className={`flex h-full gap-3 rounded-xl border p-3 transition ${allowed ? 'border-brand-500/40 bg-slate-50 hover:border-brand-500 hover:bg-brand-50' : 'border-slate-200 bg-slate-100 opacity-70'}`}>
                 <span aria-hidden="true" className="grid h-11 w-11 shrink-0 place-items-center rounded-full border border-brand-400/60 bg-neutral-950 text-xl">{item.icon}</span>
                 <span className="min-w-0"><span className="block text-sm font-bold text-slate-900">{item.title}</span><span className="mt-0.5 block text-xs text-slate-600">{allowed ? item.text : 'Módulo não incluído no plano — fale com o suporte para contratar.'}</span></span>

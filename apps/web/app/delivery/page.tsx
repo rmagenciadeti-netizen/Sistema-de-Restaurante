@@ -1,7 +1,7 @@
 'use client';
 
 import { useState } from 'react';
-import Link from 'next/link';
+import Link from '../../components/nav-link';
 import { api, DeliveryJob, DeliveryZone, errorMessage, formatDateTime, formatMoney, ListResponse } from '../../lib/api';
 import { useAutoLoad } from '../../lib/use-auto-load';
 import { AppShell, buttonClass, Field, Notice, panelClass, secondaryButtonClass, Select } from '../../components/app-shell';
@@ -13,7 +13,8 @@ type Summary = { openNow: number; total: number; delivered: number; cancelled: n
 const statusLabel: Record<string, string> = { PENDING: 'Pendente', ASSIGNED: 'Entregador definido', PICKED_UP: 'Saiu para entrega', DELIVERED: 'Entregue', CANCELLED: 'Cancelada' };
 const transitions: Record<string, string[]> = { PENDING: ['ASSIGNED', 'PICKED_UP', 'CANCELLED'], ASSIGNED: ['PICKED_UP', 'CANCELLED'], PICKED_UP: ['DELIVERED', 'CANCELLED'], DELIVERED: [], CANCELLED: [] };
 const actionLabel: Record<string, string> = { ASSIGNED: 'Atribuir', PICKED_UP: 'Saiu para entrega', DELIVERED: 'Entregue', CANCELLED: 'Cancelar' };
-const emptyZone = { name: '', fee: '', minOrder: '', minutes: '' };
+const emptyZone = { name: '', fee: '', minOrder: '', minutes: '', neighborhoods: '' };
+const parseNeighborhoods = (value: string) => Array.from(new Set(value.split(/[,;\n]/).map(item => item.trim()).filter(item => item.length >= 2)));
 
 export default function DeliveryPage() {
   const [jobs, setJobs] = useState<DeliveryJob[]>([]); const [zones, setZones] = useState<DeliveryZone[]>([]);
@@ -40,7 +41,7 @@ export default function DeliveryPage() {
   }
   async function createZone(event: React.FormEvent) {
     event.preventDefault(); setNotice(null);
-    try { await api('/delivery/zones', { method: 'POST', body: JSON.stringify({ name: zoneForm.name, fee: Number(zoneForm.fee), minOrder: zoneForm.minOrder ? Number(zoneForm.minOrder) : undefined, estimatedMinutes: zoneForm.minutes ? Number(zoneForm.minutes) : undefined }) }); ok('Zona de entrega criada.'); setZoneForm(emptyZone); await load(); } catch (e) { fail(e, 'Erro ao criar zona'); }
+    try { await api('/delivery/zones', { method: 'POST', body: JSON.stringify({ name: zoneForm.name, fee: Number(zoneForm.fee), minOrder: zoneForm.minOrder ? Number(zoneForm.minOrder) : undefined, estimatedMinutes: zoneForm.minutes ? Number(zoneForm.minutes) : undefined, neighborhoods: parseNeighborhoods(zoneForm.neighborhoods) }) }); ok('Zona de entrega criada.'); setZoneForm(emptyZone); await load(); } catch (e) { fail(e, 'Erro ao criar zona'); }
   }
   async function patchZone(zone: DeliveryZone, body: { fee?: number; active?: boolean }) {
     try { await api(`/delivery/zones/${zone.id}`, { method: 'PATCH', body: JSON.stringify(body) }); setFees(current => { const next = { ...current }; delete next[zone.id]; return next; }); ok(`Zona ${zone.name} atualizada.`); await load(); } catch (e) { fail(e, 'Erro ao atualizar zona'); }
@@ -70,8 +71,8 @@ export default function DeliveryPage() {
     </section>
 
     <section className={panelClass}><h2 className="mb-4 text-lg font-semibold">Zonas de entrega ({zones.length})</h2>
-      <form onSubmit={createZone} className="mb-4 grid gap-4 md:grid-cols-5"><Field label="Nome" required minLength={2} maxLength={100} value={zoneForm.name} onChange={e => setZoneForm({ ...zoneForm, name: e.target.value })} /><Field label="Taxa (R$)" type="number" required min="0" step="0.01" value={zoneForm.fee} onChange={e => setZoneForm({ ...zoneForm, fee: e.target.value })} /><Field label="Tempo estimado (min)" type="number" min="1" max="600" value={zoneForm.minutes} onChange={e => setZoneForm({ ...zoneForm, minutes: e.target.value })} /><Field label="Pedido mínimo (R$)" type="number" min="0" step="0.01" value={zoneForm.minOrder} onChange={e => setZoneForm({ ...zoneForm, minOrder: e.target.value })} /><div className="flex items-end"><button className={buttonClass}>Adicionar zona</button></div></form>
-      <div className="grid gap-3 md:grid-cols-2">{zones.map(zone => <article key={zone.id} className="rounded-lg border border-slate-800 p-4"><h3 className="font-semibold">{zone.name}</h3><p className="mt-1 text-sm text-slate-400">Taxa {formatMoney(zone.fee)}{zone.minOrder ? ` · mínimo ${formatMoney(zone.minOrder)}` : ''}{zone.estimatedMinutes ? ` · ~${zone.estimatedMinutes} min` : ''}</p><div className="mt-3 flex flex-wrap items-center gap-2"><input aria-label={`Nova taxa da zona ${zone.name}`} type="number" min="0" step="0.01" placeholder="Nova taxa" className="w-28 rounded-lg border border-slate-700 bg-slate-950 px-2 py-1.5 text-sm text-white" value={fees[zone.id] ?? ''} onChange={e => setFees({ ...fees, [zone.id]: e.target.value })} /><button className={secondaryButtonClass} disabled={!fees[zone.id]} onClick={() => void patchZone(zone, { fee: Number(fees[zone.id]) })}>Salvar taxa</button><button className={secondaryButtonClass} onClick={() => void patchZone(zone, { active: false })}>Desativar</button></div></article>)}</div>{zones.length === 0 && <p className="text-slate-400">Nenhuma zona ativa cadastrada.</p>}
+      <form onSubmit={createZone} className="mb-4 grid gap-4 md:grid-cols-5"><Field label="Nome" required minLength={2} maxLength={100} value={zoneForm.name} onChange={e => setZoneForm({ ...zoneForm, name: e.target.value })} /><Field label="Taxa (R$)" type="number" required min="0" step="0.01" value={zoneForm.fee} onChange={e => setZoneForm({ ...zoneForm, fee: e.target.value })} /><Field label="Tempo estimado (min)" type="number" min="1" max="600" value={zoneForm.minutes} onChange={e => setZoneForm({ ...zoneForm, minutes: e.target.value })} /><Field label="Pedido mínimo (R$)" type="number" min="0" step="0.01" value={zoneForm.minOrder} onChange={e => setZoneForm({ ...zoneForm, minOrder: e.target.value })} /><div className="md:col-span-4"><Field label="Bairros atendidos (separados por vírgula)" maxLength={800} placeholder="Centro, Vila Nova, Jardim das Flores" value={zoneForm.neighborhoods} onChange={e => setZoneForm({ ...zoneForm, neighborhoods: e.target.value })} /></div><div className="flex items-end"><button className={buttonClass}>Adicionar zona</button></div></form>
+      <div className="grid gap-3 md:grid-cols-2">{zones.map(zone => <article key={zone.id} className="rounded-lg border border-slate-800 p-4"><h3 className="font-semibold">{zone.name}</h3><p className="mt-1 text-sm text-slate-400">Taxa {formatMoney(zone.fee)}{zone.minOrder ? ` · mínimo ${formatMoney(zone.minOrder)}` : ''}{zone.estimatedMinutes ? ` · ~${zone.estimatedMinutes} min` : ''}</p>{zone.neighborhoods && zone.neighborhoods.length > 0 && <p className="mt-1 text-xs text-slate-400">Bairros: {zone.neighborhoods.join(', ')}</p>}<div className="mt-3 flex flex-wrap items-center gap-2"><input aria-label={`Nova taxa da zona ${zone.name}`} type="number" min="0" step="0.01" placeholder="Nova taxa" className="w-28 rounded-lg border border-slate-700 bg-slate-950 px-2 py-1.5 text-sm text-white" value={fees[zone.id] ?? ''} onChange={e => setFees({ ...fees, [zone.id]: e.target.value })} /><button className={secondaryButtonClass} disabled={!fees[zone.id]} onClick={() => void patchZone(zone, { fee: Number(fees[zone.id]) })}>Salvar taxa</button><button className={secondaryButtonClass} onClick={() => void patchZone(zone, { active: false })}>Desativar</button></div></article>)}</div>{zones.length === 0 && <p className="text-slate-400">Nenhuma zona ativa cadastrada.</p>}
     </section>
   </AppShell>;
 }

@@ -203,3 +203,172 @@ body {
     transition-duration: 0.01ms !important;
   }
 }
+
+/* =====================================================================================================
+   RM NEURAL UI — futuristic layer (presentation only). Everything below is driven by the same theme
+   variables (--b-*, --s-*, --sb, --panel, data-theme) so light/dark and the chosen primary color keep working.
+   Effects are GPU-friendly (opacity/transform, a single blur per surface) and disabled for reduced motion.
+   ===================================================================================================== */
+:root {
+  --rm-font: 'Inter', 'Segoe UI Variable Display', 'Segoe UI', system-ui, -apple-system, 'Helvetica Neue', Arial, sans-serif;
+  --rm-glow: rgb(var(--b-500) / 38%);
+  --rm-hair: rgb(var(--b-400) / 34%);
+  --rm-ease: cubic-bezier(0.22, 0.8, 0.24, 1);
+}
+html { font-family: var(--rm-font); -webkit-font-smoothing: antialiased; text-rendering: optimizeLegibility; }
+body { font-feature-settings: 'cv11', 'ss01'; }
+h1, h2, h3 { letter-spacing: -0.012em; }
+.tabular, .rm-num, table td { font-variant-numeric: tabular-nums; }
+
+/* ---------- Canvas: deep black with an aurora and a faint technical grid ---------- */
+.rm-canvas { position: relative; isolation: isolate; }
+.rm-canvas::before {
+  content: ''; position: fixed; inset: 0; z-index: -1; pointer-events: none;
+  background:
+    radial-gradient(ellipse 55% 38% at 88% -4%, rgb(var(--b-500) / 20%), transparent 70%),
+    radial-gradient(ellipse 45% 40% at -6% 104%, rgb(var(--b-500) / 12%), transparent 70%),
+    radial-gradient(ellipse 30% 26% at 50% 50%, rgb(var(--b-300) / 4%), transparent 70%);
+}
+.rm-canvas::after {
+  content: ''; position: fixed; inset: 0; z-index: -1; pointer-events: none; opacity: 0.75;
+  background-image: linear-gradient(rgb(var(--b-400) / 8%) 1px, transparent 1px), linear-gradient(90deg, rgb(var(--b-400) / 8%) 1px, transparent 1px);
+  background-size: 56px 56px;
+  -webkit-mask-image: radial-gradient(ellipse 80% 70% at 50% 30%, #000 20%, transparent 78%); mask-image: radial-gradient(ellipse 80% 70% at 50% 30%, #000 20%, transparent 78%);
+}
+[data-theme='light'] .rm-canvas::after { opacity: 0.25; }
+@media print { .rm-canvas::before, .rm-canvas::after { display: none; } }
+
+/* ---------- Glass surfaces ---------- */
+.rm-glass, .rm-surface.rm-glass {
+  position: relative;
+  background: linear-gradient(160deg, rgb(255 255 255 / 78%), rgb(255 255 255 / 62%));
+  border: 1px solid rgb(var(--b-500) / 30%);
+  box-shadow: 0 10px 34px rgb(23 22 18 / 8%), inset 0 1px 0 rgb(255 255 255 / 70%);
+  transition: border-color 0.25s var(--rm-ease), box-shadow 0.25s var(--rm-ease), transform 0.25s var(--rm-ease);
+}
+[data-theme='dark'] .rm-glass, [data-theme='dark'] .rm-surface.rm-glass {
+  background: linear-gradient(160deg, rgb(30 27 20 / 72%), rgb(14 13 10 / 66%));
+  border-color: rgb(var(--b-400) / 28%);
+  box-shadow: 0 12px 40px rgb(0 0 0 / 40%), inset 0 1px 0 rgb(255 255 255 / 7%), 0 0 26px rgb(var(--b-500) / 7%);
+}
+.rm-glass::before {
+  content: ''; position: absolute; left: 10%; right: 10%; top: -1px; height: 1px; pointer-events: none;
+  background: linear-gradient(90deg, transparent, rgb(var(--b-300) / 85%), transparent);
+  opacity: 0.8;
+}
+.rm-glass:hover { border-color: rgb(var(--b-400) / 52%); box-shadow: 0 14px 44px rgb(0 0 0 / 30%), 0 0 30px rgb(var(--b-500) / 14%), inset 0 1px 0 rgb(255 255 255 / 9%); }
+[data-theme='light'] .rm-glass:hover { box-shadow: 0 14px 40px rgb(23 22 18 / 12%), 0 0 22px rgb(var(--b-500) / 12%); }
+/* Blur is a luxury: pointer-coarse tablets/phones and the PDV (class rm-lite on <main>) keep the tinted glass without it. */
+@media (hover: none), (max-width: 767px) { .rm-glass, .rm-surface.rm-glass { -webkit-backdrop-filter: none; backdrop-filter: none; } }
+.rm-lite .rm-glass, .rm-lite .rm-surface.rm-glass { -webkit-backdrop-filter: none; backdrop-filter: none; transition: none; }
+
+/* Dark hero / gold frames get the same depth */
+.rm-gold-card { background-image: radial-gradient(ellipse 60% 100% at 100% 0%, rgb(var(--b-500) / 13%), transparent 65%), linear-gradient(155deg, rgb(var(--b-500) / 9%), transparent 45%); }
+
+/* ---------- Chrome: top bar and side menu ---------- */
+.rm-chrome { background-image: linear-gradient(180deg, rgb(255 255 255 / 3%), transparent 60%); }
+/* The only blurred surface is the sticky top bar (one layer); cards and the side menu are tinted glass without blur, which keeps scrolling smooth on any device. */
+header.rm-chrome { background-color: rgb(var(--sb) / 82%); -webkit-backdrop-filter: blur(14px) saturate(150%); backdrop-filter: blur(14px) saturate(150%); }
+header.rm-chrome::after { content: ''; position: absolute; left: 0; right: 0; bottom: -1px; height: 1px; pointer-events: none; background: linear-gradient(90deg, transparent, rgb(var(--b-300) / 90%) 30%, rgb(var(--b-500)) 50%, rgb(var(--b-300) / 90%) 70%, transparent); background-size: 200% 100%; animation: rm-sheen 7s linear infinite; }
+aside.rm-chrome { background-color: rgb(var(--sb) / 88%); scrollbar-width: thin; scrollbar-color: rgb(var(--b-500) / 45%) transparent; }
+[data-theme='light'] header.rm-chrome, [data-theme='light'] aside.rm-chrome { background-color: rgb(var(--sb)); }
+@media (hover: none), (max-width: 767px) { .rm-chrome { -webkit-backdrop-filter: none; backdrop-filter: none; } header.rm-chrome { background-color: rgb(var(--sb)); } }
+.rm-nav-active { position: relative; background: linear-gradient(90deg, rgb(var(--b-500) / 26%), rgb(var(--b-500) / 6%)) !important; box-shadow: inset 0 0 0 1px rgb(var(--b-400) / 30%), 0 0 16px rgb(var(--b-500) / 14%); }
+.rm-nav-active::before { content: ''; position: absolute; left: -2px; top: 18%; bottom: 18%; width: 3px; border-radius: 3px; background: linear-gradient(180deg, rgb(var(--b-300)), rgb(var(--b-500))); box-shadow: 0 0 10px rgb(var(--b-400) / 80%); }
+
+/* ---------- Buttons ---------- */
+.rm-btn { position: relative; overflow: hidden; transition: transform 0.18s var(--rm-ease), box-shadow 0.25s var(--rm-ease), border-color 0.2s, background-color 0.2s, filter 0.2s; }
+.rm-btn:active { transform: translateY(1px) scale(0.99); }
+.rm-btn-gold {
+  background-image: linear-gradient(180deg, rgb(var(--b-300)) 0%, rgb(var(--b-400)) 55%, rgb(var(--b-500)) 100%);
+  color: #14110a; border: 1px solid rgb(var(--b-300) / 60%);
+  box-shadow: 0 6px 18px rgb(var(--b-500) / 28%), inset 0 1px 0 rgb(255 255 255 / 45%);
+}
+.rm-btn-gold:hover:not(:disabled) { filter: brightness(1.07); box-shadow: 0 8px 26px rgb(var(--b-500) / 45%), inset 0 1px 0 rgb(255 255 255 / 55%); transform: translateY(-1px); }
+.rm-btn.rm-btn-gold::after { content: ''; position: absolute; top: 0; bottom: 0; width: 40%; left: -60%; pointer-events: none; background: linear-gradient(100deg, transparent, rgb(255 255 255 / 35%), transparent); transform: skewX(-18deg); }
+.rm-btn.rm-btn-gold:hover:not(:disabled)::after { left: 130%; transition: left 0.7s var(--rm-ease); }
+.rm-btn-ghost { background-image: linear-gradient(180deg, rgb(255 255 255 / 6%), rgb(255 255 255 / 1%)); }
+[data-theme='dark'] .rm-btn-ghost { border-color: rgb(var(--b-400) / 30%); color: #e8e5dd; background-color: rgb(255 255 255 / 3%); }
+[data-theme='dark'] .rm-btn-ghost:hover:not(:disabled) { border-color: rgb(var(--b-400) / 65%); background-color: rgb(var(--b-500) / 12%); color: rgb(var(--b-300)); box-shadow: 0 0 18px rgb(var(--b-500) / 18%); }
+.rm-btn:focus-visible, .rm-chrome :focus-visible { outline: 2px solid rgb(var(--b-400) / 80%); outline-offset: 2px; }
+
+/* ---------- Inputs (work area only; chrome search keeps its own look) ---------- */
+[data-theme='dark'] main :is(input, select, textarea):not([type='checkbox'], [type='radio'], [type='range'], [type='file'], [type='color']) {
+  background-color: rgb(255 255 255 / 4%); border-color: rgb(var(--b-400) / 24%); color: var(--fg);
+}
+[data-theme='dark'] main :is(input, select, textarea):not([type='checkbox'], [type='radio'], [type='range'], [type='file'], [type='color']):hover { border-color: rgb(var(--b-400) / 45%); }
+main :is(input, select, textarea):focus { border-color: rgb(var(--b-400) / 80%); box-shadow: 0 0 0 3px rgb(var(--b-500) / 18%), 0 0 18px rgb(var(--b-500) / 18%); outline: none; }
+[data-theme='dark'] main select option { background: #14130e; color: #f4f3f0; }
+
+/* ---------- Tables ---------- */
+.rm-surface table thead, thead.bg-neutral-950 { background-image: linear-gradient(180deg, #15130d, #0b0a08); box-shadow: inset 0 -1px 0 rgb(var(--b-500) / 55%); }
+.rm-surface table thead th, thead.bg-neutral-950 th { text-shadow: 0 0 12px rgb(var(--b-400) / 40%); }
+table tbody tr { transition: background-color 0.18s, box-shadow 0.18s; }
+table tbody tr:hover { background-color: rgb(var(--b-500) / 7%); box-shadow: inset 2px 0 0 rgb(var(--b-400) / 70%); }
+
+/* ---------- Metric numbers, labels, badges ---------- */
+[data-theme='dark'] .rm-num { background: linear-gradient(180deg, var(--fg), rgb(var(--b-400))); -webkit-background-clip: text; background-clip: text; -webkit-text-fill-color: transparent; }
+.rm-tile-icon { box-shadow: 0 0 18px rgb(var(--b-500) / 25%), inset 0 0 12px rgb(var(--b-500) / 12%); }
+.rm-badge-dot::before { content: ''; width: 6px; height: 6px; border-radius: 9999px; background: currentColor; box-shadow: 0 0 8px currentColor; margin-right: 6px; }
+.rm-eyebrow { letter-spacing: 0.22em; text-transform: uppercase; font-size: 10px; font-weight: 700; color: rgb(var(--b-500)); }
+[data-theme='dark'] .rm-eyebrow { color: rgb(var(--b-300)); text-shadow: 0 0 14px rgb(var(--b-400) / 45%); }
+
+/* ---------- Motion ---------- */
+@keyframes rm-sheen { 0% { background-position: 200% 0; } 100% { background-position: -200% 0; } }
+@keyframes rm-rise { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: none; } }
+@keyframes rm-pulse { 0%, 100% { box-shadow: 0 0 0 0 currentColor; opacity: 1; } 50% { box-shadow: 0 0 0 5px transparent; opacity: 0.7; } }
+@keyframes rm-shimmer { 100% { transform: translateX(100%); } }
+main > .rm-rise, main .rm-rise-group > * { animation: rm-rise 0.42s var(--rm-ease) both; }
+.rm-rise-group > *:nth-child(2) { animation-delay: 0.05s; } .rm-rise-group > *:nth-child(3) { animation-delay: 0.1s; } .rm-rise-group > *:nth-child(4) { animation-delay: 0.15s; }
+.rm-rise-group > *:nth-child(5) { animation-delay: 0.2s; } .rm-rise-group > *:nth-child(6) { animation-delay: 0.25s; }
+.rm-pulse { animation: rm-pulse 2.4s ease-in-out infinite; }
+.rm-skeleton { position: relative; overflow: hidden; border-radius: 0.75rem; background: rgb(var(--b-500) / 9%); }
+.rm-skeleton::after { content: ''; position: absolute; inset: 0; transform: translateX(-100%); background: linear-gradient(90deg, transparent, rgb(var(--b-300) / 22%), transparent); animation: rm-shimmer 1.4s infinite; }
+
+/* ---------- Charts, scrollbars ---------- */
+.rm-chart-glow { filter: drop-shadow(0 0 5px rgb(var(--b-500) / 55%)); }
+* { scrollbar-width: thin; scrollbar-color: rgb(var(--b-500) / 40%) transparent; }
+::-webkit-scrollbar { width: 9px; height: 9px; } ::-webkit-scrollbar-thumb { background: rgb(var(--b-500) / 40%); border-radius: 9px; border: 2px solid transparent; background-clip: padding-box; } ::-webkit-scrollbar-thumb:hover { background: rgb(var(--b-400) / 70%); background-clip: padding-box; border: 2px solid transparent; }
+
+/* ---------- Login / public hero ---------- */
+.rm-auth-bg { background: radial-gradient(ellipse 70% 50% at 50% 0%, rgb(var(--b-500) / 22%), transparent 70%), radial-gradient(ellipse 50% 40% at 100% 100%, rgb(var(--b-500) / 12%), transparent 70%), #07060a; }
+@media print { .rm-glass { box-shadow: none; backdrop-filter: none; background: #fff; } }
+
+.rm-orbit span { position: absolute; inset: 0; border-radius: 9999px; border: 1px solid rgb(var(--b-400) / 22%); animation: rm-spin 38s linear infinite; }
+.rm-orbit span:nth-child(1) { box-shadow: 0 0 90px rgb(var(--b-500) / 14%), inset 0 0 60px rgb(var(--b-500) / 8%); }
+.rm-orbit span:nth-child(2) { inset: 12%; border-style: dashed; animation-duration: 54s; animation-direction: reverse; }
+.rm-orbit span:nth-child(3) { inset: 26%; border-color: rgb(var(--b-300) / 30%); animation-duration: 26s; }
+.rm-orbit span:nth-child(3)::after { content: ''; position: absolute; top: -4px; left: 50%; width: 8px; height: 8px; border-radius: 9999px; background: rgb(var(--b-300)); box-shadow: 0 0 14px rgb(var(--b-300)); }
+@keyframes rm-spin { to { transform: rotate(360deg); } }
+
+/* Cards that start from a literal white gradient (orders, tables) become a subtle glass tint on dark panels, keeping their light text legible. */
+[data-theme='dark'] .from-white:not(.bg-clip-text) { --tw-gradient-from: rgb(255 255 255 / 5%) var(--tw-gradient-from-position); --tw-gradient-stops: var(--tw-gradient-from), var(--tw-gradient-to); }
+
+/* ---------- Lite mode (Save-Data, 2G/3G, low memory, prefers-reduced-data): no blur, no decorative layers, no decorative animation. Layout, colors and every feature are unchanged. ---------- */
+[data-lite] .rm-canvas::before, [data-lite] .rm-canvas::after { display: none; }
+[data-lite] header.rm-chrome { -webkit-backdrop-filter: none; backdrop-filter: none; background-color: rgb(var(--sb)); }
+[data-lite] header.rm-chrome::after, [data-lite] .rm-orbit span, [data-lite] .rm-pulse, [data-lite] .rm-skeleton::after, [data-lite] .rm-rise-group > *, [data-lite] main > .rm-rise { animation: none !important; }
+[data-lite] .rm-btn-gold::after { display: none; }
+[data-lite] .rm-chart-glow { filter: none; }
+[data-lite] .rm-glass, [data-lite] .rm-glass:hover { box-shadow: 0 2px 8px rgb(0 0 0 / 22%); transition: none; }
+[data-lite] .rm-nav-active { box-shadow: inset 0 0 0 1px rgb(var(--b-400) / 30%); }
+
+/* ---------- Visual audit fixes ---------- */
+/* White text on the gold brand colors (active tabs, column headers) is unreadable in both themes: gold surfaces always carry dark text. */
+.text-white:is(.bg-brand-400, .bg-brand-500, .bg-brand-600), .bg-brand-600 > .text-white, .bg-brand-500 > .text-white { color: #14110a; }
+.bg-brand-600:not(.text-neutral-950) :is(h2, h3, p, span) { color: #14110a; }
+/* Code blocks are dark panels in every theme (the theme remaps slate-200/300 to dark tones on light). */
+pre.bg-slate-950, pre.bg-neutral-950 { color: #e8e6e1; background-color: #0b0a08; }
+/* Muted helper text keeps a readable contrast on the light work surface. */
+[data-theme='light'] main .text-slate-400 { color: var(--fg-muted); }
+[data-theme='light'] main :is(.text-slate-300, .text-slate-200) { color: #45423c; }
+/* Dark cards inside the light theme keep their light text (tiles, banners, tabs). */
+[data-theme='light'] :is(.bg-neutral-950, .bg-black, .bg-slate-950) :is(.text-slate-300, .text-slate-200) { color: #d2cfc8; }
+/* Grid children and form controls may shrink below their content width: no horizontal scroll on phones/tablets because of a long option or label. */
+main .grid > * { min-width: 0; }
+main :is(select, input:not([type='checkbox'], [type='radio']), textarea) { max-width: 100%; }
+main select { text-overflow: ellipsis; }
+.text-white:is(.bg-blue-400, .bg-blue-500, .bg-blue-600) { color: #14110a; }
+.bg-emerald-600 .text-white\/80, .bg-emerald-600.text-white\/80 { color: #fff; }
+[data-theme='light'] pre.bg-slate-950, [data-theme='light'] pre.bg-neutral-950 { color: #e8e6e1 !important; }
+[data-theme='light'] :is(.bg-neutral-950, .bg-black, .bg-slate-950) .text-brand-700 { color: rgb(var(--b-300)); }

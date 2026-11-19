@@ -5,7 +5,10 @@ import { useSearchParams } from 'next/navigation';
 import { API_BASE, api, errorMessage, formatDateTime, Integration, ListResponse, storedUser, Unit } from '../../lib/api';
 import { useAutoLoad } from '../../lib/use-auto-load';
 import { AppShell, buttonClass, Field, Notice, panelClass, secondaryButtonClass, Select } from '../../components/app-shell';
-import { Badge, Tabs } from '../../components/ui';
+import { Badge, PanelSkeleton, Tabs } from '../../components/ui';
+import dynamic from 'next/dynamic';
+const TefPanel = dynamic(() => import('../../components/tef/tef-panel').then(module => module.TefPanel), { loading: () => <PanelSkeleton lines={5} /> });
+
 
 type PosDevice = { id: string; provider: string; name: string; serial: string; unitId: string | null; active: boolean; unit?: { name: string } | null };
 
@@ -24,7 +27,7 @@ function IntegrationsContent() {
   const [items, setItems] = useState<Integration[]>([]); const [units, setUnits] = useState<Unit[]>([]); const [form, setForm] = useState({ provider: '', name: '', unitId: '' });
   const [created, setCreated] = useState<{ provider: string; name: string; key: string } | null>(null);
   const [origin, setOrigin] = useState('');
-  const [tab, setTab] = useState<'marketplaces' | 'payments' | 'pos'>(initialTab === 'payments' || initialTab === 'pos' ? initialTab : 'marketplaces');
+  const [tab, setTab] = useState<'marketplaces' | 'payments' | 'pos' | 'tef'>(initialTab === 'payments' || initialTab === 'pos' || initialTab === 'tef' ? initialTab : 'marketplaces');
   const [pos, setPos] = useState<PosDevice[]>([]); const [posProviders, setPosProviders] = useState<{ items: string[]; adapters: string[] }>({ items: [], adapters: [] });
   const [posForm, setPosForm] = useState({ provider: 'Stone', name: '', serial: '', unitId: '' });
   const [providers, setProviders] = useState<{ payment: string[]; fiscal: string[]; email: string[] } | null>(null);
@@ -75,7 +78,7 @@ function IntegrationsContent() {
   const providerRow = (label: string, hint: string, names: string[] | undefined) => <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-slate-200 bg-white px-4 py-3"><div><p className="font-semibold text-slate-900">{label}</p><p className="text-xs text-slate-500">{hint}</p></div><div className="flex flex-wrap gap-2">{names && names.length > 0 ? names.map(name => <Badge key={name} tone="green">{name}</Badge>) : <Badge tone="amber">Nenhum adaptador registrado</Badge>}</div></div>;
 
   return <AppShell title="Integrações">
-    <Tabs label="Integrações" value={tab} onChange={setTab} tabs={[{ key: 'marketplaces', label: 'Marketplaces e API' }, { key: 'payments', label: 'PIX e fiscal' }, { key: 'pos', label: 'POS (maquininhas)' }]} />
+    <Tabs label="Integrações" value={tab} onChange={setTab} tabs={[{ key: 'marketplaces', label: 'Marketplaces e API' }, { key: 'payments', label: 'PIX e fiscal' }, { key: 'pos', label: 'POS (maquininhas)' }, { key: 'tef', label: 'TEF' }]} />
     {notice && <Notice message={notice.text} kind={notice.kind} />}
     {tab === 'payments' && <section className={panelClass}>
       <h2 className="text-lg font-semibold">Provedores registrados neste ambiente</h2>
@@ -87,6 +90,7 @@ function IntegrationsContent() {
       </div>
       <p className="mt-4 text-xs text-slate-500">Para ativar um provedor, implemente o adaptador conforme as interfaces em <code>apps/api/src/lib/providers.ts</code> e registre-o na inicialização da API.</p>
     </section>}
+    {tab === 'tef' && <TefPanel />}
     {tab === 'pos' && <section className={panelClass}>
       <h2 className="text-lg font-semibold">Integradora POS</h2>
       <p className="mt-1 mb-4 text-sm text-slate-600">Cadastre as maquininhas de cada unidade. O cadastro organiza os equipamentos; cobrar pela maquininha exige o adaptador do provedor{posProviders.adapters.length === 0 ? ' (nenhum registrado neste ambiente)' : ` (registrados: ${posProviders.adapters.join(', ')})`}, com credenciais e homologação próprias.</p>

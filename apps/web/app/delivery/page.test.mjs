@@ -28,6 +28,7 @@ test('delivery groups deliveries by status and no longer offers a manual new-del
   const jobs = [{ id: 'job-a', orderId: order.id, status: 'PENDING', createdAt: order.createdAt, order }];
   t.mock.method(globalThis, 'fetch', async url => {
     const path = String(url);
+    if (path.endsWith('/delivery/summary')) return new Response(JSON.stringify({ openNow: 1, total: 1, delivered: 0, cancelled: 0, averageMinutes: null, feesCollected: 0, deliveredRevenue: 0, byCourier: [] }));
     return new Response(JSON.stringify({ items: path.endsWith('/delivery') ? jobs : [], total: 1 }));
   });
   const { default: DeliveryPage } = await import('./page.tsx');
