@@ -7,6 +7,7 @@ import { inflateRawSync } from 'node:zlib';
 import { AddressInfo } from 'node:net';
 import { UserRole } from '@prisma/client';
 import { prisma } from '../lib/prisma';
+import { emitAfterPayment } from '../lib/fiscal-service';
 import { signAccessToken } from '../middleware/auth';
 import { fiscalProviders, type FiscalContext, type FiscalEmission, type FiscalOrder } from '../lib/providers';
 
@@ -64,7 +65,9 @@ test('fiscal module: settings, certificate, lost protocol, contingency, inutiliz
   });
   const rule = await prisma.taxRule.create({ data: { tenantId: A.tenant.id, name: 'Padrão', ncm: '21069090', cfop: '5102', icmsCst: '102', ibsCbsCst: '000', cClassTrib: '000001', cbsRate: 0.9 } });
   const product = await prisma.product.create({ data: { tenantId: A.tenant.id, name: 'Marmita', price: 20 } });
-  const place = async () => (await call('POST', '/orders', admin, { unitId: A.unit.id, items: [{ productId: product.id, quantity: 1 }] })).body;
+  // Fiscal documents are only emitted for orders with real confirmed payments: the test sale is paid in cash first.
+  const paid = async (order: any, tenantId = A.tenant.id) => { await prisma.payment.create({ data: { tenantId, unitId: order.unitId, orderId: order.id, method: 'CASH', amount: order.total } }); return order; };
+  const place = async () => paid((await call('POST', '/orders', admin, { unitId: A.unit.id, items: [{ productId: product.id, quantity: 1 }] })).body);
 
   await t.test('settings, default tax rule and certificate are tenant scoped and never expose secrets', async () => {
     assert.equal((await call('GET', '/fiscal/settings', admin)).body.configured, false);
@@ -106,7 +109,7 @@ test('fiscal module: settings, certificate, lost protocol, contingency, inutiliz
     assert.equal((await call('GET', `/fiscal/settings/units/${A.unit.id}`, unitAdmin)).status, 404, 'unit users cannot read another establishment');
     assert.equal((await call('GET', '/fiscal/numbering', admin)).body.items.find((item: any) => item.kind === 'NFCE').nextNumber, 1, 'company numbering stays independent');
     assert.equal((await call('GET', '/fiscal/numbering', unitAdmin)).body.items.find((item: any) => item.kind === 'NFCE').nextNumber, 1, 'unit numbering starts independently');
-    const order = (await call('POST', '/orders', admin, { unitId: filial.id, items: [{ productId: product.id, quantity: 1 }] })).body;
+    const order = await paid((await call('POST', '/orders', admin, { unitId: filial.id, items: [{ productId: product.id, quantity: 1 }] })).body);
     const emitted = await call('POST', `/fiscal/orders/${order.id}/emit`, unitAdmin, { kind: 'NFCE' });
     assert.equal(emitted.status, 201); assert.equal(emitted.body.number, '1');
     assert.equal(sentContexts.at(-1)?.issuer.cnpj, '12345678000276');
@@ -178,6 +181,29 @@ test('fiscal module: settings, certificate, lost protocol, contingency, inutiliz
     assert.equal(emitted.body.fiscalMode, 'FISCAL'); assert.equal(emitted.body.document.status, 'AUTHORIZED');
   });
 
+  await t.test('totals and payments: no invented "Outros" payment; a payment confirmed after checkout completes the emission once', async () => {
+    const unpaid = (await call('POST', '/orders', admin, { unitId: A.unit.id, items: [{ productId: product.id, quantity: 1 }] })).body;
+    const refused = await call('POST', `/fiscal/orders/${unpaid.id}/emit`, admin, { kind: 'NFCE' });
+    assert.equal(refused.status, 422); assert.equal(refused.body.code, 'FISCAL_PAYMENT_MISMATCH');
+    assert.equal(await prisma.fiscalDocument.count({ where: { orderId: unpaid.id } }), 0, 'no number is consumed by a refused emission');
+    const actor = { tenantId: A.tenant.id, userId: (await prisma.user.findFirstOrThrow({ where: { tenantId: A.tenant.id, role: 'ADMIN' } })).id, unitId: null };
+    await call('PUT', '/fiscal/settings', admin, { pdvMode: 'FISCAL' });
+    assert.equal((await emitAfterPayment(actor, unpaid.id)).action, 'NOT_FULLY_PAID');
+    await prisma.payment.create({ data: { tenantId: A.tenant.id, unitId: unpaid.unitId, orderId: unpaid.id, method: 'PIX', amount: 5 } });
+    assert.equal((await emitAfterPayment(actor, unpaid.id)).action, 'NOT_FULLY_PAID', 'partial payment does not emit');
+    await prisma.payment.create({ data: { tenantId: A.tenant.id, unitId: unpaid.unitId, orderId: unpaid.id, method: 'PIX', amount: 15 } });
+    assert.equal((await emitAfterPayment(actor, unpaid.id)).action, 'EMITTED');
+    assert.equal((await emitAfterPayment(actor, unpaid.id)).action, 'NONE', 'running it again never duplicates');
+    const document = await prisma.fiscalDocument.findMany({ where: { orderId: unpaid.id } }); assert.equal(document.length, 1); assert.equal(document[0].status, 'AUTHORIZED');
+    assert.equal((await prisma.order.findUniqueOrThrow({ where: { id: unpaid.id } })).fiscalMode, 'FISCAL');
+    // ASK stays a human decision; NON_FISCAL never emits.
+    const second = await place(); await prisma.order.update({ where: { id: second.id }, data: { fiscalMode: null } });
+    await call('PUT', '/fiscal/settings', admin, { pdvMode: 'ASK' }); assert.equal((await emitAfterPayment(actor, second.id)).action, 'ASK_OPERATOR');
+    await call('PUT', '/fiscal/settings', admin, { pdvMode: 'NON_FISCAL' }); assert.equal((await emitAfterPayment(actor, second.id)).action, 'NONE');
+    assert.equal(await prisma.fiscalDocument.count({ where: { orderId: second.id } }), 0);
+    await call('PUT', '/fiscal/settings', admin, { pdvMode: 'FISCAL' });
+  });
+
   await t.test('CFOP follows the destination: rule interstate CFOP, operation nature and company defaults', async () => {
     const order = await place();
     const address = { street: 'Rua B', number: '2', district: 'Centro', city: 'São Paulo', cityIbge: '3550308', uf: 'SP', cep: '01001000' };
@@ -199,6 +225,8 @@ test('fiscal module: settings, certificate, lost protocol, contingency, inutiliz
 
   await t.test('NF-e with CC-e and cancellation; XML export returns the stored files in a ZIP', async () => {
     const order = await place();
+    // The freight added to the NF-e is part of what the customer pays.
+    await prisma.payment.create({ data: { tenantId: A.tenant.id, unitId: order.unitId, orderId: order.id, method: 'CASH', amount: 5 } });
     const preview = await call('POST', `/fiscal/orders/${order.id}/preview`, admin, { kind: 'NFE', items: [{ index: 0, cfop: '5405' }] });
     assert.equal(preview.status, 200); assert.equal(preview.body.document.items[0].tax.cfop, '5405');
     assert.equal(await prisma.taxRule.count({ where: { id: rule.id, cfop: '5102' } }), 1, 'document edits never change the registered rule');

@@ -79,6 +79,10 @@ test('RM modules: stock intelligence, business diagnosis with AI limits, deliver
     assert.match(noProvider.body.aiNote, /não configurada/);
     let received = '';
     setAiProvider({ name: 'fake', answer: async ({ question }) => { received = question; return 'Resumo gerado.'; } });
+    // Without the company's consent nothing is sent to the model.
+    const unconsented = await call('POST', '/intelligence/business', admin, { useAi: true });
+    assert.equal(unconsented.body.ai, null); assert.match(unconsented.body.aiNote, /consentimento/); assert.equal(received, '');
+    for (const token of [admin, otherAdmin]) assert.equal((await call('PUT', '/ai/settings', token, { externalConsent: true })).status, 200);
     const first = await call('POST', '/intelligence/business', admin, { useAi: true });
     assert.equal(first.body.ai.text, 'Resumo gerado.');
     assert.ok(!received.includes('Segredo'));

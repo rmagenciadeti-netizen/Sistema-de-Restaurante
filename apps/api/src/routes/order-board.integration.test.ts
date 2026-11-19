@@ -279,6 +279,8 @@ test('order board: courier dispatch, full order editing and NFC-e numbering/taxa
     const received: any[] = [];
     fiscalProviders.register({ name: 'fakefisc', emit: async fiscalOrder => { received.push(fiscalOrder); return { status: outcome, accessKey: 'K'.repeat(44), error: outcome === 'REJECTED' ? 'CNPJ inválido' : undefined }; }, cancel: async () => ({ cancelled: true }) });
     assert.equal((await emit(order.body.id, A.tokens.WAITER)).status, 403);
+    const unpaid = await emit(order.body.id); assert.equal(unpaid.status, 422); assert.equal(unpaid.body.code, 'FISCAL_PAYMENT_MISMATCH', 'unpaid: refused before a number is used');
+    await prisma.payment.create({ data: { tenantId: A.tenant.id, unitId: A.unit.id, orderId: order.body.id, method: 'CASH', amount: order.body.total } });
 
     const untaxed = await place(soda.id);
     const blocked = await emit(untaxed.body.id);
@@ -297,6 +299,7 @@ test('order board: courier dispatch, full order editing and NFC-e numbering/taxa
     assert.equal(ok.status, 201); assert.equal(ok.body.number, '100', 'a retry keeps the reserved number');
     assert.equal((await emit(order.body.id)).status, 409, 'already authorized');
     const second = await place(taxed.id);
+    await prisma.payment.create({ data: { tenantId: A.tenant.id, unitId: A.unit.id, orderId: second.body.id, method: 'CASH', amount: second.body.total } });
     assert.equal((await emit(second.body.id)).body.number, '101', 'the next order takes the next number');
     const numbering = await call('GET', '/fiscal/numbering', admin);
     assert.deepEqual(numbering.body.items.find((item: any) => item.kind === 'NFCE'), { kind: 'NFCE', series: '2', nextNumber: 102 });
