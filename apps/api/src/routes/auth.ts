@@ -10,6 +10,7 @@ import { isStrongPassword } from '../lib/password-policy';
 import { effectiveModules, globallyBlockedModules, licenseDenial } from '../lib/licensing';
 import { decryptTotpSecret, encryptTotpSecret, hashRecoveryCode, matchingTotpStep, newRecoveryCodes, newTotpSecret, recoveryCodeIndex } from '../lib/master-mfa';
 import { emailProviders } from '../lib/providers';
+import { clientKindOf } from '../lib/client-kind';
 import { signAccessToken, signScopedToken, verifyScopedToken, requireAuth, devMfaDisabled } from '../middleware/auth';
 
 export const authRoutes = Router();
@@ -46,7 +47,7 @@ const login = (masterOnly = false) => async (req: Request, res: Response, next: 
         user: publicUser,
       });
     }
-    const accessToken = signAccessToken({ userId: user.id, tenantId: user.tenantId, unitId: user.unitId, role: user.role, authVersion: user.authVersion });
+    const accessToken = signAccessToken({ userId: user.id, tenantId: user.tenantId, unitId: user.unitId, role: user.role, authVersion: user.authVersion, client: clientKindOf(req.headers['user-agent']) });
     return res.json({ accessToken, tokenType: 'Bearer', expiresIn: 28800, mustChangePassword: user.mustChangePassword, user: publicUser });
   } catch (error) { return next(error); }
 };

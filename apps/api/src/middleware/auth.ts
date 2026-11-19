@@ -4,7 +4,7 @@ import { UserRole, UserStatus } from '@prisma/client';
 import { prisma } from '../lib/prisma';
 import { effectiveModules, globallyBlockedModules, licenseDenial } from '../lib/licensing';
 
-export type AuthContext = { userId: string; tenantId: string | null; unitId: string | null; role: UserRole; authVersion?: number; mfaAuthenticated?: boolean };
+export type AuthContext = { userId: string; tenantId: string | null; unitId: string | null; role: UserRole; authVersion?: number; mfaAuthenticated?: boolean; client?: 'DESKTOP' | 'DEVICE' | 'API' };
 export type ScopedTokenPurpose = 'master_mfa_setup' | 'master_mfa_login';
 export type ScopedTokenClaims = { userId: string; authVersion: number };
 declare global { namespace Express { interface Request { auth?: AuthContext } } }
@@ -62,7 +62,7 @@ export async function requireAuth(req: Request, res: Response, next: NextFunctio
       if (denial) return res.status(403).json({ message: denial });
     }
     if (user.mustChangePassword && req.originalUrl.split('?')[0] !== '/api/v1/auth/change-password') return res.status(403).json({ message: 'Password change required' });
-    req.auth = { userId: user.id, tenantId: user.tenantId, unitId: user.unitId, role: user.role }; return next();
+    req.auth = { userId: user.id, tenantId: user.tenantId, unitId: user.unitId, role: user.role, client: claims.client }; return next();
   } catch (error) { return next(error); }
 }
 export function requireMaster(req: Request, res: Response, next: NextFunction) { if (req.auth?.role !== UserRole.MASTER_ADMIN) return res.status(403).json({ message: 'Master administrator access required' }); return next(); }

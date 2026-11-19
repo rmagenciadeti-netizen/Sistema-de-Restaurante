@@ -13,7 +13,7 @@ export type TicketInput = {
 };
 
 export function paperColumns(paperWidthMm: number): number {
-  return paperWidthMm <= 58 ? 32 : 48;
+  return paperWidthMm <= 55 ? 30 : paperWidthMm <= 58 ? 32 : 48;
 }
 
 function wrap(text: string, width: number, indent = ''): string[] {
@@ -31,6 +31,11 @@ function wrap(text: string, width: number, indent = ''): string[] {
 }
 
 const center = (text: string, width: number) => text.length >= width ? text : ' '.repeat(Math.floor((width - text.length) / 2)) + text;
+
+// Centred text that wraps to the paper width (55/58mm paper has only 30/32 columns).
+export function centerLines(text: string, width: number): string[] {
+  return wrap(text, width).map(line => center(line, width));
+}
 
 export function renderProductionTicket(input: TicketInput, paperWidthMm = 80): string {
   const width = paperColumns(paperWidthMm);

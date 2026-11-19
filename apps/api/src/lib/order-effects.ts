@@ -1,5 +1,7 @@
 import { OrderStatus, Prisma, PrintJobStatus } from '@prisma/client';
 import { reverseOrderInventory, reverseOrderProductStock } from './order-inventory';
+import { earnForOrder, reverseForOrder } from './loyalty';
+import { loadSettings } from './settings';
 import { brl, enqueueAutoMessage, orderLabel } from './whatsapp-auto';
 
 type OrderForEffects = {
@@ -21,10 +23,11 @@ export async function applyStatusSideEffects(tx: Prisma.TransactionClient, order
     await enqueueAutoMessage(tx, { tenantId: order.tenantId, key: notice, phone: order.customer.phone, orderId: order.id, vars: { orderCode: order.code, customerName: order.customer.name, nome: order.customer.name.split(' ')[0], pedido: orderLabel(order), total: brl(order.total) } });
   }
   if (status === OrderStatus.COMPLETED && order.customerId) {
-    const points = order.total.floor().toNumber();
-    if (points > 0) await tx.customer.update({ where: { id: order.customerId }, data: { loyaltyPoints: { increment: points } } });
+    const config = (await loadSettings(tx, order.tenantId)).loyalty;
+    await earnForOrder(tx, { id: order.id, tenantId: order.tenantId, customerId: order.customerId, total: order.total }, config);
   }
   if (status === OrderStatus.CANCELLED) {
+    if (order.customerId) await reverseForOrder(tx, { id: order.id, tenantId: order.tenantId, customerId: order.customerId });
     if (actorUserId) {
       await reverseOrderInventory(tx, order, actorUserId);
       await reverseOrderProductStock(tx, order, actorUserId);

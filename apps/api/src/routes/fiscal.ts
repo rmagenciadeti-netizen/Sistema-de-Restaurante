@@ -284,7 +284,7 @@ fiscalRoutes.post('/orders/:orderId/preview', issuers, async (req, res, next) =>
     const parsed = emitSchema.safeParse(req.body); if (!parsed.success) return res.status(400).json(invalid(parsed.error));
     const tenantId = req.auth!.tenantId!;
     const settings = await prisma.fiscalSettings.findUnique({ where: { tenantId }, include: { defaultTaxRule: true } });
-    const order = await prisma.order.findFirst({ where: { id: req.params.orderId, tenantId, ...unitScope(req) }, include: { items: { where: { parentItemId: null }, include: { product: { select: { name: true, code: true, gtin: true, measureUnit: true, ncm: true, cest: true, taxRule: true } } } }, customer: { select: { name: true, document: true, email: true } }, payments: { where: { status: 'CONFIRMED' }, select: { method: true, amount: true } }, fiscalDocuments: { where: { kind: parsed.data.kind }, select: { series: true, number: true } } } });
+    const order = await prisma.order.findFirst({ where: { id: req.params.orderId, tenantId, ...unitScope(req) }, include: { items: { where: { parentItemId: null }, include: { product: { select: { name: true, code: true, gtin: true, measureUnit: true, ncm: true, cest: true, taxRule: true } } } }, customer: { select: { name: true, document: true, email: true } }, payments: { where: { status: 'CONFIRMED' }, select: { method: true, amount: true, integrated: true, acquirerCnpj: true, cardBrand: true, authorizationCode: true, pixEndToEnd: true } }, fiscalDocuments: { where: { kind: parsed.data.kind }, select: { series: true, number: true } } } });
     if (!order) return res.status(404).json({ message: 'Order not found' });
     const environment = environmentOf(settings);
     const unitKey = await fiscalUnitKey(prisma, tenantId, order.unitId);

@@ -349,6 +349,12 @@ commercialRoutes.get('/overview', async (req, res, next) => {
       byPlan: plans.map(plan => ({ id: plan.id, name: plan.name, subscriptions: active.filter(item => item.planId === plan.id).length, mrr: fromCents(planCents.get(plan.id) ?? 0), received: sum(received.filter(item => item.planId === plan.id)) })).sort((a, b) => b.subscriptions - a.subscriptions),
       byModule: catalog.map(item => ({ key: item.key, name: item.name, tenants: moduleCounts.find(count => count.moduleKey === item.key)?._count._all ?? 0, addonMrr: fromCents(moduleRevenueCents.get(item.key) ?? 0) })).sort((a, b) => b.tenants - a.tenants),
       evolution,
+      movement: (() => {
+        const newContracts = licenses.filter(item => inRange(item.createdAt)).length;
+        const cancelled = licenses.filter(item => item.status === 'CANCELLED' && inRange(item.updatedAt)).length;
+        const base = active.length + cancelled;
+        return { newContracts, cancelled, churnPercent: base > 0 ? Math.round((cancelled / base) * 10_000) / 100 : 0 };
+      })(),
     });
   } catch (error) { return next(error); }
 });

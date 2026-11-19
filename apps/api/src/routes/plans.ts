@@ -141,6 +141,17 @@ planRoutes.put('/:id', async (req, res, next) => {
 });
 
 // Plans with contracts or invoices are never deleted: they are deactivated for new sales or archived, preserving history.
+// Version history: every create/update/status change already stores a before/after snapshot (with reason) in the audit log; this exposes it.
+planRoutes.get('/:id/history', async (req, res, next) => {
+  try {
+    const items = await prisma.auditLog.findMany({
+      where: { entityType: 'SaaSPlan', entityId: req.params.id, action: { in: ['SAAS_PLAN_CREATED', 'SAAS_PLAN_UPDATED', 'SAAS_PLAN_STATUS_CHANGED'] } },
+      orderBy: { createdAt: 'desc' }, take: 100, select: { id: true, action: true, createdAt: true, metadata: true, actor: { select: { name: true } } },
+    });
+    return res.json({ items });
+  } catch (error) { return next(error); }
+});
+
 planRoutes.patch('/:id/status', async (req, res, next) => {
   try {
     const input = z.object({ status: z.nativeEnum(CatalogStatus), reason: z.string().max(300).optional() }).safeParse(req.body);

@@ -5,6 +5,7 @@ import { isStoreOpen } from './scheduling';
 import { hiddenCategoryIds } from './menu-visibility';
 import { effectiveUnitPrice, type ActivePromotion } from './promotions';
 import { loadSettings, type TenantSettingsData } from './settings';
+import { callModel } from './ai/gateway';
 import { currentAiProvider } from './ai-provider';
 
 type Db = PrismaClient | Prisma.TransactionClient;
@@ -153,8 +154,7 @@ async function knowledgeMatch(db: Db, tenantId: string, text: string) {
 }
 
 async function aiAnswer(db: Db, env: BotEnv, question: string, menu: MenuData): Promise<string | null> {
-  const provider = currentAiProvider();
-  if (!provider) return null;
+  if (!currentAiProvider()) return null;
   const knowledge = await db.whatsappKnowledge.findMany({ where: { tenantId: env.tenantId, active: true }, take: 60 });
   const system = [
     `Você é o assistente virtual de WhatsApp do restaurante "${env.restaurant}". Responda em português do Brasil, de forma curta, cordial e objetiva (no máximo 5 linhas).`,
@@ -165,7 +165,9 @@ async function aiAnswer(db: Db, env: BotEnv, question: string, menu: MenuData): 
     `Cardápio:\n${menu.flat.slice(0, 120).map(item => `- ${item.name}${item.description ? ` (${item.description.slice(0, 80)})` : ''}: ${priceLabel(item)}`).join('\n')}`,
     knowledge.length ? `Perguntas frequentes:\n${knowledge.map(entry => `- ${entry.title}: ${entry.answer}`).join('\n')}` : '',
   ].filter(Boolean).join('\n\n');
-  try { return await provider.answer({ system, question: question.slice(0, 500) }); } catch { return null; }
+  // Same gate as every other model call: company consent, limits (company/unit/module), breaker and metering. Customer messages are never reused across customers.
+  const result = await callModel({ ctx: { tenantId: env.tenantId, unitId: env.unitId ?? null, userId: null }, module: 'whatsapp', operation: 'answer', settings: env.settings, system, question: question.slice(0, 500), maxChars: 20_000, maxTokens: 300, reuse: false });
+  return result.ok ? result.text : null;
 }
 
 async function recordUnanswered(db: Db, tenantId: string, text: string, now: Date) {

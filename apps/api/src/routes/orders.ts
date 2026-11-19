@@ -32,6 +32,8 @@ const createSchema = z.object({
   adjustmentReleaseId: z.string().uuid().optional(),
   sellerId: z.string().uuid().optional(),
   orderReleaseId: z.string().uuid().optional(),
+  // Sent by the offline PDV queue: retrying the same key returns the order that was already created instead of selling twice.
+  clientRequestId: z.string().regex(/^[\w-]{8,64}$/).optional(),
   items: z.array(z.object({ productId: z.string().uuid(), quantity: positiveQuantitySchema(999), weightKg: z.number().positive().max(999.999).optional(), unitPrice: z.number().min(0).max(9_999_999_999.99).refine(value => new Prisma.Decimal(value).decimalPlaces() <= 2, 'Use no máximo duas casas decimais').optional(), withPackaging: z.boolean().optional(), notes: z.string().max(500).optional(), modifiers: z.array(z.object({ optionId: z.string().uuid(), quantity: z.number().int().positive().max(20).optional() })).max(30).optional() })).min(1).max(100),
 });
 const editSchema = z.object({
@@ -50,7 +52,7 @@ const listQuery = z.object({
   page: z.coerce.number().int().min(1).default(1), pageSize: z.coerce.number().int().min(1).max(100).default(25),
   q: z.string().max(80).optional(), channel: z.nativeEnum(OrderChannel).optional(), status: z.nativeEnum(OrderStatus).optional(),
   from: z.string().datetime().optional(), to: z.string().datetime().optional(),
-  scope: z.enum(['all', 'active', 'scheduled', 'held']).default('all'),
+  scope: z.enum(['all', 'active', 'scheduled', 'held', 'unpaid']).default('all'),
   type: z.enum(['delivery', 'pickup']).optional(),
   table: z.enum(['1']).optional(),
 });
@@ -71,6 +73,12 @@ orderRoutes.get('/', async (req, res, next) => {
     // Scheduled orders still waiting for their release time are not production work yet.
     if (scope === 'active') and.push({ NOT: { scheduledFor: { not: null }, releasedAt: null } });
     if (q) and.push({ OR: [{ code: { contains: q, mode: 'insensitive' } }, { customerName: { contains: q, mode: 'insensitive' } }, { tableLabel: { contains: q, mode: 'insensitive' } }, ...(digits !== null && digits < 2_000_000_000 ? [{ number: digits }] : [])] });
+    // Orders with an outstanding balance (confirmed payments below the total), resolved in the database so the cash screen needn't download paid orders.
+    if (scope === 'unpaid') {
+      const unitId = req.auth!.unitId ?? null;
+      const rows = await prisma.$queryRaw<{ id: string }[]>(Prisma.sql`SELECT o."id" FROM "Order" o WHERE o."tenantId" = ${req.auth!.tenantId!} AND o."status" <> 'CANCELLED' AND (${unitId}::text IS NULL OR o."unitId" = ${unitId}) AND o."total" > COALESCE((SELECT SUM(p."amount") FROM "Payment" p WHERE p."orderId" = o."id" AND p."status" = 'CONFIRMED'), 0) ORDER BY o."createdAt" DESC LIMIT 1000`);
+      and.push({ id: { in: rows.map(row => row.id) } });
+    }
     const where: Prisma.OrderWhereInput = {
       tenantId: req.auth!.tenantId!, ...(req.auth!.unitId ? { unitId: req.auth!.unitId } : {}),
       ...(channel ? { channel } : {}), ...(status ? { status } : {}),
@@ -100,6 +108,10 @@ orderRoutes.post('/', requireRoles(...SALES_ROLES), async (req, res, next) => {
     if (unitId && !await prisma.unit.findFirst({ where: { id: unitId, tenantId } })) return res.status(400).json({ message: 'Unit does not belong to this tenant' });
     if (parsed.data.customerPhone && !parsed.data.customerName) return res.status(400).json({ message: 'customerName is required with customerPhone' });
     const { customerName, customerPhone, marketingConsent, scheduledFor, adjustmentReleaseId, sellerId, orderReleaseId, ...rest } = parsed.data;
+    if (rest.clientRequestId) {
+      const existing = await prisma.order.findFirst({ where: { tenantId, clientRequestId: rest.clientRequestId }, include: { items: true } });
+      if (existing) return res.status(200).json({ ...existing, duplicate: true });
+    }
     // The seller (PDV option "Solicitar vendedor") receives the sale in reports and prints; it must be an active staff member of this tenant (and unit, when scoped).
     if (sellerId && !await prisma.user.findFirst({ where: { id: sellerId, tenantId, status: 'ACTIVE', role: { in: SALES_ROLES }, ...(unitId ? { OR: [{ unitId }, { unitId: null }] } : {}) }, select: { id: true } })) return res.status(400).json({ message: 'SELLER_INVALID' });
     // Staff outside management need a fresh administrator-password release (POST /releases, action DISCOUNT) to grant a manual discount.
@@ -131,6 +143,11 @@ orderRoutes.post('/', requireRoles(...SALES_ROLES), async (req, res, next) => {
     });
     return res.status(201).json(order);
   } catch (error) {
+    // Two retries of the same offline request racing each other: the loser gets the order the winner created.
+    if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === 'P2002' && req.body?.clientRequestId) {
+      const existing = await prisma.order.findFirst({ where: { tenantId: req.auth!.tenantId!, clientRequestId: String(req.body.clientRequestId) }, include: { items: true } });
+      if (existing) return res.status(200).json({ ...existing, duplicate: true });
+    }
     if (error instanceof OrderEngineError) return res.status(error.httpStatus).json({ message: error.reason === 'FREE_PRICE_NOT_ALLOWED' ? 'Este produto não permite preço livre neste canal.' : error.reason === 'FREE_PRICE_INVALID' ? 'O preço livre informado é inválido.' : error.reason === 'FRACTIONAL_QUANTITY_NOT_ALLOWED' ? 'Este produto não permite quantidade fracionada.' : error.reason === 'PACKAGING_NOT_ALLOWED' ? 'Este produto não permite embalagem.' : error.reason });
     if (error instanceof OrderInventoryError) return res.status(409).json({ message: error.reason === 'INSUFFICIENT_STOCK' ? 'Insufficient stock for this order' : error.reason === 'INVALID_PRODUCT_STOCK' ? 'Product stock is invalid or outside this unit' : 'Order recipe contains invalid or out-of-scope ingredients' });
     return next(error);

@@ -4,6 +4,7 @@ import { processWhatsappOutbox } from './lib/whatsapp-worker';
 import { whatsappProviderFromEnv } from './lib/whatsapp-cloud';
 import { releaseDueOrders } from './lib/scheduling';
 import { WhatsappSessionManager, whatsappSessionsMode } from './lib/whatsapp-sessions';
+import { runAutomationsForAllTenants } from './lib/automations';
 
 // Run as a single process: `npm run worker --workspace apps/api`.
 // It releases scheduled orders, keeps the WhatsApp Web (QR) sessions alive (unless WHATSAPP_SESSIONS_MODE=api/off) and
@@ -13,6 +14,8 @@ if (!provider) console.error('WhatsApp Cloud API is not configured (WHATSAPP_TOK
 const intervalMs = Number(process.env.WORKER_INTERVAL_MS) || 10_000;
 const manager = whatsappSessionsMode() === 'worker' ? new WhatsappSessionManager(prisma) : null;
 let stopping = false;
+const automationsEveryMs = Number(process.env.AUTOMATIONS_INTERVAL_MS) || 15 * 60_000;
+let lastAutomations = 0;
 for (const signal of ['SIGINT', 'SIGTERM'] as const) process.on(signal, () => { stopping = true; });
 
 async function main() {
@@ -23,6 +26,13 @@ async function main() {
       const released = await releaseDueOrders(prisma);
       if (released) console.log(`scheduled orders released=${released}`);
     } catch (error) { console.error('scheduling error', error); }
+    if (Date.now() - lastAutomations >= automationsEveryMs) {
+      lastAutomations = Date.now();
+      try {
+        const created = await runAutomationsForAllTenants(prisma);
+        if (created) console.log(`automation notifications created=${created}`);
+      } catch (error) { console.error('automations error', error); }
+    }
     if (provider) {
       try {
         const qrTenants = (await prisma.whatsappSession.findMany({ where: { desired: 'CONNECTED' }, select: { tenantId: true } })).map(row => row.tenantId);
