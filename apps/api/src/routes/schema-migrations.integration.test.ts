@@ -277,8 +277,8 @@ test('schema migrations: ordering, clean database, upgrade with legacy data, fin
     // NODE_TEST_CONTEXT must not leak into the nested runner, otherwise it would behave as a subtest and run nothing.
     const env: NodeJS.ProcessEnv = { ...process.env, DATABASE_URL: legacy.url, RUN_DB_TESTS: '1' };
     for (const key of ['NODE_TEST_CONTEXT', 'MIGRATION_BACKUP_DIR', 'MIGRATION_BACKUP_VERIFY_DATABASE_URL', 'MIGRATION_REQUIRE_BACKUP', 'MIGRATION_BACKUP_ENCRYPTION_KEY']) delete env[key];
-    const result = spawnSync('npx', ['--no-install', 'tsx', '--test', ...files], { cwd: apiRoot, env, encoding: 'utf8', timeout: 600_000 });
-    const summary = Object.fromEntries([...`${result.stdout}`.matchAll(/^ℹ (tests|pass|fail|skipped) (\d+)/gm)].map(match => [match[1], Number(match[2])]));
+    const result = spawnSync('npx', ['--no-install', 'tsx', '--test', '--test-reporter=tap', ...files], { cwd: apiRoot, env, encoding: 'utf8', timeout: 600_000, maxBuffer: 256 * 1024 * 1024 });
+    const summary = Object.fromEntries([...`${result.stdout}`.matchAll(/^(?:ℹ|#) (tests|pass|fail|skipped) (\d+)/gm)].map(match => [match[1], Number(match[2])]));
     t.diagnostic(`application suites on the upgraded DB: ${JSON.stringify(summary)}`);
     assert.equal(result.status, 0, `${result.stdout.split('\n').filter(line => /✖|not ok|Error/.test(line)).slice(0, 15).join('\n')}\n${result.stderr.slice(-800)}`);
     assert.ok((summary.pass ?? 0) > 0 && summary.fail === 0 && summary.skipped === 0);
