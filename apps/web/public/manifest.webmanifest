@@ -1,0 +1,24 @@
+{
+  "name": "RM Restaurant",
+  "short_name": "RM Restaurant",
+  "description": "Gestão completa do restaurante: PDV, comandas, cozinha, delivery e indicadores — também no celular e sem internet.",
+  "lang": "pt-BR",
+  "start_url": "/dashboard",
+  "scope": "/",
+  "display": "standalone",
+  "orientation": "any",
+  "background_color": "#0b0a08",
+  "theme_color": "#0b0a08",
+  "categories": ["business", "productivity"],
+  "icons": [
+    { "src": "/icons/icon-192.png", "sizes": "192x192", "type": "image/png" },
+    { "src": "/icons/icon-512.png", "sizes": "512x512", "type": "image/png" },
+    { "src": "/icons/icon-maskable-512.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable" }
+  ],
+  "shortcuts": [
+    { "name": "PDV", "url": "/pdv", "description": "Abrir o ponto de venda" },
+    { "name": "Pedidos", "url": "/monitor", "description": "Acompanhar os pedidos" },
+    { "name": "Cozinha (KDS)", "url": "/kds", "description": "Painel de produção" },
+    { "name": "Mesas", "url": "/tables", "description": "Mesas e chamados" }
+  ]
+}
