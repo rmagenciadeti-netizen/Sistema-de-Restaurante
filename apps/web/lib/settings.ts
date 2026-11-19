@@ -4,12 +4,12 @@ export type Slot = { day: number; start: string; end: string };
 export type TenantSettings = {
   company: { legalName: string; tradeName: string; document: string; activity: string; slogan: string; phone: string; whatsapp: string; zip: string; state: string; city: string; district: string; address: string; number: string; dpoName: string; dpoEmail: string; sidebarLayout: 'CLASSIC' | 'COMPACT' };
   hours: { timezone: string; mode: 'OPEN' | 'CLOSED' | 'SCHEDULE'; weekly: Slot[] };
-  fulfillment: { allowPickup: boolean; allowDelivery: boolean; allowDineIn: boolean; estimatedTime: boolean; pickupMinutes: number; deliveryMinutes: number; deliveryFeeMode: 'SINGLE' | 'UNMAPPED' | 'ZONES' | 'DISTRICT'; singleFee: number; minDelivery: number; freeDeliveryMin: number };
+  fulfillment: { allowPickup: boolean; allowDelivery: boolean; allowDineIn: boolean; qrConfirmation: boolean; estimatedTime: boolean; pickupMinutes: number; deliveryMinutes: number; deliveryFeeMode: 'SINGLE' | 'UNMAPPED' | 'ZONES' | 'DISTRICT'; singleFee: number; minDelivery: number; freeDeliveryMin: number };
   store: { allowBuyWhenClosed: boolean; autoAccept: boolean; brandColor: string; mode: 'MENU' | 'ECOMMERCE'; minorControl: boolean; metaPixelId: string };
   pdv: { layout: 'FOOD' | 'RETAIL'; side: 'LEFT' | 'RIGHT'; orderMode: boolean; saleMode: boolean; whatsappNotify: boolean; autoRegisterCustomer: boolean; tableControl: 'TABLES' | 'TABS' | 'TABLES_AND_TABS' | 'TABLES_AND_ORDERS'; askSeller: boolean; serviceFeeName: string; defaultOrderStatus: 'OPEN' | 'PREPARING'; requireAdminPasswordOnline: boolean; showPixOnTerminal: boolean; usdRate: number; pesoRate: number };
   scale: { enabled: boolean; prefix: string; codeLength: number; barcodeLength: number; saleType: 'WEIGHT' | 'PRICE' };
   scheduling: { enabled: boolean; maxDaysAhead: number; leadTime: string; blockedFrom: string | null; blockedTo: string | null; slots: Slot[] };
-  printing: { askPrintSale: boolean; askPrintOrder: boolean; askPrintTicket: boolean; companyHeader: boolean; companyHeaderOnProduction: boolean; companyHeaderOnReports: boolean; paper: '58mm' | '80mm' | 'A4'; fontSize: number; promissoryPaper: 'A4' | '80mm'; autoPrintPromissory: boolean };
+  printing: { askPrintSale: boolean; askPrintOrder: boolean; askPrintTicket: boolean; companyHeader: boolean; companyHeaderOnProduction: boolean; companyHeaderOnReports: boolean; paper: '55mm' | '58mm' | '80mm' | 'A4'; footer: string; receiptCopies: number; tefCopies: 'CUSTOMER' | 'BOTH'; fontSize: number; promissoryPaper: 'A4' | '80mm'; autoPrintPromissory: boolean };
   ticket: { enabled: boolean };
   financial: { monthlyInterestPercent: number; latePenaltyPercent: number; graceDays: number; earlyDiscountPercent: number; earlyMinDays: number; installmentDays: number };
   products: { defaultMarginPercent: number };

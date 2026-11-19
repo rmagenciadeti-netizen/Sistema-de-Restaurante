@@ -1,6 +1,6 @@
 'use client';
 
-import Link from 'next/link';
+import Link from './nav-link';
 import { useEffect, useMemo, useState } from 'react';
 import { api, formatMoney, ListResponse } from '../lib/api';
 import { methodLabels, opsError, orderTitle, type OpsOrder, type OpsProduct, type OpsZone } from '../lib/types-ops';

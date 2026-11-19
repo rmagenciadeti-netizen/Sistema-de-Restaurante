@@ -1,13 +1,13 @@
 'use client';
 
 import { useState } from 'react';
-import Link from 'next/link';
+import Link from '../../components/nav-link';
 import { api, Customer, errorMessage, formatDateTime, formatMoney, ListResponse } from '../../lib/api';
 import { useAutoLoad } from '../../lib/use-auto-load';
 import { AppShell, buttonClass, Check, Field, Notice, panelClass, secondaryButtonClass } from '../../components/app-shell';
 
 const PAGE_SIZE = 25;
-const emptyForm = { name: '', phone: '', email: '', document: '', address: '', notes: '', marketingConsent: false };
+const emptyForm = { name: '', phone: '', email: '', document: '', address: '', notes: '', birthDate: '', marketingConsent: false };
 
 export default function CustomersPage() {
   const [items, setItems] = useState<Customer[]>([]); const [total, setTotal] = useState(0); const [page, setPage] = useState(1); const [search, setSearch] = useState('');
@@ -29,7 +29,7 @@ export default function CustomersPage() {
   }
   async function save(event: React.FormEvent) {
     event.preventDefault(); setNotice(null);
-    const common = { name: form.name, email: form.email || undefined, address: form.address || undefined, notes: form.notes || undefined, marketingConsent: form.marketingConsent };
+    const common = { name: form.name, email: form.email || undefined, address: form.address || undefined, notes: form.notes || undefined, marketingConsent: form.marketingConsent, ...(editingId ? { birthDate: form.birthDate || null } : form.birthDate ? { birthDate: form.birthDate } : {}) };
     try {
       if (editingId) await api(`/customers/${editingId}`, { method: 'PATCH', body: JSON.stringify(common) });
       else await api('/customers', { method: 'POST', body: JSON.stringify({ ...common, phone: form.phone, document: form.document || undefined }) });
@@ -39,7 +39,7 @@ export default function CustomersPage() {
   }
   function startEdit(customer: Customer) {
     setEditingId(customer.id);
-    setForm({ name: customer.name, phone: customer.phone, email: customer.email ?? '', document: customer.document ?? '', address: customer.address ?? '', notes: customer.notes ?? '', marketingConsent: customer.marketingConsent });
+    setForm({ name: customer.name, phone: customer.phone, email: customer.email ?? '', document: customer.document ?? '', address: customer.address ?? '', notes: customer.notes ?? '', birthDate: customer.birthDate?.slice(0, 10) ?? '', marketingConsent: customer.marketingConsent });
   }
   async function exportData(customer: Customer) {
     try {
@@ -66,6 +66,7 @@ export default function CustomersPage() {
         {!editingId && <Field label="Documento" maxLength={20} value={form.document} onChange={e => setForm({ ...form, document: e.target.value })} />}
         <Field label="Endereço" maxLength={500} value={form.address} onChange={e => setForm({ ...form, address: e.target.value })} />
         <Field label="Observações" maxLength={1000} value={form.notes} onChange={e => setForm({ ...form, notes: e.target.value })} />
+        <Field label="Data de aniversário" type="date" max={new Date().toISOString().slice(0, 10)} value={form.birthDate} onChange={e => setForm({ ...form, birthDate: e.target.value })} />
         <div className="flex flex-wrap items-center gap-4 md:col-span-3"><Check label="Cliente consentiu receber marketing (LGPD)" checked={form.marketingConsent} onChange={e => setForm({ ...form, marketingConsent: e.target.checked })} /><button className={buttonClass}>{editingId ? 'Salvar cliente' : 'Adicionar cliente'}</button>{editingId && <button type="button" className={secondaryButtonClass} onClick={() => { setEditingId(null); setForm(emptyForm); }}>Cancelar edição</button>}</div>
       </form></section>
 

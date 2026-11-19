@@ -9,7 +9,11 @@ export function useAutoLoad(load: () => Promise<void> | void, intervalMs?: numbe
   useEffect(() => {
     void latest.current();
     if (!intervalMs) return undefined;
-    const id = setInterval(() => void latest.current(), intervalMs);
-    return () => clearInterval(id);
+    // A hidden tab does not poll (no data spent on a screen nobody is looking at); when it becomes visible again after a missed tick it refreshes once.
+    let missed = false;
+    const id = setInterval(() => { if (typeof document !== 'undefined' && document.hidden) { missed = true; return; } void latest.current(); }, intervalMs);
+    const onVisible = () => { if (typeof document !== 'undefined' && !document.hidden && missed) { missed = false; void latest.current(); } };
+    if (typeof document !== 'undefined') document.addEventListener('visibilitychange', onVisible);
+    return () => { clearInterval(id); if (typeof document !== 'undefined') document.removeEventListener('visibilitychange', onVisible); };
   }, [intervalMs]);
 }

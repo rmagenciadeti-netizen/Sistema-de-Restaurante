@@ -1,5 +1,6 @@
 import { createHash } from 'node:crypto';
 import { FiscalConfigError, type FiscalIssuer } from './fiscal-config';
+import { brandCode } from './card-brands';
 import { spread } from './fiscal-focus';
 import type { FiscalContext, FiscalItemTax, FiscalOrder } from './providers';
 import { clean, g, NFE_NS, t } from './xml-signature';
@@ -9,6 +10,17 @@ export const UF_CODE: Record<string, string> = { RO: '11', AC: '12', AM: '13', R
 const UF_OFFSET: Record<string, string> = { AC: '-05:00', AM: '-04:00', RO: '-04:00', RR: '-04:00', MT: '-04:00', MS: '-04:00' };
 export const HOMOLOGATION_NAME = 'NF-E EMITIDA EM AMBIENTE DE HOMOLOGACAO - SEM VALOR FISCAL';
 const HOMOLOGATION_ITEM = 'NOTA FISCAL EMITIDA EM AMBIENTE DE HOMOLOGACAO - SEM VALOR FISCAL';
+// Payment group of the card/PIX family. A payment taken through TEF is reported as integrated (tpIntegra 1) with the REAL data the provider returned; incomplete data stops the document instead of being invented.
+function cardGroup(payment: NonNullable<FiscalOrder['payments']>[number], code: string): string {
+  if (!['03', '04', '10', '11', '12', '13', '17', '18'].includes(code)) return '';
+  if (!payment.integrated) return g('card', [t('tpIntegra', '2')]);
+  const cnpj = (payment.acquirerCnpj ?? '').replace(/\D/g, '');
+  if (['03', '04', '10', '11', '12', '13'].includes(code)) {
+    if (cnpj.length !== 14 || !payment.cardBrand || !payment.authorizationCode) throw new FiscalConfigError('Pagamento por cartão via TEF sem CNPJ da adquirente, bandeira ou código de autorização retornados pelo provedor: o documento não pode ser emitido com dados presumidos. Consulte a transação TEF.');
+    return g('card', [t('tpIntegra', '1'), t('CNPJ', cnpj), t('tBand', brandCode(payment.cardBrand)), t('cAut', clean(payment.authorizationCode, 20))]);
+  }
+  return g('card', [t('tpIntegra', '1'), cnpj.length === 14 ? t('CNPJ', cnpj) : '']);
+}
 const PAYMENT_CODE: Record<string, string> = { CASH: '01', CREDIT_CARD: '03', DEBIT_CARD: '04', VOUCHER: '10', PIX: '17', OTHER: '99' };
 // CFOPs accepted in NFC-e (MOC, regra de validação da NFC-e).
 export const NFCE_CFOPS = ['5101', '5102', '5103', '5104', '5115', '5405', '5656', '5667', '5933'];
@@ -147,10 +159,12 @@ export function buildNFe(order: FiscalOrder, kind: 'NFCE' | 'NFE', ctx: FiscalCo
     t('indIEDest', kind === 'NFCE' ? '9' : recipient.contributorIndicator ?? '9'), kind === 'NFE' && recipient.contributorIndicator === '1' ? t('IE', (recipient.stateRegistration ?? '').replace(/\D/g, '')) : '', t('email', recipient.email ? clean(recipient.email, 60) : ''),
   ]);
   // Payments: recorded payments (with change) or the outstanding amount as "outros"; adjustments/returns have no payment.
-  const paid = (order.payments ?? []).map(payment => ({ code: PAYMENT_CODE[payment.method] ?? '99', amount: cents(payment.amount) }));
+  const paid = (order.payments ?? []).map(payment => ({ code: PAYMENT_CODE[payment.method] ?? '99', amount: cents(payment.amount), card: cardGroup(payment, PAYMENT_CODE[payment.method] ?? '99') }));
   const paidTotal = paid.reduce((sum, item) => sum + item.amount, 0);
-  const payments = ['3', '4'].includes(finality) ? [{ code: '90', amount: 0 }] : paidTotal >= vNF && paid.length ? paid : [...paid, { code: '99', amount: vNF - paidTotal }];
-  const pag = g('pag', [...payments.map(item => g('detPag', [t('tPag', item.code), item.code === '99' ? t('xPag', 'Outros') : '', t('vPag', money(item.amount)), ['03', '04', '17', '18'].includes(item.code) ? g('card', [t('tpIntegra', '2')]) : ''])), paidTotal > vNF && !['3', '4'].includes(finality) ? t('vTroco', money(paidTotal - vNF)) : '']);
+  // Payments are never completed with an invented "Outros" line: an order not fully paid is refused (NF-e without any payment is "sem pagamento", tPag 90).
+  if (!['3', '4'].includes(finality) && paidTotal < vNF && !(kind === 'NFE' && paid.length === 0)) throw new FiscalConfigError(`Pagamento confirmado (${money(paidTotal)}) menor que o total do documento (${money(vNF)}): registre ou recupere o pagamento antes de emitir.`);
+  const payments = ['3', '4'].includes(finality) || paid.length === 0 ? [{ code: '90', amount: 0, card: '' }] : paid;
+  const pag = g('pag', [...payments.map(item => g('detPag', [t('tPag', item.code), item.code === '99' ? t('xPag', 'Outros') : '', t('vPag', money(item.amount)), item.card])), paidTotal > vNF && !['3', '4'].includes(finality) ? t('vTroco', money(paidTotal - vNF)) : '']);
 
   const ide = g('ide', [
     t('cUF', UF_CODE[issuer.uf]), t('cNF', cNF), t('natOp', clean(order.nature ?? 'Venda de mercadoria', 60)), t('mod', model), t('serie', String(Number(order.series))), t('nNF', String(Number(order.number))), t('dhEmi', dhEmi),

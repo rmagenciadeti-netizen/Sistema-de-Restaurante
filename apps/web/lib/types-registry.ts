@@ -1,4 +1,4 @@
-export type Courier = { id: string; name: string; phone?: string | null; paymentPerDelivery?: string | number | null; unitId?: string | null; active: boolean; createdAt?: string };
+export type Courier = { id: string; name: string; phone?: string | null; paymentPerDelivery?: string | number | null; commissionPercent?: string | number | null; unitId?: string | null; active: boolean; createdAt?: string };
 export type Carrier = { id: string; name: string; document?: string | null; phone?: string | null; email?: string | null; notes?: string | null; active: boolean; createdAt?: string };
 
 export type PaymentEquivalent = 'CASH' | 'PIX' | 'CREDIT_CARD' | 'DEBIT_CARD' | 'VOUCHER' | 'OTHER';

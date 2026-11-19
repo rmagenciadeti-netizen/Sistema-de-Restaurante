@@ -1,5 +1,5 @@
 import { NextResponse, type NextRequest } from 'next/server';
-import { guardSession } from './lib/session-guard';
+import { guardSession, isMasterOnlyPath } from './lib/session-guard';
 
 const apiUrl = () => process.env.API_INTERNAL_URL ?? 'http://127.0.0.1:4000/api/v1';
 
@@ -14,6 +14,7 @@ export async function proxy(request: NextRequest) {
     }
     return NextResponse.next();
   }
+  if (isMasterOnlyPath(request.nextUrl.pathname)) return NextResponse.rewrite(new URL('/not-found-master-only', request.url), { status: 404 });
   return (await guardSession(request, { cookieName: 'rm_restaurant_token', apiUrl: apiUrl() })) ?? NextResponse.next();
 }
 

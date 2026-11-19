@@ -7,11 +7,12 @@ import { CommercialOverview } from '../../components/commercial/overview';
 import { ModuleCatalog } from '../../components/commercial/modules';
 import { PromotionManager } from '../../components/commercial/promotions';
 import { BillingManager, CommercialHistory } from '../../components/commercial/billing';
+import { CommercialReports } from '../../components/commercial/reports';
 import { PageHeader, Tabs } from '../../components/ui';
 
 const tabs = [
   { key: 'overview', label: '📊 Visão geral' }, { key: 'modules', label: '🧩 Módulos' }, { key: 'campaigns', label: '🔖 Promoções' },
-  { key: 'coupons', label: '🏷️ Cupons' }, { key: 'billing', label: '🧾 Cobranças' }, { key: 'history', label: '🛡️ Auditoria' },
+  { key: 'coupons', label: '🏷️ Cupons' }, { key: 'billing', label: '🧾 Cobranças' }, { key: 'reports', label: '📑 Relatórios' }, { key: 'history', label: '🛡️ Auditoria' },
 ] as const;
 type Tab = (typeof tabs)[number]['key'];
 
@@ -25,6 +26,7 @@ function CommercialContent({ requested }: { requested: string | null }) {
     {tab === 'campaigns' && <PromotionManager kind="campaigns" />}
     {tab === 'coupons' && <PromotionManager kind="coupons" />}
     {tab === 'billing' && <BillingManager />}
+    {tab === 'reports' && <CommercialReports />}
     {tab === 'history' && <CommercialHistory />}
   </AppShell>;
 }

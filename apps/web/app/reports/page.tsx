@@ -1,6 +1,6 @@
 'use client';
 
-import Link from 'next/link';
+import Link from '../../components/nav-link';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { Suspense, useEffect, useRef, useState } from 'react';
 import { api, API_BASE, errorMessage, formatMoney, ListResponse, ReportOverview, ServiceFeeDistribution, tokenStorageKey, WaiterReportRow } from '../../lib/api';
@@ -89,23 +89,30 @@ function ReportView({ kind, period, onPeriod }: { kind: string; period: Period; 
 
   function apply(next: Period) { setFrom(next.from); setTo(next.to); onPeriod(next); void load(next.from, next.to); }
 
-  async function exportCsv() {
+  async function exportAs(format: 'csv' | 'xlsx' | 'pdf') {
     setExporting(true); setMessage('');
     try {
       let blob: Blob;
-      if (loaded.table && kind === 'service-fee-distribution') blob = new Blob([tableToCsv(loaded.table)], { type: 'text/csv;charset=utf-8' });
-      else if (loaded.overview) {
+      const token = localStorage.getItem(tokenStorageKey);
+      const auth: Record<string, string> = token ? { Authorization: `Bearer ${token}` } : {};
+      if (loaded.table && kind === 'service-fee-distribution' && format === 'csv') blob = new Blob([tableToCsv(loaded.table)], { type: 'text/csv;charset=utf-8' });
+      else if (loaded.table && kind === 'service-fee-distribution') {
+        const { columns, rows, totals } = loaded.table;
+        const response = await fetch(`${API_BASE}/reports/render`, { method: 'POST', headers: { ...auth, 'Content-Type': 'application/json' }, cache: 'no-store', body: JSON.stringify({ format, title: item.title, period: { from: `${from}T00:00:00`, to: `${to}T23:59:59` }, columns, rows, ...(totals ? { totals } : {}) }) });
+        if (!response.ok) throw new Error('Não foi possível exportar o relatório');
+        blob = await response.blob();
+      }
+      else if (loaded.overview && format === 'csv') {
         const { payments, best, attendants } = loaded.overview.tables;
         const sections = [['Recebimentos por forma', payments], ['Mais vendidos', best], ['Vendas por atendente', attendants]] as const;
         blob = new Blob([`\uFEFF${sections.map(([title, table]) => `${title}\r\n${tableToCsv(table).replace('\uFEFF', '')}`).join('\r\n')}`], { type: 'text/csv;charset=utf-8' });
       }
       else {
-        const token = localStorage.getItem(tokenStorageKey);
-        const response = await fetch(`${API_BASE}/reports/x/${kind}?${queryFor(from, to, choice)}&format=csv`, { headers: token ? { Authorization: `Bearer ${token}` } : {}, cache: 'no-store' });
+        const response = await fetch(`${API_BASE}/reports/x/${kind}?${queryFor(from, to, choice)}&format=${format}`, { headers: auth, cache: 'no-store' });
         if (!response.ok) throw new Error('Não foi possível exportar o relatório');
         blob = await response.blob();
       }
-      if (settings?.printing.companyHeaderOnReports) {
+      if (format === 'csv' && settings?.printing.companyHeaderOnReports) {
         const company = settings.company;
         const header = [company.tradeName || company.legalName, company.document, [company.address, company.number, company.district, company.city, company.state].filter(Boolean).join(', '), company.phone].filter(Boolean);
         if (header.length > 0) {
@@ -114,7 +121,7 @@ function ReportView({ kind, period, onPeriod }: { kind: string; period: Period; 
         }
       }
       const link = document.createElement('a');
-      link.href = URL.createObjectURL(blob); link.download = `relatorio-${kind}-${from}_${to}.csv`; link.click();
+      link.href = URL.createObjectURL(blob); link.download = `relatorio-${kind}-${from}_${to}.${format}`; link.click();
       URL.revokeObjectURL(link.href);
     } catch (e) { setMessage(errorMessage(e, 'Erro ao exportar')); } finally { setExporting(false); }
   }
@@ -122,7 +129,7 @@ function ReportView({ kind, period, onPeriod }: { kind: string; period: Period; 
   const periodLabel = periodless.has(kind) ? 'Situação atual' : `${from.split('-').reverse().join('/')} a ${to.split('-').reverse().join('/')}`;
   return <div className="min-w-0 flex-1">
     <PageHeader title={item.title} subtitle={item.description} actions={<>
-      <button type="button" className={secondaryButtonClass} onClick={() => void exportCsv()} disabled={settingsLoading || exporting || loading || (!loaded.table && !loaded.overview)}>{exporting ? 'Exportando…' : '⬇ Exportar CSV'}</button>
+      {(['csv', 'xlsx', 'pdf'] as const).map(format => <button key={format} type="button" className={secondaryButtonClass} onClick={() => void exportAs(format)} disabled={settingsLoading || exporting || loading || (!loaded.table && !loaded.overview) || (format !== 'csv' && Boolean(loaded.overview))} title={format !== 'csv' && loaded.overview ? 'Este painel combina três tabelas: exporte em CSV ou use Imprimir para gerar PDF' : undefined}>{exporting ? 'Exportando…' : format === 'csv' ? '⬇ CSV' : format === 'xlsx' ? '⬇ Excel' : '⬇ PDF'}</button>)}
       <button type="button" className={secondaryButtonClass} onClick={() => window.print()} disabled={settingsLoading || loading}>🖨 Imprimir</button>
     </>} />
     {message && <Notice message={message} />}

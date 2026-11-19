@@ -20,7 +20,7 @@ test('cash routes use authenticated database scope and atomic transactions', asy
   const originalFindUser = prisma.user.findUnique;
   prisma.user.findUnique = (async () => ({ id: userId, tenantId: tenant, unitId: null, role: UserRole.ADMIN, status: UserStatus.ACTIVE, authVersion: 0, tenant: { status: 'ACTIVE', license: null, modules: [] } })) as never;
   t.after(() => { prisma.user.findUnique = originalFindUser; });
-  const token = signAccessToken({ userId, tenantId: otherTenant, unitId: otherUnit, role: UserRole.MASTER_ADMIN });
+  const token = signAccessToken({ userId, tenantId: otherTenant, unitId: otherUnit, role: UserRole.MASTER_ADMIN, client: 'DESKTOP' });
   const app = express();
   app.use(express.json(), cashRoutes);
   app.use((_error: unknown, _req: express.Request, res: express.Response, _next: express.NextFunction) => res.status(500).json({ message: 'error' }));

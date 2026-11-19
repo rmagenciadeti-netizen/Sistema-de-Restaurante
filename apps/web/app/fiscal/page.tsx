@@ -1,7 +1,7 @@
 'use client';
 
 import { Fragment, useState } from 'react';
-import Link from 'next/link';
+import Link from '../../components/nav-link';
 import { ApiError, api, errorMessage, FiscalDocument, formatDateTime, formatMoney, ListResponse, Order, saveText, storedUser } from '../../lib/api';
 import { useAutoLoad } from '../../lib/use-auto-load';
 import { AppShell, buttonClass, Field, Notice, panelClass, secondaryButtonClass, Select } from '../../components/app-shell';

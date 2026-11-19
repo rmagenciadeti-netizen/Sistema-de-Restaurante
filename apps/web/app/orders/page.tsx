@@ -1,6 +1,6 @@
 'use client';
 
-import Link from 'next/link';
+import Link from '../../components/nav-link';
 import { useRef, useState } from 'react';
 import { api, ApiError, DeliveryZone, errorMessage, formatMoney, ListResponse, ModifierGroup, Order, Product, ProductComposition, RestaurantTable, Unit } from '../../lib/api';
 import { useAutoLoad } from '../../lib/use-auto-load';

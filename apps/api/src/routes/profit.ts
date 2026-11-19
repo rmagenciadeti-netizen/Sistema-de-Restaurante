@@ -46,16 +46,17 @@ async function analyze(scope: Scope, settings: TenantSettingsData, from: Date, t
     prisma.payment.groupBy({ by: ['method'], where: { ...scope, status: 'CONFIRMED', paidAt: { gte: from, lte: to } }, _sum: { amount: true } }),
     prisma.orderItem.findMany({
       where: { order: completed }, take: ITEM_CAP,
-      select: { productId: true, quantity: true, weightKg: true, total: true, order: { select: { createdByUserId: true } }, product: { select: { cost: true, isCombo: true, name: true, category: { select: { name: true } } } } },
+      select: { productId: true, quantity: true, weightKg: true, total: true, unitCost: true, order: { select: { createdByUserId: true } }, product: { select: { cost: true, isCombo: true, name: true, category: { select: { name: true } } } } },
     }),
     prisma.financialEntry.findMany({ where: { ...scope, type: FinancialEntryType.EXPENSE, status: FinancialEntryStatus.PAID, settledAt: { gte: from, lte: to } }, select: { category: true, paidAmount: true, amount: true } }),
     prisma.order.groupBy({ by: ['unitId'], where: completed, _sum: { serviceFee: true } }),
     prisma.unit.findMany({ where: { tenantId: scope.tenantId }, select: { id: true, waiterSharePercent: true } }),
   ]);
-  const recipes = await recipeCosts(scope.tenantId, [...new Set(items.filter(item => item.product.cost === null && !item.product.isCombo).map(item => item.productId))]);
+  const recipes = await recipeCosts(scope.tenantId, [...new Set(items.filter(item => item.unitCost === null && item.product.cost === null && !item.product.isCombo).map(item => item.productId))]);
   const profitItems: (ProfitItem & { productName: string })[] = items.map(item => {
     const units = item.weightKg ? n(item.weightKg) * n(item.quantity) : n(item.quantity);
-    const unitCost = item.product.isCombo ? 0 : item.product.cost !== null ? n(item.product.cost) : recipes.get(item.productId)?.perPortion ?? null;
+    // The cost frozen at sale time wins; older sales fall back to the current cost or recipe.
+    const unitCost = item.product.isCombo ? 0 : item.unitCost !== null ? n(item.unitCost) : item.product.cost !== null ? n(item.product.cost) : recipes.get(item.productId)?.perPortion ?? null;
     return { productId: item.productId, productName: item.product.name, category: item.product.category?.name ?? 'Sem categoria', userId: item.order.createdByUserId, units, revenue: n(item.total), unitCost };
   });
   const expenseMap = new Map<string, number>();
@@ -144,17 +145,18 @@ profitRoutes.get('/cost-history', async (req, res, next) => {
 
 profitRoutes.get('/waste', async (req, res, next) => {
   try {
+    const WASTE_CATEGORY = { EXPIRED: 'Vencido', DAMAGED: 'Danificado', PRODUCTION: 'Perda na produção', OTHER: 'Outros' } as const;
     const range = period(req.query);
     if (!range) return res.status(400).json({ message: 'Invalid date range' });
     const scope = tenantScope(req);
     const moves = await prisma.stockMovement.findMany({
       where: { ...scope, type: 'WASTE', createdAt: { gte: range.from, lte: range.to } }, orderBy: { createdAt: 'desc' }, take: 1000,
-      select: { id: true, quantity: true, unitCost: true, note: true, createdAt: true, actorUserId: true, ingredient: { select: { name: true, unitOfMeasure: true, averageCost: true } } },
+      select: { id: true, quantity: true, unitCost: true, note: true, reason: true, createdAt: true, actorUserId: true, ingredient: { select: { name: true, unitOfMeasure: true, averageCost: true } } },
     });
     const actorIds = [...new Set(moves.map(move => move.actorUserId).filter((id): id is string => Boolean(id)))];
     const users = actorIds.length ? await prisma.user.findMany({ where: { id: { in: actorIds }, tenantId: scope.tenantId }, select: { id: true, name: true } }) : [];
-    const rows = moves.map(move => ({ id: move.id, createdAt: move.createdAt, ingredient: move.ingredient.name, unit: move.ingredient.unitOfMeasure, quantity: Math.abs(n(move.quantity)), reason: move.note ?? 'Sem justificativa', responsible: users.find(user => user.id === move.actorUserId)?.name ?? '—', cost: r2(Math.abs(n(move.quantity)) * (n(move.unitCost) || n(move.ingredient.averageCost))) }));
-    const group = (key: 'ingredient' | 'responsible' | 'reason') => [...rows.reduce((map, row) => map.set(row[key], (map.get(row[key]) ?? 0) + row.cost), new Map<string, number>()).entries()].map(([name, cost]) => ({ name, cost: r2(cost) })).sort((a, b) => b.cost - a.cost);
-    return res.json({ items: rows, total: r2(rows.reduce((sum, row) => sum + row.cost, 0)), byIngredient: group('ingredient'), byResponsible: group('responsible'), byReason: group('reason'), unvalued: rows.filter(row => row.cost === 0).length });
+    const rows = moves.map(move => ({ id: move.id, createdAt: move.createdAt, ingredient: move.ingredient.name, unit: move.ingredient.unitOfMeasure, quantity: Math.abs(n(move.quantity)), category: WASTE_CATEGORY[move.reason ?? 'OTHER'], reason: move.note ?? 'Sem justificativa', responsible: users.find(user => user.id === move.actorUserId)?.name ?? '—', cost: r2(Math.abs(n(move.quantity)) * (n(move.unitCost) || n(move.ingredient.averageCost))) }));
+    const group = (key: 'ingredient' | 'responsible' | 'reason' | 'category') => [...rows.reduce((map, row) => map.set(row[key], (map.get(row[key]) ?? 0) + row.cost), new Map<string, number>()).entries()].map(([name, cost]) => ({ name, cost: r2(cost) })).sort((a, b) => b.cost - a.cost);
+    return res.json({ items: rows, total: r2(rows.reduce((sum, row) => sum + row.cost, 0)), byIngredient: group('ingredient'), byResponsible: group('responsible'), byReason: group('reason'), byCategory: group('category'), unvalued: rows.filter(row => row.cost === 0).length });
   } catch (error) { return next(error); }
 });

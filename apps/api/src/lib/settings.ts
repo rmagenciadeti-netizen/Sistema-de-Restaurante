@@ -1,4 +1,5 @@
 import { Prisma } from '@prisma/client';
+import { kdsStagesSection } from './kds-stages';
 import { z } from 'zod';
 
 const hhmm = z.string().regex(/^([01]\d|2[0-3]):[0-5]\d$/, 'Use HH:mm');
@@ -25,6 +26,8 @@ export const SETTINGS_SECTIONS = {
   }),
   fulfillment: z.object({
     allowPickup: z.boolean().default(true), allowDelivery: z.boolean().default(true), allowDineIn: z.boolean().default(true),
+    // QR table orders wait for the staff to accept them (false = they go straight to the kitchen).
+    qrConfirmation: z.boolean().default(false),
     estimatedTime: z.boolean().default(false), pickupMinutes: z.number().int().min(0).max(600).default(30), deliveryMinutes: z.number().int().min(0).max(600).default(50),
     deliveryFeeMode: z.enum(['SINGLE', 'UNMAPPED', 'ZONES', 'DISTRICT']).default('ZONES'),
     singleFee: z.number().min(0).max(9999).default(0), minDelivery: z.number().min(0).max(99999).default(0), freeDeliveryMin: z.number().min(0).max(99999).default(0),
@@ -57,7 +60,7 @@ export const SETTINGS_SECTIONS = {
   printing: z.object({
     askPrintSale: z.boolean().default(false), askPrintOrder: z.boolean().default(false), askPrintTicket: z.boolean().default(false),
     companyHeader: z.boolean().default(true), companyHeaderOnProduction: z.boolean().default(false), companyHeaderOnReports: z.boolean().default(false),
-    paper: z.enum(['58mm', '80mm', 'A4']).default('58mm'), fontSize: z.number().int().min(1).max(20).default(5), promissoryPaper: z.enum(['A4', '80mm']).default('A4'), autoPrintPromissory: z.boolean().default(false),
+    paper: z.enum(['55mm', '58mm', '80mm', 'A4']).default('58mm'), footer: z.string().max(200).default(''), receiptCopies: z.number().int().min(1).max(3).default(1), tefCopies: z.enum(['CUSTOMER', 'BOTH']).default('BOTH'), fontSize: z.number().int().min(1).max(20).default(5), promissoryPaper: z.enum(['A4', '80mm']).default('A4'), autoPrintPromissory: z.boolean().default(false),
   }),
   ticket: z.object({ enabled: z.boolean().default(true) }),
   financial: z.object({
@@ -65,6 +68,17 @@ export const SETTINGS_SECTIONS = {
     earlyDiscountPercent: z.number().min(0).max(100).default(0), earlyMinDays: z.number().int().min(0).max(365).default(0), installmentDays: z.number().int().min(1).max(365).default(30),
   }),
   products: z.object({ defaultMarginPercent: z.number().min(0).max(1000).default(0) }),
+  // Price formation: company-wide percentages that complement `products.defaultMarginPercent` and `profit` (tax and card fee). Each product may override them.
+  pricing: z.object({
+    commissionPercent: z.number().min(0).max(60).default(0), operationalCostPercent: z.number().min(0).max(60).default(0), otherVariablePercent: z.number().min(0).max(60).default(0),
+    rounding: z.enum(['NONE', 'UP_10_CENTS', 'UP_TO_90']).default('NONE'),
+  }),
+  // SUPER IA RM Intelligence. External model calls are opt-in per company; the deterministic analyses always work without them.
+  ai: z.object({
+    externalConsent: z.boolean().default(false), externalEnabled: z.boolean().default(true),
+    limits: z.object({ llmCallsPerTenantDay: z.number().int().min(0).max(100_000).default(100), llmCallsPerUserDay: z.number().int().min(0).max(10_000).default(30), llmCallsPerModuleDay: z.number().int().min(0).max(10_000).default(50), llmCallsPerUnitDay: z.number().int().min(0).max(50_000).default(60), maxSpecialistsPerQuestion: z.number().int().min(1).max(5).default(3), maxInputChars: z.number().int().min(500).max(20_000).default(6000) }).default({ llmCallsPerTenantDay: 100, llmCallsPerUserDay: 30, llmCallsPerModuleDay: 50, llmCallsPerUnitDay: 60, maxSpecialistsPerQuestion: 3, maxInputChars: 6000 }),
+    cacheTtlSeconds: z.number().int().min(0).max(3600).default(300), historyRetentionDays: z.number().int().min(1).max(730).default(90),
+  }),
   orders: z.object({ resetCounterDaily: z.boolean().default(false) }),
   // RM Controle de Lucro: calculation method. Rates are estimates applied to registered sales; fixed categories split paid expenses into fixed and variable.
   profit: z.object({
@@ -77,12 +91,33 @@ export const SETTINGS_SECTIONS = {
     monthlyGoal: z.number().min(0).max(100_000_000).default(0),
     alerts: z.object({
       salesDrop: z.boolean().default(true), lowStock: z.boolean().default(true), payables: z.boolean().default(true), receivables: z.boolean().default(true),
-      lowMargin: z.boolean().default(true), delayedOrders: z.boolean().default(true), cashDivergence: z.boolean().default(true), waste: z.boolean().default(true),
-    }).default({ salesDrop: true, lowStock: true, payables: true, receivables: true, lowMargin: true, delayedOrders: true, cashDivergence: true, waste: true }),
+      lowMargin: z.boolean().default(true), delayedOrders: z.boolean().default(true), cashDivergence: z.boolean().default(true), waste: z.boolean().default(true), expiring: z.boolean().default(true),
+    }).default({ salesDrop: true, lowStock: true, payables: true, receivables: true, lowMargin: true, delayedOrders: true, cashDivergence: true, waste: true, expiring: true }),
+    expiringDays: z.number().int().min(0).max(60).default(3),
     salesDropPercent: z.number().int().min(5).max(90).default(30),
     payableDays: z.number().int().min(0).max(30).default(3),
     delayedMinutes: z.number().int().min(5).max(240).default(30),
     marginFloorPercent: z.number().min(0).max(100).default(15),
+  }),
+  // Central de automações: each rule can be switched off; every situation notifies at most once per day (once per period for summaries and goals).
+  automations: z.object({
+    enabled: z.boolean().default(true),
+    rules: z.object({
+      lowStock: z.boolean().default(true), payables: z.boolean().default(true), receivables: z.boolean().default(true), delayedOrders: z.boolean().default(true),
+      cashDivergence: z.boolean().default(true), expiring: z.boolean().default(true), salesDrop: z.boolean().default(true), lowMargin: z.boolean().default(false),
+      waste: z.boolean().default(false), goalReached: z.boolean().default(true), belowGoal: z.boolean().default(false), dailySummary: z.boolean().default(true), weeklyReport: z.boolean().default(true),
+    }).default({ lowStock: true, payables: true, receivables: true, delayedOrders: true, cashDivergence: true, expiring: true, salesDrop: true, lowMargin: false, waste: false, goalReached: true, belowGoal: false, dailySummary: true, weeklyReport: true }),
+    emailTo: z.array(z.string().trim().toLowerCase().email().max(160)).max(5).default([]),
+    summaryHour: z.number().int().min(0).max(23).default(8),
+  }),
+  // RM Cliente VIP: points earned per real spent, what a point is worth when redeemed (as a one-use coupon) and when idle points expire (0 = never).
+  loyalty: z.object({
+    enabled: z.boolean().default(true),
+    pointsPerReal: z.number().min(0).max(100).default(1),
+    redeemValuePerPoint: z.number().min(0).max(10).default(0.05),
+    minRedeemPoints: z.number().int().min(1).max(1_000_000).default(100),
+    validityDays: z.number().int().min(0).max(3650).default(0),
+    couponValidDays: z.number().int().min(1).max(365).default(30),
   }),
   // Visual identity of the restaurant (RM default: dark, gold, black sidebar). Users may override it for themselves unless allowUserOverride is off.
   appearance: z.object({
@@ -97,6 +132,7 @@ export const SETTINGS_SECTIONS = {
     replyOutsideHours: z.boolean().default(true), aiFallback: z.boolean().default(false),
     replyDelaySeconds: z.number().int().min(0).max(10).default(2), humanizeTyping: z.boolean().default(true), menuFooter: z.string().max(200).default(''),
   }),
+  kdsStages: kdsStagesSection,
   orderStatuses: z.object({
     items: z.array(z.object({ key: z.string().max(40), title: z.string().min(1).max(40), active: z.boolean() })).max(30).default([]),
   }),

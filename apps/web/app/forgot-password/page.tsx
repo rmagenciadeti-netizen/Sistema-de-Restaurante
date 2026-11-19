@@ -1,7 +1,7 @@
 'use client';
 
 import { useState } from 'react';
-import Link from 'next/link';
+import Link from '../../components/nav-link';
 import { ApiError, publicApi } from '../../lib/api';
 import { buttonClass, Field, Notice } from '../../components/app-shell';
 

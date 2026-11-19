@@ -68,6 +68,15 @@ export async function downloadFile(path: string, fallbackName: string): Promise<
   const link = document.createElement('a'); link.href = URL.createObjectURL(await response.blob()); link.download = name; link.click(); URL.revokeObjectURL(link.href);
   return response.headers;
 }
+// Authenticated raw upload (the file is the request body); used by the migration engine.
+export async function uploadFile<T>(path: string, file: File): Promise<T> {
+  const token = localStorage.getItem(tokenStorageKey);
+  const response = await fetch(`${API_BASE}${path}`, { method: 'POST', headers: { 'Content-Type': 'application/octet-stream', ...(token ? { Authorization: `Bearer ${token}` } : {}) }, body: file, cache: 'no-store' });
+  if (response.status === 401) endSession();
+  const payload = await response.json().catch(() => ({}));
+  if (!response.ok) throw new ApiError(payload.message ?? 'Falha ao enviar o arquivo', response.status, payload);
+  return payload as T;
+}
 export function saveText(text: string, fileName: string, type = 'application/xml') {
   const link = document.createElement('a'); link.href = URL.createObjectURL(new Blob([text], { type })); link.download = fileName; link.click(); URL.revokeObjectURL(link.href);
 }
@@ -95,18 +104,19 @@ export type WindowsPrinter = { name: string; isDefault?: boolean; driver?: strin
 export type PrintAgent = { id: string; name: string; unitId?: string | null; active: boolean; lastSeenAt?: string | null; createdAt?: string; printers?: WindowsPrinter[]; printersReportedAt?: string | null };
 export type PrintJob = { id: string; kind: string; status: string; attempts: number; error?: string | null; createdAt: string; printedAt?: string | null; printer?: { id: string; name: string } | null; sector?: { id: string; name: string } | null };
 export type OrderItemModifier = { id: string; optionId?: string | null; name: string; price: string | number; quantity: number };
-export type KdsItem = { id: string; modifiers?: OrderItemModifier[]; parentItem?: { product: { name: string } } | null; quantity: number | string; notes?: string | null; status: 'PENDING' | 'PREPARING' | 'READY'; createdAt: string; product: { name: string; sector?: { id: string; name: string } | null }; order: { id: string; code: string; channel: string; tableLabel?: string | null; customerName?: string | null; createdAt: string } };
+export type KdsStage = { key: string; label: string; phase: 'PENDING' | 'PREPARING' | 'READY' | 'DELIVERED'; color: string };
+export type KdsItem = { id: string; stage?: KdsStage; modifiers?: OrderItemModifier[]; parentItem?: { product: { name: string } } | null; quantity: number | string; notes?: string | null; status: 'PENDING' | 'PREPARING' | 'READY'; createdAt: string; startedAt?: string | null; product: { name: string; sector?: { id: string; name: string; avgPrepMinutes?: number | null } | null }; order: { id: string; code: string; channel: string; tableLabel?: string | null; customerName?: string | null; createdAt: string; priority?: boolean; createdBy?: { name: string } | null } };
 export type RestaurantTable = { id: string; unitId: string; label: string; seats: number; qrToken: string; active: boolean };
 export type PublicMenu = { restaurant: string; unit: string; table: string; serviceFeePercent: string | number; categories: { id: string | null; name: string; products: PublicProduct[] }[] };
-export type PublicOrderResult = { id: string; code: string; status: string; total: string | number; serviceFee: string | number };
-export type Customer = { id: string; name: string; phone: string; email?: string | null; document?: string | null; address?: string | null; notes?: string | null; marketingConsent: boolean; loyaltyPoints: number; createdAt: string; orders?: { id: string; code: string; channel: string; status: string; total: string | number; createdAt: string }[] };
+export type PublicOrderResult = { id: string; code: string; status: string; total: string | number; serviceFee: string | number; awaitingConfirmation?: boolean };
+export type Customer = { id: string; name: string; phone: string; email?: string | null; birthDate?: string | null; document?: string | null; address?: string | null; notes?: string | null; marketingConsent: boolean; loyaltyPoints: number; createdAt: string; orders?: { id: string; code: string; channel: string; status: string; total: string | number; createdAt: string }[] };
 export type Coupon = { id: string; code: string; type: 'PERCENT' | 'FIXED'; value: string | number; minOrder?: string | number | null; maxUses?: number | null; usedCount: number; validFrom?: string | null; validUntil?: string | null; active: boolean };
 export type Reservation = { id: string; unitId: string; tableId?: string | null; table?: { id: string; label: string } | null; customerName: string; phone?: string | null; partySize: number; reservedAt: string; status: 'PENDING' | 'CONFIRMED' | 'SEATED' | 'CANCELLED' | 'NO_SHOW'; notes?: string | null };
 export type Supplier = { id: string; name: string; document?: string | null; phone?: string | null; email?: string | null };
 export type Ingredient = { id: string; unitId?: string | null; name: string; unitOfMeasure: string; currentStock: string | number; minimumStock?: string | number | null };
 export type PurchaseOrder = { id: string; code: string; status: 'DRAFT' | 'RECEIVED' | 'CANCELLED'; total: string | number; dueAt?: string | null; createdAt: string; supplier: { id: string; name: string }; items: { id: string; quantity: string | number; unitCost: string | number; ingredient: { id: string; name: string; unitOfMeasure: string } }[] };
 export type InventoryAdjustment = { ingredientId: string; name: string; previous: string | number; counted: string | number; difference: string | number };
-export type DeliveryZone = { id: string; name: string; fee: string | number; minOrder?: string | number | null; estimatedMinutes?: number | null; active: boolean };
+export type DeliveryZone = { id: string; name: string; fee: string | number; minOrder?: string | number | null; estimatedMinutes?: number | null; neighborhoods?: string[]; active: boolean };
 export type DeliveryJob = { id: string; orderId: string; courierName?: string | null; courierPhone?: string | null; address?: string | null; status: 'PENDING' | 'ASSIGNED' | 'PICKED_UP' | 'DELIVERED' | 'CANCELLED'; provider?: string | null; createdAt: string; order?: Order };
 
 export type ModifierOption = { id: string; name: string; price: string | number; active?: boolean; sectorId?: string | null; ingredientId?: string | null; ingredientQuantity?: string | number | null };

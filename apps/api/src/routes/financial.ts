@@ -24,12 +24,19 @@ financialRoutes.get('/entries', async (req, res, next) => {
     const { page, pageSize, type, status } = query.data;
     const where = { tenantId: req.auth!.tenantId!, ...(req.auth!.unitId ? { unitId: req.auth!.unitId } : {}), ...(type ? { type } : {}), ...(status ? { status } : {}) };
     const [items, total] = await Promise.all([
-      prisma.financialEntry.findMany({ where, orderBy: [{ createdAt: 'desc' }, { id: 'desc' }], skip: (page - 1) * pageSize, take: pageSize }),
+      // Entries created by the data migration carry the supplier/customer, cost centre and bank account they were linked to.
+      prisma.financialEntry.findMany({ where, orderBy: [{ createdAt: 'desc' }, { id: 'desc' }], skip: (page - 1) * pageSize, take: pageSize, include: { supplier: { select: { id: true, name: true } }, customer: { select: { id: true, name: true } }, costCenter: { select: { id: true, name: true } }, bankAccount: { select: { id: true, name: true } } } }),
       prisma.financialEntry.count({ where }),
     ]);
     return res.json({ items, total, page, pageSize });
   }
   catch (error) { return next(error); }
+});
+financialRoutes.get('/cost-centers', async (req, res, next) => {
+  try { const items = await prisma.costCenter.findMany({ where: { tenantId: req.auth!.tenantId! }, orderBy: { name: 'asc' } }); return res.json({ items, total: items.length }); } catch (error) { return next(error); }
+});
+financialRoutes.get('/bank-accounts', async (req, res, next) => {
+  try { const items = await prisma.bankAccount.findMany({ where: { tenantId: req.auth!.tenantId! }, orderBy: { name: 'asc' } }); return res.json({ items, total: items.length }); } catch (error) { return next(error); }
 });
 financialRoutes.post('/entries', async (req, res, next) => {
   try {

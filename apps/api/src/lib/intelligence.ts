@@ -128,3 +128,36 @@ export function extractAmount(question: string): number | null {
 }
 
 export const brl = (value: number) => `R$ ${value.toFixed(2).replace('.', ',').replace(/\B(?=(\d{3})+(?!\d))/g, '.')}`;
+
+export type RangedForecast = {
+  method: string; windowWeeks: number; sampleDays: number; estimate: true;
+  nextDays: Array<{ day: string; expected: number; low: number; high: number }>;
+  week: { expected: number; low: number; high: number };
+  month: { projection: number; low: number; high: number; remainingDays: number } | null;
+  uncertainty: string;
+};
+
+// Forecast by weekday average with its spread: each weekday keeps the mean and the standard deviation of the last `windowWeeks` weeks.
+// The range is mean ± 1 standard deviation per day (days combined as independent, so the spread of a sum is the square root of the summed variances).
+// It is a statistical estimate, not a commitment; with fewer than `minDays` days of sales there is no forecast at all.
+export function forecastWithRange(dayTotals: Map<string, number>, today: string, monthToDate: number, windowWeeks = 8, minDays = 14): RangedForecast | null {
+  const window = windowWeeks * 7;
+  const byWeekday: number[][] = Array.from({ length: 7 }, () => []);
+  let sampleDays = 0;
+  for (let offset = 1; offset <= window; offset += 1) {
+    const day = addDays(today, -offset); const value = dayTotals.get(day) ?? 0;
+    byWeekday[weekdayOf(day)].push(value); if (value > 0) sampleDays += 1;
+  }
+  if (sampleDays < minDays) return null;
+  const stats = byWeekday.map(values => { const mean = values.reduce((sum, value) => sum + value, 0) / Math.max(1, values.length); const variance = values.reduce((sum, value) => sum + (value - mean) ** 2, 0) / Math.max(1, values.length); return { mean, sd: Math.sqrt(variance) }; });
+  const range = (days: string[]) => { const mean = days.reduce((sum, day) => sum + stats[weekdayOf(day)].mean, 0); const sd = Math.sqrt(days.reduce((sum, day) => sum + stats[weekdayOf(day)].sd ** 2, 0)); return { expected: round2(mean), low: round2(Math.max(0, mean - sd)), high: round2(mean + sd) }; };
+  const nextDays = Array.from({ length: 7 }, (_, index) => { const day = addDays(today, index + 1); return { day, ...range([day]) }; });
+  const lastDay = new Date(Date.UTC(Number(today.slice(0, 4)), Number(today.slice(5, 7)), 0)).getUTCDate();
+  const rest = Array.from({ length: lastDay - Number(today.slice(8, 10)) }, (_, index) => `${today.slice(0, 8)}${String(Number(today.slice(8, 10)) + index + 1).padStart(2, '0')}`);
+  const tail = range(rest);
+  return {
+    method: `Média por dia da semana das últimas ${windowWeeks} semanas, com faixa de ±1 desvio-padrão`, windowWeeks, sampleDays, estimate: true, nextDays, week: range(nextDays.map(item => item.day)),
+    month: { projection: round2(monthToDate + tail.expected), low: round2(monthToDate + tail.low), high: round2(monthToDate + tail.high), remainingDays: rest.length },
+    uncertainty: 'Estimativa estatística, não garantia: feriados, eventos, clima e promoções não entram no cálculo. A faixa cobre cerca de dois terços dos resultados quando as vendas variam de forma regular.',
+  };
+}

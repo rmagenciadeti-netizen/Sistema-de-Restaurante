@@ -1,17 +1,31 @@
-import { Router } from 'express';
+import { Router, type NextFunction, type Request, type Response } from 'express';
 import { FinancialEntryStatus, FinancialEntryType, OrderStatus, Prisma } from '@prisma/client';
 import { z } from 'zod';
 import { prisma } from '../lib/prisma';
-import { FINANCE_ROLES, requireRoles } from '../lib/permissions';
+import { FINANCE_ROLES } from '../lib/permissions';
 import { loadSettings, type TenantSettingsData } from '../lib/settings';
 import { requireAuth, requireTenant } from '../middleware/auth';
 import { tenantScope } from '../lib/report-helpers';
 import { localParts } from '../lib/scheduling';
 import { currentAiProvider } from '../lib/ai-provider';
+import { callModel, effectiveLimits } from '../lib/ai/gateway';
+import { limitStatus } from '../lib/ai/usage';
 import { addDays, analyzeSales, brl, detectIntent, extractAmount, forecastRevenue, goalProgress, weeklyTrend, type Sale } from '../lib/intelligence';
 
 export const intelligenceRoutes = Router();
-intelligenceRoutes.use(requireAuth, requireTenant, requireRoles(...FINANCE_ROLES));
+
+// RM Inteligência answers about revenue, profit, expenses and cash, so it inherits exactly the Financial module's permission. The check runs
+// in the API before any data is loaded or sent to a model; the user's role is re-read from the database on every request (middleware/auth).
+const FINANCE_DENIED = 'Você não possui permissão para consultar informações do módulo Financeiro. Solicite autorização ao administrador responsável.';
+async function requireIntelligenceAccess(req: Request, res: Response, next: NextFunction) {
+  if (req.auth && FINANCE_ROLES.includes(req.auth.role)) return next();
+  try {
+    // Only the attempted route and role are stored, never the question text.
+    await prisma.auditLog.create({ data: { tenantId: req.auth?.tenantId ?? null, actorUserId: req.auth?.userId ?? null, action: 'INTELLIGENCE_ACCESS_DENIED', entityType: 'Intelligence', metadata: { method: req.method, path: req.path, role: req.auth?.role ?? null } } });
+  } catch { /* the denial must hold even if the audit write fails */ }
+  return res.status(403).json({ message: FINANCE_DENIED, code: 'MODULE_FORBIDDEN', module: 'financial' });
+}
+intelligenceRoutes.use(requireAuth, requireTenant, requireIntelligenceAccess);
 
 type Alert = { key: string; severity: 'critical' | 'warning' | 'info'; title: string; detail: string; href: string };
 const n = (value: Prisma.Decimal.Value | null | undefined) => Number(value ?? 0);
@@ -24,7 +38,7 @@ function localMidnight(day: string, timeZone: string): Date {
   return new Date(Date.UTC(Number(day.slice(0, 4)), Number(day.slice(5, 7)) - 1, Number(day.slice(8, 10))) - offsetMinutes * 60_000);
 }
 
-async function loadInsights(scope: ReturnType<typeof tenantScope>, settings: TenantSettingsData, now = new Date()) {
+export async function loadInsights(scope: ReturnType<typeof tenantScope>, settings: TenantSettingsData, now = new Date()) {
   const tz = settings.hours.timezone;
   const config = settings.intelligence;
   const today = localParts(now, tz).day;
@@ -103,6 +117,13 @@ async function loadInsights(scope: ReturnType<typeof tenantScope>, settings: Ten
   if (on.delayedOrders && delayed > 0) alerts.push({ key: 'delayed-orders', severity: 'critical', title: `${delayed} pedido(s) atrasado(s)`, detail: `Pedidos abertos há mais de ${config.delayedMinutes} minutos.`, href: '/monitor' });
   if (on.cashDivergence && divergences.length > 0) alerts.push({ key: 'cash-divergence', severity: 'warning', title: `${divergences.length} fechamento(s) de caixa com divergência`, detail: 'Nos últimos 30 dias o valor contado difere do esperado.', href: '/reports?r=cash-closings' });
   if (on.waste && wasteCost > 0) alerts.push({ key: 'waste', severity: 'info', title: 'Desperdício registrado', detail: `Perdas de ${brl(wasteCost)} em 30 dias, valorizadas pelo custo registrado.`, href: '/inventory' });
+
+  const expiringLimit = new Date(now.getTime() + config.expiringDays * 86_400_000);
+  const expiring = on.expiring ? await prisma.ingredient.findMany({ where: { ...scope, active: true, expiresAt: { lte: expiringLimit }, currentStock: { gt: 0 } }, select: { name: true, expiresAt: true }, orderBy: { expiresAt: 'asc' }, take: 50 }) : [];
+  if (on.expiring && expiring.length > 0) {
+    const expired = expiring.filter(item => item.expiresAt && item.expiresAt < now).length;
+    alerts.push({ key: 'expiring', severity: expired > 0 ? 'critical' : 'warning', title: expired > 0 ? `${expired} insumo(s) vencido(s) em estoque` : `${expiring.length} insumo(s) vencem em até ${config.expiringDays} dia(s)`, detail: expiring.slice(0, 5).map(item => `${item.name} (${item.expiresAt ? localParts(item.expiresAt, tz).day : ''})`).join('; '), href: '/inventory' });
+  }
 
   return { now, tz, config, analysis, forecast, trend, ranked, lessSold, margins, month: monthReceipts, expenses: { current: round2(expensesCurrent), previous: round2(expensesPrevious), byCategory: [...expenseByCategory.entries()].map(([category, value]) => ({ category, current: round2(value.current), previous: round2(value.previous) })) }, wasteCost, lowStock, alerts, topEmployees: bestUsers.map(user => ({ ...user, name: users.find(item => item.id === user.userId)?.name ?? 'Usuário removido' })), truncated: orders.length >= 50_000 };
 }
@@ -245,10 +266,9 @@ intelligenceRoutes.get('/stock', async (req, res, next) => {
   } catch (error) { return next(error); }
 });
 
-// Business intelligence: rule-based executive diagnosis from real data; optional generative narrative when an AI provider is configured and limits allow.
-const aiUsage = new Map<string, { day: string; count: number }>();
-const aiDailyLimit = () => Math.max(0, Number(process.env.AI_DAILY_LIMIT ?? 10));
-const aiRemaining = (tenantId: string, day: string) => { const usage = aiUsage.get(tenantId); return Math.max(0, aiDailyLimit() - (usage && usage.day === day ? usage.count : 0)); };
+// Business intelligence: rule-based executive diagnosis from real data; optional generative narrative through the shared AI gateway (consent, limits, metering).
+const BUSINESS_SYSTEM = 'Você é o RM Inteligência, analista de negócios de restaurantes. Responda em português do Brasil, em até 8 linhas, usando SOMENTE os números fornecidos. Não invente valores. Diferencie resultado efetivo de estimativa e termine com 3 ações práticas.';
+const aiRemaining = async (scope: ReturnType<typeof tenantScope>, userId: string, settings: TenantSettingsData) => { const status = await limitStatus(scope.tenantId, userId, 'assistant', effectiveLimits(settings), scope.unitId ?? null); return Math.max(0, Math.min(status.tenant.limit - status.tenant.used, status.user.limit - status.user.used, status.module.limit - status.module.used)); };
 
 intelligenceRoutes.post('/business', async (req, res, next) => {
   try {
@@ -271,21 +291,15 @@ intelligenceRoutes.post('/business', async (req, res, next) => {
     if (insights.alerts.some(alert => alert.key === 'delayed-orders')) diagnosis.push({ tone: 'critical', title: 'Pedidos atrasados na operação', detail: insights.alerts.find(alert => alert.key === 'delayed-orders')!.detail, href: '/kds' });
     if (diagnosis.length === 0) diagnosis.push({ tone: 'info', title: 'Dados insuficientes', detail: 'Ainda não há vendas, custos ou despesas suficientes para um diagnóstico. Continue operando e registrando.' });
 
-    const day = localParts(insights.now, insights.tz).day;
     const provider = currentAiProvider();
-    const remaining = aiRemaining(scope.tenantId, day);
-    let ai: { text: string; provider: string } | null = null; let aiNote: string | null = null;
+    let ai: { text: string; provider: string; usage: { model: string | null; inputTokens: number | null; outputTokens: number | null; estimated: boolean } | null } | null = null; let aiNote: string | null = null;
     if (input.data.useAi) {
-      if (!provider) aiNote = 'IA generativa não configurada neste ambiente (AI_API_KEY/AI_MODEL). O diagnóstico acima usa apenas os dados do sistema.';
-      else if (remaining <= 0) aiNote = 'Limite diário de análises com IA atingido para este estabelecimento.';
-      else {
         const facts = { hoje: analysis.today, mesAteHoje: analysis.monthToDate, mesAnteriorMesmoPeriodo: analysis.previousMonthSamePeriod, ticketMedioMes: analysis.avgTicketMonth, resultadoMes: month, ultimos7Dias: trend, previsaoMes: forecast?.monthProjection ?? null, despesas: expenses, desperdicio30d: wasteCost, estoqueCritico: lowStock.slice(0, 8), maisVendidos: ranked.slice(0, 5), menosVendidos: lessSold, canais: analysis.byChannel, diagnostico: diagnosis.map(item => `${item.title}: ${item.detail}`) };
-        try {
-          const text = await provider.answer({ system: 'Você é o RM Inteligência, analista de negócios de restaurantes. Responda em português do Brasil, em até 8 linhas, usando SOMENTE os números fornecidos. Não invente valores. Diferencie resultado efetivo de estimativa e termine com 3 ações práticas.', question: JSON.stringify(facts) });
-          if (text) { ai = { text, provider: provider.name }; const usage = aiUsage.get(scope.tenantId); aiUsage.set(scope.tenantId, { day, count: (usage && usage.day === day ? usage.count : 0) + 1 }); } else aiNote = 'A IA não retornou resposta; use o diagnóstico acima.';
-        } catch { aiNote = 'A IA não respondeu agora; use o diagnóstico acima.'; }
-      }
+      const result = await callModel({ ctx: { tenantId: scope.tenantId, unitId: scope.unitId ?? null, userId: req.auth!.userId }, settings, module: 'assistant', operation: 'business', system: BUSINESS_SYSTEM, question: JSON.stringify(facts), maxChars: 12_000, maxTokens: 500 });
+      if (!result.ok) aiNote = result.reason;
+      else if (result.text) ai = { text: result.text, provider: provider?.name ?? 'ia', usage: result.usage };
+      else aiNote = 'A IA não retornou resposta; use o diagnóstico acima.';
     }
-    return res.json({ generatedAt: insights.now, diagnosis, ai, aiNote, aiAvailable: Boolean(provider), aiRemainingToday: aiRemaining(scope.tenantId, day), source: 'Dados reais do estabelecimento. A narrativa de IA, quando ativa, recebe apenas números agregados.' });
+    return res.json({ generatedAt: insights.now, diagnosis, ai, aiNote, aiAvailable: Boolean(provider) && settings.ai.externalConsent && settings.ai.externalEnabled, aiRemainingToday: await aiRemaining(scope, req.auth!.userId, settings), source: 'Dados reais do estabelecimento. A narrativa de IA, quando ativa, recebe apenas números agregados.' });
   } catch (error) { return next(error); }
 });

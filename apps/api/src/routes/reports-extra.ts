@@ -8,6 +8,7 @@ import { prisma } from '../lib/prisma';
 import { loadSettings } from '../lib/settings';
 import { effectiveUnitPrice } from '../lib/promotions';
 import { D, dayKey, finalizeReport, formatDay, parsePeriod, percentOf, reportToCsv, sumDecimals, tenantScope } from '../lib/report-helpers';
+import { EXPORT_FORMATS, isExportFormat, reportToPdf, reportToXlsx } from '../lib/report-export';
 import type { ReportBody, ReportColumn } from '../lib/report-helpers';
 
 // Tabular reports ("Central de relatórios"): every kind returns the same shape so the UI and CSV export are generic.
@@ -456,10 +457,16 @@ reportsExtraRoutes.get('/x/:kind', async (req, res, next) => {
     const tz = (await loadSettings(prisma, scope.tenantId)).hours.timezone;
     const body = await definition.build({ tenantId: scope.tenantId, scope, ...period, tz, now: new Date(), query: req.query });
     const report = finalizeReport(req.params.kind, period, body);
-    if (req.query.format === 'csv') {
-      res.setHeader('Content-Type', 'text/csv; charset=utf-8');
-      res.setHeader('Content-Disposition', `attachment; filename="relatorio-${req.params.kind}.csv"`);
-      return res.send(reportToCsv(report, tz));
+    const format = req.query.format;
+    if (isExportFormat(format)) {
+      const settings = await loadSettings(prisma, scope.tenantId);
+      const company = settings.company;
+      const headerLines = settings.printing.companyHeaderOnReports ? [company.tradeName || company.legalName, company.document].filter(Boolean) : [];
+      const title = definition.title;
+      res.setHeader('Content-Type', EXPORT_FORMATS[format]);
+      res.setHeader('Content-Disposition', `attachment; filename="relatorio-${req.params.kind}.${format}"`);
+      if (format === 'csv') return res.send(reportToCsv(report, tz));
+      return res.send(format === 'xlsx' ? reportToXlsx(report, { timeZone: tz, title, headerLines }) : reportToPdf(report, { timeZone: tz, title, headerLines }));
     }
     return res.json(report);
   } catch (error) { return next(error); }

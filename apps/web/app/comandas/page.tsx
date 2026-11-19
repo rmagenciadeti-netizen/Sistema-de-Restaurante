@@ -1,6 +1,6 @@
 'use client';
 
-import Link from 'next/link';
+import Link from '../../components/nav-link';
 import { useRouter } from 'next/navigation';
 import { useState } from 'react';
 import { api, ApiError, formatMoney, ListResponse } from '../../lib/api';
@@ -10,6 +10,7 @@ import { OpsNav } from '../../components/ops-nav';
 import { Badge, EmptyState } from '../../components/ui';
 import type { Reservation } from '../../lib/api';
 import { elapsedLabel, isHeld, isTabOrder, opsError, orderTitle, paidTotal, type OpsOrder, type OpsTable } from '../../lib/types-ops';
+import { TableRequestsPanel } from '../../components/tables/requests';
 
 type Tab = { key: string; label: string; tableId: string | null; orders: OpsOrder[]; total: number; paid: number };
 
@@ -69,6 +70,7 @@ export default function ComandasPage() {
 
   return <AppShell title="Controle de comandas">
     <OpsNav />
+    <TableRequestsPanel />
     {message && <Notice message={message} />}
     <section className={`${panelClass} mb-4`}>
       <div className="flex flex-wrap items-end gap-3">

@@ -1,6 +1,6 @@
 'use client';
 
-import Link from 'next/link';
+import Link from '../../components/nav-link';
 import { useState } from 'react';
 import QRCode from 'qrcode';
 import { api, errorMessage, storedUser } from '../../lib/api';

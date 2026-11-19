@@ -53,8 +53,15 @@ export function cachedTheme(): ThemePreference {
   return DEFAULT_THEME;
 }
 
+// "Lite" visual mode: Save-Data, slow connections (2G/3G), low-memory devices or prefers-reduced-data turn off blur, aurora/grid layers and decorative animation. Nothing functional changes.
+export function liteWanted(): boolean {
+  const nav = navigator as Navigator & { connection?: { saveData?: boolean; effectiveType?: string }; deviceMemory?: number };
+  const connection = nav.connection;
+  return Boolean(connection?.saveData || /(^|-)[23]g/.test(connection?.effectiveType ?? '') || (nav.deviceMemory && nav.deviceMemory <= 2) || window.matchMedia('(prefers-reduced-data: reduce)').matches);
+}
+
 export const THEME_EVENT = 'rm-theme-refresh';
 export const refreshTheme = () => window.dispatchEvent(new Event(THEME_EVENT));
 
 // Runs before first paint (inline in <head>) so the saved theme never flashes the default one.
-export const themeBootScript = `(function(){try{var p=location.pathname;var d=document.documentElement;if(p==='/loja'||p.indexOf('/loja/')===0||p.indexOf('/m/')===0){d.dataset.theme='light';d.dataset.public='1';return;}var t=JSON.parse(localStorage.getItem(${JSON.stringify(themeCacheKey)})||'null');if(!t)return;d.dataset.theme=t.mode==='AUTO'?(matchMedia('(prefers-color-scheme: dark)').matches?'dark':'light'):t.mode==='LIGHT'?'light':'dark';d.dataset.primary=String(t.primary).toLowerCase();d.dataset.sidebar=String(t.sidebar).toLowerCase();}catch(e){}})();`;
+export const themeBootScript = `(function(){try{var p=location.pathname;var d=document.documentElement;var n=navigator,c=n.connection;if((c&&(c.saveData||/(^|-)[23]g/.test(c.effectiveType||'')))||(n.deviceMemory&&n.deviceMemory<=2)||matchMedia('(prefers-reduced-data: reduce)').matches)d.dataset.lite='1';if(p==='/loja'||p.indexOf('/loja/')===0||p.indexOf('/m/')===0){d.dataset.theme='light';d.dataset.public='1';return;}var t=JSON.parse(localStorage.getItem(${JSON.stringify(themeCacheKey)})||'null');if(!t)return;d.dataset.theme=t.mode==='AUTO'?(matchMedia('(prefers-color-scheme: dark)').matches?'dark':'light'):t.mode==='LIGHT'?'light':'dark';d.dataset.primary=String(t.primary).toLowerCase();d.dataset.sidebar=String(t.sidebar).toLowerCase();}catch(e){}})();`;

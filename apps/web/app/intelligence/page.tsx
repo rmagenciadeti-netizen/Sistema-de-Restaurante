@@ -1,16 +1,17 @@
 'use client';
 
 import { useCallback, useEffect, useRef, useState } from 'react';
-import Link from 'next/link';
+import Link from '../../components/nav-link';
 import { api, errorMessage, formatMoney } from '../../lib/api';
 import { AppShell, buttonClass, Field, Notice, panelClass } from '../../components/app-shell';
 import { Badge, DataTable, EmptyState, PageHeader, StatCard, Tabs, Toggle } from '../../components/ui';
 import { BusinessPanel, SalesOpportunities, StockPanel } from '../../components/intelligence-panels';
+import { AutomationsPanel } from '../../components/automations-panel';
 import { Suspense } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 
 type Alert = { key: string; severity: 'critical' | 'warning' | 'info'; title: string; detail: string; href: string };
-type Config = { monthlyGoal: number; alerts: Record<string, boolean>; salesDropPercent: number; payableDays: number; delayedMinutes: number; marginFloorPercent: number };
+type Config = { monthlyGoal: number; alerts: Record<string, boolean>; salesDropPercent: number; payableDays: number; expiringDays: number; delayedMinutes: number; marginFloorPercent: number };
 type Summary = {
   historyDays: number; truncated: boolean;
   sales: { today: number; yesterday: number; ordersToday: number; monthToDate: number; ordersMonth: number; avgTicketMonth: number | null; previousMonthSamePeriod: number; monthChangePercent: number | null; bestDay: { day: string; total: number } | null; byChannel: { channel: string; orders: number; total: number; share: number }[]; peakHours: { hour: number; orders: number }[]; daysWithSales: number };
@@ -24,7 +25,7 @@ type Summary = {
 };
 type Message = { role: 'user' | 'assistant'; text: string; notes?: string[] };
 const suggestions = ['Quanto vendi hoje?', 'Quanto lucrei neste mês?', 'Qual foi meu melhor dia de vendas?', 'Qual produto vende mais?', 'Qual produto oferece maior margem?', 'Quais produtos estão vendendo menos?', 'Quais despesas aumentaram?', 'Qual funcionário realizou mais vendas?', 'Qual foi o ticket médio?', 'Quais produtos preciso comprar?', 'Qual a previsão de faturamento do mês?', 'Qual a evolução em relação ao mês anterior?'];
-const alertLabels: Record<string, string> = { salesDrop: 'Queda nas vendas', lowStock: 'Estoque crítico', payables: 'Contas a pagar próximas do vencimento', receivables: 'Contas a receber vencidas', lowMargin: 'Margem de lucro reduzida', delayedOrders: 'Pedidos atrasados', cashDivergence: 'Divergência de caixa', waste: 'Desperdício registrado' };
+const alertLabels: Record<string, string> = { salesDrop: 'Queda nas vendas', lowStock: 'Estoque crítico', payables: 'Contas a pagar próximas do vencimento', receivables: 'Contas a receber vencidas', lowMargin: 'Margem de lucro reduzida', delayedOrders: 'Pedidos atrasados', cashDivergence: 'Divergência de caixa', waste: 'Desperdício registrado', expiring: 'Insumos próximos do vencimento' };
 const channelLabels: Record<string, string> = { POS: 'PDV', TABLE: 'Mesa / QR Code', DELIVERY: 'Delivery', TAKEAWAY: 'Retirada', WHATSAPP: 'WhatsApp' };
 const tone = { critical: 'red', warning: 'gold', info: 'blue' } as const;
 const weekday = (day: string) => new Date(`${day}T12:00:00Z`).toLocaleDateString('pt-BR', { weekday: 'short', day: '2-digit', timeZone: 'UTC' });
@@ -160,12 +161,13 @@ function IntelligenceContent({ initial }: { initial: Tab }) {
             <Field label="Meta de faturamento mensal (R$, 0 = sem meta)" type="number" min={0} step="0.01" value={config.monthlyGoal} onChange={event => setConfig({ ...config, monthlyGoal: Number(event.target.value) })} />
             <Field label="Queda de vendas que gera alerta (%)" type="number" min={5} max={90} value={config.salesDropPercent} onChange={event => setConfig({ ...config, salesDropPercent: Number(event.target.value) })} />
             <Field label="Avisar contas a pagar em (dias)" type="number" min={0} max={30} value={config.payableDays} onChange={event => setConfig({ ...config, payableDays: Number(event.target.value) })} />
+            <Field label="Avisar vencimento de insumos em (dias)" type="number" min={0} max={60} value={config.expiringDays ?? 3} onChange={event => setConfig({ ...config, expiringDays: Number(event.target.value) })} />
             <Field label="Pedido atrasado após (minutos)" type="number" min={5} max={240} value={config.delayedMinutes} onChange={event => setConfig({ ...config, delayedMinutes: Number(event.target.value) })} />
             <Field label="Margem mínima desejada (%)" type="number" min={0} max={100} value={config.marginFloorPercent} onChange={event => setConfig({ ...config, marginFloorPercent: Number(event.target.value) })} />
           </div>
           <button className={buttonClass}>Salvar preferências</button>
-          <p className="text-xs text-slate-500">Alertas de produtos próximos do vencimento exigem controle de validade, ainda não disponível no cadastro de estoque.</p>
         </form>}
+        <AutomationsPanel />
         </div>
       </>}
     </>}

@@ -74,7 +74,34 @@ productRoutes.get('/', async (req, res, next) => {
     const page = Math.max(1, Number(req.query.page) || 1); const pageSize = Math.min(100, Math.max(1, Number(req.query.pageSize) || 25));
     const where = { tenantId: req.auth!.tenantId!, ...(req.auth!.unitId ? { OR: [{ unitId: req.auth!.unitId }, { unitId: null }] } : {}) };
     const [items, total] = await Promise.all([prisma.product.findMany({ where, include: { category: true, sector: true, image: { select: { updatedAt: true } } }, orderBy: { name: 'asc' }, skip: (page - 1) * pageSize, take: pageSize }), prisma.product.count({ where })]);
-    return res.json({ items, total, page, pageSize });
+    // Unit-bound users see (and sell at) the price their unit has set, when there is one.
+    const overrides = req.auth!.unitId ? new Map((await prisma.productUnitPrice.findMany({ where: { tenantId: req.auth!.tenantId!, unitId: req.auth!.unitId, productId: { in: items.map(item => item.id) } }, select: { productId: true, price: true } })).map(row => [row.productId, row.price])) : null;
+    return res.json({ items: overrides?.size ? items.map(item => (overrides.has(item.id) ? { ...item, price: overrides.get(item.id)! } : item)) : items, total, page, pageSize });
+  } catch (error) { return next(error); }
+});
+productRoutes.get('/:id/unit-prices', async (req, res, next) => {
+  try {
+    const tenantId = req.auth!.tenantId!;
+    const product = await prisma.product.findFirst({ where: { id: req.params.id, tenantId }, select: { id: true, price: true } });
+    if (!product) return res.status(404).json({ message: 'Product not found' });
+    const units = await prisma.unit.findMany({ where: { tenantId, ...(req.auth!.unitId ? { id: req.auth!.unitId } : {}) }, select: { id: true, name: true }, orderBy: { name: 'asc' } });
+    const rows = await prisma.productUnitPrice.findMany({ where: { tenantId, productId: product.id } });
+    return res.json({ basePrice: product.price, items: units.map(unit => ({ unitId: unit.id, unit: unit.name, price: rows.find(row => row.unitId === unit.id)?.price ?? null })) });
+  } catch (error) { return next(error); }
+});
+// A null price removes the override and the unit goes back to the product's own price. Writes are management-only (allowRead above).
+productRoutes.put('/:id/unit-prices/:unitId', async (req, res, next) => {
+  try {
+    const parsed = z.object({ price: z.number().min(0).max(9_999_999).multipleOf(0.01).nullable() }).safeParse(req.body);
+    if (!parsed.success) return res.status(400).json({ message: 'Validation failed', errors: parsed.error.flatten() });
+    const tenantId = req.auth!.tenantId!;
+    if (req.auth!.unitId && req.auth!.unitId !== req.params.unitId) return res.status(403).json({ message: 'Unit not allowed' });
+    const [product, unit] = await Promise.all([prisma.product.findFirst({ where: { id: req.params.id, tenantId }, select: { id: true } }), prisma.unit.findFirst({ where: { id: req.params.unitId, tenantId }, select: { id: true } })]);
+    if (!product || !unit) return res.status(404).json({ message: 'Product or unit not found' });
+    if (parsed.data.price === null) await prisma.productUnitPrice.deleteMany({ where: { tenantId, productId: product.id, unitId: unit.id } });
+    else await prisma.productUnitPrice.upsert({ where: { productId_unitId: { productId: product.id, unitId: unit.id } }, create: { tenantId, productId: product.id, unitId: unit.id, price: parsed.data.price }, update: { price: parsed.data.price } });
+    await prisma.auditLog.create({ data: { tenantId, actorUserId: req.auth!.userId, action: 'PRODUCT_UNIT_PRICE_SET', entityType: 'Product', entityId: product.id, metadata: { unitId: unit.id, price: parsed.data.price } } });
+    return res.status(204).end();
   } catch (error) { return next(error); }
 });
 productRoutes.post('/', async (req, res, next) => {
@@ -90,6 +117,7 @@ productRoutes.post('/', async (req, res, next) => {
       const product = await tx.product.create({ data: { ...data, stockQuantity: initialStock, tenantId: req.auth!.tenantId!, unitId: effectiveUnitId, categoryId, sectorId } });
       if (initialStock > 0) await tx.productStockMovement.create({ data: { tenantId: product.tenantId, unitId: product.unitId, productId: product.id, type: ProductStockMovementType.ADJUSTMENT, quantity: initialStock, note: 'Estoque inicial do cadastro', actorUserId: req.auth!.userId } });
       await tx.auditLog.create({ data: { tenantId: req.auth!.tenantId!, actorUserId: req.auth!.userId, action: 'PRODUCT_CREATED', entityType: 'Product', entityId: product.id } });
+      await tx.priceHistory.create({ data: { tenantId: product.tenantId, productId: product.id, price: product.price, cost: product.cost, reason: 'PRODUCT_CREATED', actorUserId: req.auth!.userId } });
       return product;
     });
     return res.status(201).json(item);
@@ -107,6 +135,8 @@ productRoutes.patch('/prices/bulk', async (req, res, next) => {
           data: { price: item.price },
         });
         if (result.count !== 1) throw new PriceConflictError();
+        const priced = await tx.product.findUniqueOrThrow({ where: { id: item.id }, select: { price: true, cost: true } });
+        await tx.priceHistory.create({ data: { tenantId: tenantId!, productId: item.id, price: priced.price, cost: priced.cost, reason: 'BULK_PRICE_UPDATE', actorUserId: userId } });
         await tx.auditLog.create({ data: { tenantId: tenantId!, actorUserId: userId, action: 'PRODUCT_PRICE_UPDATED', entityType: 'Product', entityId: item.id, metadata: { previousPrice: item.expectedPrice, price: item.price } } });
       }
     });
@@ -191,6 +221,9 @@ productRoutes.patch('/:id', async (req, res, next) => {
     const invalid = await validateCatalogFields(req.auth!.tenantId!, parsed.data, current); if (invalid) return res.status(400).json({ message: invalid });
     const { unitId: _unitId, ...rawData } = parsed.data; const data = emptyToNull(rawData); const updated = await prisma.product.update({ where: { id: current.id }, data: { ...data, ...(parsed.data.unitId !== undefined ? { unitId } : {}) } });
     await prisma.auditLog.create({ data: { tenantId: req.auth!.tenantId!, actorUserId: req.auth!.userId, action: 'PRODUCT_UPDATED', entityType: 'Product', entityId: updated.id } });
+    if (!updated.price.equals(current.price) || (updated.cost?.toString() ?? null) !== (current.cost?.toString() ?? null)) {
+      await prisma.priceHistory.create({ data: { tenantId: updated.tenantId, productId: updated.id, price: updated.price, cost: updated.cost, reason: 'PRODUCT_UPDATE', actorUserId: req.auth!.userId } });
+    }
     return res.json(updated);
   } catch (error) { const message = duplicateMessage(error); return message ? res.status(409).json({ message }) : next(error); }
 });

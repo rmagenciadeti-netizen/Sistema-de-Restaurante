@@ -48,7 +48,7 @@ async function loadOrder(actor: Actor, orderId: string) {
     where: { id: orderId, tenantId: actor.tenantId, ...unitScope(actor) },
     include: {
       items: { where: { parentItemId: null }, include: { product: { select: { name: true, code: true, gtin: true, measureUnit: true, ncm: true, cest: true, taxRule: true } } } },
-      customer: { select: { name: true, document: true, email: true } }, payments: { where: { status: 'CONFIRMED' }, select: { method: true, amount: true } },
+      customer: { select: { name: true, document: true, email: true } }, payments: { where: { status: 'CONFIRMED' }, select: { method: true, amount: true, integrated: true, acquirerCnpj: true, cardBrand: true, authorizationCode: true, pixEndToEnd: true } },
     },
   });
 }
@@ -95,11 +95,56 @@ export function buildFiscalOrder(order: LoadedOrder, settings: (FiscalSettings &
     ref, nature: options.nature ?? (settings ? model.nature : undefined), finality: options.finality ?? (settings ? model.finality : undefined),
     freight: options.freight ? options.freight.toFixed(2) : undefined, otherExpenses: options.otherExpenses ? options.otherExpenses.toFixed(2) : undefined,
     discount: Number(order.discount) > 0 ? order.discount.toFixed(2) : undefined, additionalInfo: options.additionalInfo || (settings ? model.additionalInfo || undefined : undefined),
-    payments: order.payments.length ? order.payments.map(payment => ({ method: payment.method, amount: payment.amount.toFixed(2) })) : undefined,
+    payments: order.payments.length ? order.payments.map(payment => ({ method: payment.method, amount: payment.amount.toFixed(2), integrated: payment.integrated, acquirerCnpj: payment.acquirerCnpj, cardBrand: payment.cardBrand, authorizationCode: payment.authorizationCode, pixEndToEnd: payment.pixEndToEnd })) : undefined,
     destination: destination === 'INTERSTATE' ? '2' : undefined,
   };
   for (const [key, value] of Object.entries(extras)) if (value !== undefined) (fiscalOrder as Record<string, unknown>)[key] = value;
   return { fiscalOrder };
+}
+
+export type AfterPaymentResult = { action: 'NONE' | 'EMITTED' | 'ASK_OPERATOR' | 'NOT_FULLY_PAID' | 'FAILED'; message?: string; status?: number };
+
+// A payment confirmed later (TEF recovery/consultation) completes a sale that the PDV could not close. When the company's rule is FISCAL (or the sale was already decided FISCAL) the document is emitted now,
+// only if the order is fully paid with the REAL confirmed payments. ASK stays a human decision. The (order, kind) uniqueness of emitForOrder prevents a second document.
+export async function emitAfterPayment(actor: Actor, orderId: string): Promise<AfterPaymentResult> {
+  const settings = await loadFiscalSettings(prisma, actor.tenantId);
+  const mode = settings?.pdvMode ?? 'NON_FISCAL';
+  const order = await prisma.order.findFirst({ where: { id: orderId, tenantId: actor.tenantId, ...unitScope(actor) }, select: { id: true, total: true, status: true, fiscalMode: true, payments: { where: { status: 'CONFIRMED' }, select: { amount: true } } } });
+  if (!order || order.status === OrderStatus.CANCELLED || order.fiscalMode === 'NON_FISCAL') return { action: 'NONE' };
+  if (order.fiscalMode !== 'FISCAL') {
+    if (mode === 'NON_FISCAL') return { action: 'NONE' };
+    if (mode === 'ASK') return { action: 'ASK_OPERATOR', message: 'Pagamento confirmado após o fechamento: decida na tela do pedido se deseja emitir o documento fiscal.' };
+  }
+  const paid = order.payments.reduce((sum, payment) => sum.add(payment.amount), new Prisma.Decimal(0));
+  if (paid.lt(order.total)) return { action: 'NOT_FULLY_PAID', message: 'O pedido ainda não está totalmente pago; o documento será emitido quando o pagamento fechar o total.' };
+  if (order.fiscalMode !== 'FISCAL') {
+    const decided = await prisma.order.updateMany({ where: { id: order.id, fiscalMode: null }, data: { fiscalMode: 'FISCAL', fiscalDecidedById: actor.userId, fiscalDecidedAt: new Date() } });
+    if (decided.count !== 1) return { action: 'NONE' };
+    await prisma.auditLog.create({ data: { tenantId: actor.tenantId, actorUserId: actor.userId, action: 'PDV_FISCAL_DECISION', entityType: 'Order', entityId: order.id, metadata: { mode, emit: true, trigger: 'PAYMENT_CONFIRMED_AFTER_CHECKOUT' } } });
+  }
+  const result = await emitForOrder(actor, order.id, { kind: FiscalKind.NFCE });
+  const body = result.body as { message?: string };
+  // 409 means a document already exists (or is being emitted): nothing to do and nothing duplicated.
+  if (result.status === 201 || result.status === 202) return { action: 'EMITTED', status: result.status };
+  return result.status === 409 ? { action: 'NONE', status: 409 } : { action: 'FAILED', status: result.status, message: body.message };
+}
+
+// Pre-flight check before a number is reserved: the document must total what the order totals and what was really paid. Nothing is completed or invented to make it fit.
+export function fiscalPaymentIssue(order: Pick<LoadedOrder, 'total' | 'discount' | 'items' | 'payments'>, options: Pick<EmissionOptions, 'kind' | 'finality' | 'freight' | 'otherExpenses'>): string | null {
+  if (['3', '4'].includes(options.finality ?? '1')) return null;
+  const cents = (value: { toString(): string } | number | undefined | null) => Math.round(Number(value ?? 0) * 100);
+  const baseTotal = order.items.reduce((sum, item) => sum + cents(item.total), 0) - cents(order.discount);
+  const extras = cents(options.freight) + cents(options.otherExpenses);
+  const documentTotal = baseTotal + extras;
+  const brl = (value: number) => (value / 100).toFixed(2).replace('.', ',');
+  // Fees the order charged (service, couvert, delivery) must be carried by the document as freight/other expenses, otherwise payment and document totals cannot match.
+  if (cents(order.total) - baseTotal > extras + 1) return `O total do pedido (R$ ${brl(cents(order.total))}) inclui R$ ${brl(cents(order.total) - baseTotal - extras)} (taxa de serviço, couvert ou entrega) que o documento fiscal não carrega: informe-os como outras despesas/frete.`;
+  const paid = order.payments.reduce((sum, payment) => sum + cents(payment.amount), 0);
+  if (options.kind === FiscalKind.NFE && paid === 0) return null;
+  if (paid < documentTotal) return `Pagamento confirmado (R$ ${brl(paid)}) menor que o total (R$ ${brl(documentTotal)}): registre ou recupere o pagamento antes de emitir.`;
+  const cash = order.payments.filter(payment => payment.method === 'CASH').reduce((sum, payment) => sum + cents(payment.amount), 0);
+  if (paid - documentTotal > cash) return 'O valor pago excede o total e a diferença não pode ser troco em dinheiro: revise os pagamentos.';
+  return null;
 }
 
 async function settingsWithRule(tenantId: string) {
@@ -175,6 +220,8 @@ export async function emitForOrder(actor: Actor, orderId: string, options: Emiss
   const scope = await fiscalScope(actor.tenantId, order.unitId, settings, options);
   const probe = buildFiscalOrder(order, settings, options, { series: '', number: '' }, undefined, scope);
   if ('untaxed' in probe) return { status: 422, body: { message: `Vincule uma regra tributária ativa (Fiscal / Tributos) aos produtos: ${probe.untaxed.join(', ')}.` } };
+  const paymentIssue = fiscalPaymentIssue(order, options);
+  if (paymentIssue) return { status: 422, body: { message: paymentIssue, code: 'FISCAL_PAYMENT_MISMATCH' } };
   const environment = environmentOf(settings);
   const unitKey = await fiscalUnitKey(prisma, actor.tenantId, order.unitId);
   let context: FiscalContext;

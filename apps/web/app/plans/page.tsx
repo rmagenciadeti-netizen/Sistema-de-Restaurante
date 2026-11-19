@@ -1,7 +1,8 @@
 'use client';
 
-import { useCallback, useEffect, useMemo, useState } from 'react';
-import { api, errorMessage, formatMoney } from '../../lib/api';
+import { useCallback, useMemo, useState } from 'react';
+import { useAutoLoad } from '../../lib/use-auto-load';
+import { api, errorMessage, formatDateTime, formatMoney } from '../../lib/api';
 import { AppShell, buttonClass, Field, Notice, panelClass, secondaryButtonClass, Select } from '../../components/app-shell';
 import { Badge, DataTable, EmptyState, PageHeader, textareaClass } from '../../components/ui';
 import { periodLabels, ReasonDialog, Section, statusLabels, statusTone, type CatalogStatus, type ModuleRow, type Period, type PlanRow } from '../../components/commercial/common';
@@ -14,6 +15,10 @@ const fresh = () => ({
   roles: {} as Record<string, Role>, overrides: {} as Record<string, string>, prices: Object.fromEntries(periods.map(period => [period, ''])) as Record<Period, string>,
 });
 type Pending = { plan: PlanRow; status: CatalogStatus };
+type Snapshot = { prices?: { period: Period; amount: string | number }[]; status?: string } | string | null;
+type HistoryItem = { id: string; action: string; createdAt: string; actor: { name: string } | null; metadata: { before?: Snapshot; after?: Snapshot; reason?: string } | null };
+const actionLabels: Record<string, string> = { SAAS_PLAN_CREATED: 'Plano criado', SAAS_PLAN_UPDATED: 'Plano alterado', SAAS_PLAN_STATUS_CHANGED: 'Situação alterada' };
+const priceText = (snapshot?: Snapshot) => (snapshot && typeof snapshot === 'object' && snapshot.prices?.length ? snapshot.prices.map(price => `${periodLabels[price.period]} ${formatMoney(price.amount)}`).join(' · ') : '—');
 
 export default function PlansPage() {
   const [plans, setPlans] = useState<PlanRow[]>([]);
@@ -22,6 +27,7 @@ export default function PlansPage() {
   const [editing, setEditing] = useState<string | null>(null);
   const [pending, setPending] = useState<Pending | null>(null);
   const [view, setView] = useState<'list' | 'compare'>('list');
+  const [history, setHistory] = useState<{ plan: PlanRow; items: HistoryItem[] } | null>(null);
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState('');
   const [success, setSuccess] = useState(false);
@@ -32,7 +38,7 @@ export default function PlansPage() {
       setPlans(planList.items); setCatalog(moduleList.items);
     } catch (error) { setSuccess(false); setMessage(errorMessage(error, 'Falha ao carregar os planos')); }
   }, []);
-  useEffect(() => { void load(); }, [load]);
+  useAutoLoad(load);
 
   const sellable = useMemo(() => catalog.filter(item => item.featureLinked && item.status !== 'ARCHIVED'), [catalog]);
   const byKey = useMemo(() => new Map(catalog.map(item => [item.key, item])), [catalog]);
@@ -70,6 +76,9 @@ export default function PlansPage() {
       setSuccess(true); setMessage(`Plano ${body.status === 'ACTIVE' ? 'publicado' : 'salvo'}. Contratos já vinculados não são alterados retroativamente.`);
       setEditing(null); setForm(fresh()); await load();
     } catch (error) { setSuccess(false); setMessage(errorMessage(error, 'Falha ao salvar o plano')); } finally { setBusy(false); }
+  }
+  async function openHistory(plan: PlanRow) {
+    try { const result = await api<{ items: HistoryItem[] }>(`/plans/${plan.id}/history`); setHistory({ plan, items: result.items }); } catch (cause) { setSuccess(false); setMessage(errorMessage(cause, 'Falha ao carregar o histórico')); }
   }
   async function duplicate(plan: PlanRow) {
     const key = `${plan.key}-copia-${Date.now().toString(36).slice(-4)}`;
@@ -157,6 +166,7 @@ export default function PlansPage() {
             <td><div className="flex flex-wrap gap-1">
               <button type="button" className={secondaryButtonClass} onClick={() => edit(plan)}>Editar</button>
               <button type="button" className={secondaryButtonClass} onClick={() => void duplicate(plan)}>Duplicar</button>
+              <button type="button" className={secondaryButtonClass} onClick={() => void openHistory(plan)}>Histórico</button>
               {plan.status !== 'ACTIVE' && plan.status !== 'ARCHIVED' && <button type="button" className={secondaryButtonClass} onClick={() => setPending({ plan, status: 'ACTIVE' })}>Publicar</button>}
               {plan.status === 'ACTIVE' && <button type="button" className={secondaryButtonClass} onClick={() => setPending({ plan, status: 'INACTIVE' })}>Desativar</button>}
               {plan.status !== 'ARCHIVED' && <button type="button" className={secondaryButtonClass} onClick={() => setPending({ plan, status: 'ARCHIVED' })}>Arquivar</button>}
@@ -168,6 +178,19 @@ export default function PlansPage() {
           {sellable.map(item => <tr key={item.key}><td>{item.name}</td>{shown.map(plan => <td key={plan.id}>{plan.modules.includes(item.key) ? '✓ Incluído' : plan.optionalModules.some(option => option.key === item.key) ? '+ Opcional' : '—'}</td>)}</tr>)}
         </DataTable>}
     </Section>
+    {history && <div role="dialog" aria-modal="true" className="fixed inset-0 z-50 grid place-items-center bg-black/50 p-4" onClick={() => setHistory(null)}>
+      <div className="max-h-[80vh] w-full max-w-2xl overflow-y-auto rounded-2xl bg-white p-5 shadow-xl" onClick={event => event.stopPropagation()}>
+        <h2 className="text-lg font-bold">Histórico de versões: {history.plan.name}</h2>
+        <p className="text-xs text-slate-500">Contratos existentes mantêm o preço e os módulos contratados; alterações valem para novas contratações.</p>
+        {history.items.length === 0 && <p className="mt-3 text-sm text-slate-500">Sem alterações registradas.</p>}
+        <ul className="mt-3 space-y-3">{history.items.map(item => <li key={item.id} className="rounded-xl border border-slate-200 p-3 text-sm">
+          <div className="flex justify-between gap-2"><strong>{actionLabels[item.action] ?? item.action}</strong><span className="text-xs text-slate-500">{formatDateTime(item.createdAt)} · {item.actor?.name ?? 'Sistema'}</span></div>
+          {item.metadata?.reason && <div className="text-xs text-slate-600">Motivo: {item.metadata.reason}</div>}
+          {item.action === 'SAAS_PLAN_UPDATED' && <div className="mt-1 text-xs"><div>Antes: {priceText(item.metadata?.before)}</div><div>Depois: {priceText(item.metadata?.after)}</div></div>}
+        </li>)}</ul>
+        <button type="button" className={`${secondaryButtonClass} mt-4`} onClick={() => setHistory(null)}>Fechar</button>
+      </div>
+    </div>}
     {pending && <ReasonDialog title={`${statusLabels[pending.status]}: ${pending.plan.name}`} danger={pending.status === 'ARCHIVED'} onCancel={() => setPending(null)} onConfirm={changeStatus}>
       <p className="text-sm text-slate-600">{pending.status === 'ACTIVE' ? 'O plano passa a ser oferecido para novas contratações.' : 'O plano deixa de ser oferecido; assinaturas e histórico existentes são preservados.'}</p>
     </ReasonDialog>}

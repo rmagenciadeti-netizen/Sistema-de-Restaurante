@@ -31,6 +31,10 @@ export type NewOrderInput = {
   deliveryFeeOverride?: Prisma.Decimal;
   // Future date/time: the order is accepted now but only reaches production at `releaseAt` (see scheduling.ts).
   scheduledFor?: Date;
+  // Waits for the staff to accept it before reaching production/printing (QR table orders when the restaurant asks for confirmation).
+  holdForConfirmation?: boolean;
+  // Idempotency key of the offline PDV queue (unique per tenant).
+  clientRequestId?: string;
   // Number of guests charged with the artistic cover of the active event (table orders only).
   couvertPeople?: number;
   // Marketplace/anonymous-table orders come with third-party contacts, so they must not trigger WhatsApp notices.
@@ -83,7 +87,9 @@ export async function priceOrderLines(tx: Prisma.TransactionClient, scope: { ten
     include: { modifierGroups: { include: { group: { include: { options: true } } } }, comboComponents: { include: { product: true } } },
   });
   if (products.length !== ids.length) throw new OrderEngineError('PRODUCTS_UNAVAILABLE');
-  const byId = new Map(products.map(product => [product.id, product]));
+  // A unit may sell a product at its own price (ProductUnitPrice); everything below charges from the overridden price.
+  const unitPrices = unitId ? new Map((await tx.productUnitPrice.findMany({ where: { tenantId, unitId, productId: { in: ids } }, select: { productId: true, price: true } })).map(row => [row.productId, row.price])) : new Map<string, Prisma.Decimal>();
+  const byId = new Map(products.map(product => [product.id, unitPrices.has(product.id) ? { ...product, price: unitPrices.get(product.id)! } : product]));
   const promotionRows = await tx.promotion.findMany({
     where: { tenantId, active: true, startsAt: { lte: now }, OR: [{ endsAt: null }, { endsAt: { gte: now } }], products: { some: { productId: { in: ids } } } },
     include: { products: { select: { productId: true } } },
@@ -127,11 +133,18 @@ export async function priceOrderLines(tx: Prisma.TransactionClient, scope: { ten
 
 type PricedLines = Awaited<ReturnType<typeof priceOrderLines>>['lines'];
 
+// Total acquisition cost per unit at the moment of the sale (product cost + freight + other acquisition costs); null when the product has no cost registered.
+function acquisitionUnitCost(cost: Prisma.Decimal | null, pricing?: { freightCost: Prisma.Decimal; otherAcquisitionCost: Prisma.Decimal }) {
+  return cost === null ? null : cost.add(pricing?.freightCost ?? 0).add(pricing?.otherAcquisitionCost ?? 0);
+}
+
 export async function insertOrderLines(tx: Prisma.TransactionClient, orderId: string, lines: PricedLines) {
+  const pricings = await tx.productPricing.findMany({ where: { productId: { in: [...new Set(lines.map(line => line.product.id))] } }, select: { productId: true, freightCost: true, otherAcquisitionCost: true } });
+  const pricingByProduct = new Map(pricings.map(row => [row.productId, row]));
   for (const line of lines) {
     const item = await tx.orderItem.create({
       data: {
-        orderId: orderId, productId: line.product.id, quantity: line.quantity, weightKg: line.weightKg, unitPrice: line.unitPrice, total: line.total, withPackaging: line.withPackaging, packagingPrice: line.packagingPrice, notes: line.notes,
+        orderId: orderId, productId: line.product.id, quantity: line.quantity, weightKg: line.weightKg, unitPrice: line.unitPrice, unitCost: line.product.isCombo ? null : acquisitionUnitCost(line.product.cost, pricingByProduct.get(line.product.id)), total: line.total, withPackaging: line.withPackaging, packagingPrice: line.packagingPrice, notes: line.notes,
         // A combo line is a billing wrapper; production happens on its component items.
         sectorId: line.product.isCombo ? null : line.product.sectorId,
         modifiers: { create: line.selected.map(entry => ({ optionId: entry.option.id, name: entry.option.name, price: entry.option.price, quantity: entry.quantity, sectorId: entry.option.sectorId, ingredientId: entry.option.ingredientId, ingredientQuantity: entry.option.ingredientQuantity })) },
@@ -242,6 +255,10 @@ export async function createOrder(tx: Prisma.TransactionClient, input: NewOrderI
     const decision = decideSchedule(input.scheduledFor, settings.scheduling, settings.hours.timezone, now, prepMinutes);
     if (!decision.ok) throw new OrderEngineError(decision.reason);
     scheduling = { scheduledFor: input.scheduledFor, releaseAt: decision.releaseAt, releasedAt: decision.releaseNow ? now : null };
+  } else if (input.holdForConfirmation) {
+    // Held like a scheduled order (invisible to KDS and printers) but with a release date that the automatic release job never reaches:
+    // only an explicit acceptance by the staff sends it to production.
+    scheduling = { scheduledFor: now, releaseAt: new Date('2999-12-31T00:00:00Z'), releasedAt: null };
   }
 
   const total = subtotal.sub(discount).add(serviceFee).add(deliveryFee).add(couvertFee);
@@ -251,6 +268,7 @@ export async function createOrder(tx: Prisma.TransactionClient, input: NewOrderI
       tenantId, unitId, code: newOrderCode(), number: await nextOrderNumber(tx, tenantId, now), channel: input.channel, status: initialStatus, createdByUserId: input.actorUserId ?? null,
       customerName, customerId, tableId, tableLabel, couponId, deliveryZoneId,
       subtotal, discount, serviceFee, deliveryFee, couvertFee, total, ...(scheduling ?? {}),
+      ...(input.holdForConfirmation ? { holdReason: 'QR_CONFIRMATION' } : {}), ...(input.clientRequestId ? { clientRequestId: input.clientRequestId } : {}),
     },
   });
   await insertOrderLines(tx, created.id, lines);

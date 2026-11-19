@@ -73,6 +73,9 @@ test('commercial management: plans, modules, coupons, invoices and entitlements'
     const log = await prisma.auditLog.findFirst({ where: { action: 'SAAS_PLAN_UPDATED', entityId: planId } });
     assert.ok(log, 'price change is audited');
     assert.equal((log!.metadata as any).reason, 'Reajuste');
+    const history = await call('GET', `/plans/${planId}/history`, masterToken);
+    assert.equal(history.status, 200);
+    assert.ok(history.body.items.some((item: any) => item.action === 'SAAS_PLAN_UPDATED' && item.metadata.reason === 'Reajuste'), 'history lists the price change');
   });
 
   await t.test('contract, entitlements and add-on modules are enforced by the backend', async () => {

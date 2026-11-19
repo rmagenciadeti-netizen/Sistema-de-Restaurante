@@ -1,5 +1,5 @@
 import { Router, type Request } from 'express';
-import { DeliveryStatus, type Prisma } from '@prisma/client';
+import { DeliveryStatus, Prisma } from '@prisma/client';
 import { z } from 'zod';
 import { prisma } from '../lib/prisma';
 import { requireAuth, requireTenant } from '../middleware/auth';
@@ -10,7 +10,14 @@ import { brl, enqueueAutoMessage, orderLabel } from '../lib/whatsapp-auto';
 export const deliveryRoutes = Router();
 deliveryRoutes.use(requireAuth, requireTenant, requireRoles(...DELIVERY_ROLES));
 const findActiveCourier = (req: Request, id: string) => prisma.courier.findFirst({ where: { id, tenantId: req.auth!.tenantId!, active: true, ...(req.auth!.unitId ? { OR: [{ unitId: req.auth!.unitId }, { unitId: null }] } : {}) } });
-const zoneSchema = z.object({ name: z.string().min(2).max(100), fee: moneySchema, minOrder: moneySchema.optional(), estimatedMinutes: z.number().int().min(1).max(600).optional(), unitId: z.string().uuid().optional() });
+const zoneSchema = z.object({ name: z.string().min(2).max(100), fee: moneySchema, minOrder: moneySchema.optional(), estimatedMinutes: z.number().int().min(1).max(600).optional(), neighborhoods: z.array(z.string().trim().min(2).max(80)).max(100).optional(), unitId: z.string().uuid().optional() });
+// What is owed to the courier for a delivery: the fixed amount per delivery plus the courier's share of the delivery fee. Frozen on the job when it is delivered.
+async function courierPayout(job: { courierId: string | null; orderId: string }): Promise<Prisma.Decimal | null> {
+  if (!job.courierId) return null;
+  const [courier, order] = await Promise.all([prisma.courier.findUnique({ where: { id: job.courierId }, select: { paymentPerDelivery: true, commissionPercent: true } }), prisma.order.findUnique({ where: { id: job.orderId }, select: { deliveryFee: true } })]);
+  if (!courier || (courier.paymentPerDelivery === null && courier.commissionPercent === null)) return null;
+  return (courier.paymentPerDelivery ?? new Prisma.Decimal(0)).add((order?.deliveryFee ?? new Prisma.Decimal(0)).mul(courier.commissionPercent ?? 0).div(100)).toDecimalPlaces(2);
+}
 deliveryRoutes.get('/zones', allowRead(DELIVERY_ROLES, MANAGEMENT_ROLES), async (req, res, next) => {
   try { const items = await prisma.deliveryZone.findMany({ where: { tenantId: req.auth!.tenantId!, active: true, ...(req.auth!.unitId ? { OR: [{ unitId: req.auth!.unitId }, { unitId: null }] } : {}) }, orderBy: { name: 'asc' } }); return res.json({ items, total: items.length }); }
   catch (error) { return next(error); }
@@ -27,7 +34,7 @@ deliveryRoutes.post('/zones', requireRoles(...MANAGEMENT_ROLES), async (req, res
 });
 deliveryRoutes.patch('/zones/:id', requireRoles(...MANAGEMENT_ROLES), async (req, res, next) => {
   try {
-    const parsed = z.object({ fee: moneySchema, minOrder: moneySchema.nullable(), estimatedMinutes: z.number().int().min(1).max(600).nullable(), active: z.boolean() }).partial().safeParse(req.body); if (!parsed.success) return res.status(400).json({ message: 'Validation failed', errors: parsed.error.flatten() });
+    const parsed = z.object({ fee: moneySchema, minOrder: moneySchema.nullable(), estimatedMinutes: z.number().int().min(1).max(600).nullable(), neighborhoods: z.array(z.string().trim().min(2).max(80)).max(100), active: z.boolean() }).partial().safeParse(req.body); if (!parsed.success) return res.status(400).json({ message: 'Validation failed', errors: parsed.error.flatten() });
     const current = await prisma.deliveryZone.findFirst({ where: { id: req.params.id, tenantId: req.auth!.tenantId!, ...(req.auth!.unitId ? { unitId: req.auth!.unitId } : {}) } }); if (!current) return res.status(404).json({ message: 'Zone not found' });
     return res.json(await prisma.deliveryZone.update({ where: { id: current.id }, data: parsed.data }));
   } catch (error) { return next(error); }
@@ -97,7 +104,7 @@ const notifyOutForDelivery = (order: { id: string; code: string; number: number 
   return enqueueAutoMessage(prisma, { tenantId: job.tenantId, key: 'order_out_for_delivery', phone: order.customer.phone, orderId: order.id, vars: { nome: order.customer.name.split(' ')[0], pedido: orderLabel(order), orderCode: order.code, customerName: order.customer.name, total: brl(order.total), entregador: job.courierName ? ` com ${job.courierName}` : '' } }).then(() => undefined).catch(() => undefined);
 };
 deliveryRoutes.patch('/:id/status', async (req, res, next) => {
-  try { const status = z.nativeEnum(DeliveryStatus).safeParse(req.body?.status); if (!status.success) return res.status(400).json({ message: 'Invalid delivery status' }); const job = await prisma.deliveryJob.findFirst({ where: { id: req.params.id, tenantId: req.auth!.tenantId!, ...(req.auth!.unitId ? { unitId: req.auth!.unitId } : {}) } }); if (!job) return res.status(404).json({ message: 'Delivery job not found' }); const updated = await prisma.deliveryJob.update({ where: { id: job.id }, data: { status: status.data, ...(status.data === 'PICKED_UP' ? { dispatchedAt: new Date() } : {}), ...(status.data === 'DELIVERED' ? { deliveredAt: new Date() } : {}) } }); if (status.data === 'PICKED_UP' && job.status !== 'PICKED_UP') { const order = await prisma.order.findUnique({ where: { id: job.orderId }, include: { customer: { select: { name: true, phone: true } } } }); if (order) await notifyOutForDelivery(order, updated); } return res.json(updated); }
+  try { const status = z.nativeEnum(DeliveryStatus).safeParse(req.body?.status); if (!status.success) return res.status(400).json({ message: 'Invalid delivery status' }); const job = await prisma.deliveryJob.findFirst({ where: { id: req.params.id, tenantId: req.auth!.tenantId!, ...(req.auth!.unitId ? { unitId: req.auth!.unitId } : {}) } }); if (!job) return res.status(404).json({ message: 'Delivery job not found' }); const updated = await prisma.deliveryJob.update({ where: { id: job.id }, data: { status: status.data, ...(status.data === 'PICKED_UP' ? { dispatchedAt: new Date() } : {}), ...(status.data === 'DELIVERED' ? { deliveredAt: new Date(), payout: await courierPayout(job) } : {}) } }); if (status.data === 'PICKED_UP' && job.status !== 'PICKED_UP') { const order = await prisma.order.findUnique({ where: { id: job.orderId }, include: { customer: { select: { name: true, phone: true } } } }); if (order) await notifyOutForDelivery(order, updated); } return res.json(updated); }
   catch (error) { return next(error); }
 });
 // One step from the order board: creates the delivery when the order has none, sets the courier and marks it as out for delivery.

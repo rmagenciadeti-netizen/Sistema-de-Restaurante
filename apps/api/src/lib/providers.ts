@@ -40,7 +40,8 @@ export type FiscalOrder = {
   // Idempotency key: the FiscalDocument id. Retrying with the same ref must never create a second document at the provider.
   ref?: string;
   nature?: string; finality?: '1' | '2' | '3' | '4'; freight?: string; otherExpenses?: string; discount?: string; additionalInfo?: string;
-  payments?: Array<{ method: string; amount: string }>;
+  // `integrated` payments carry the real data returned by the TEF/PIX provider (never filled in by hand).
+  payments?: Array<{ method: string; amount: string; integrated?: boolean; acquirerCnpj?: string | null; cardBrand?: string | null; authorizationCode?: string | null; pixEndToEnd?: string | null }>;
   // tpNF (0 entrada, 1 saída) and idDest (1 interna, 2 interestadual, 3 exterior), resolved from the operation rule.
   operationType?: '0' | '1'; destination?: '1' | '2' | '3';
   // Off-line contingency document already signed and printed: must be transmitted exactly as is.

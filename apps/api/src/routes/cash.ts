@@ -3,6 +3,7 @@ import { PaymentMethod, PaymentStatus, CashSessionStatus, OrderStatus, Prisma } 
 import { z } from 'zod';
 import { prisma } from '../lib/prisma';
 import { MAX_MONEY, moneySchema, positiveMoneySchema } from '../lib/money';
+import { syncPromissory } from '../lib/payment-ledger';
 import { serializable } from '../lib/serializable';
 import { requireAuth, requireTenant } from '../middleware/auth';
 import { CASH_ROLES, FINANCE_ROLES, requireRoles } from '../lib/permissions';
@@ -39,6 +40,11 @@ cashRoutes.post('/sessions/:id/close', async (req, res, next) => {
     const input = z.object({ closingAmount: moneySchema }).safeParse(req.body);
     if (!input.success) return res.status(400).json({ message: 'Validation failed', errors: input.error.flatten() });
     const { tenantId, unitId, userId } = req.auth!;
+    // The official closing happens only on the computer, inside the RM Restaurant web app. The kind of client is fixed in the signed token at sign-in.
+    if (req.auth!.client !== 'DESKTOP') {
+      await prisma.auditLog.create({ data: { tenantId: tenantId!, actorUserId: userId, action: 'CASH_CLOSE_DENIED', entityType: 'CashSession', entityId: req.params.id, metadata: { client: req.auth!.client ?? 'UNKNOWN' } } });
+      return res.status(403).json({ message: 'O fechamento oficial do caixa só pode ser feito pelo computador, dentro do RM Restaurant.', code: 'CASH_CLOSE_DESKTOP_ONLY' });
+    }
     const result = await serializable(prisma, async tx => {
       const session = await tx.cashSession.findFirst({
         where: { id: req.params.id, tenantId: tenantId!, ...(unitId ? { unitId } : {}), status: CashSessionStatus.OPEN },
@@ -76,13 +82,7 @@ cashRoutes.post('/payments', async (req, res, next) => {
       const amountPaid = (paid._sum.amount ?? new Prisma.Decimal(0)).add(input.data.amount);
       if (amountPaid.gt(order.total)) return { error: 'Payment exceeds the remaining order balance', status: 409 } as const;
       const payment = await tx.payment.create({ data: { tenantId: tenantId!, unitId: order.unitId, orderId: order.id, cashSessionId: input.data.cashSessionId, method: input.data.method, amount: input.data.amount, reference: input.data.reference } });
-      const promissory = await tx.financialEntry.findUnique({ where: { orderId: order.id } });
-      if (promissory && promissory.status !== 'CANCELLED') {
-        const received = await tx.payment.aggregate({ where: { tenantId: tenantId!, orderId: order.id, status: PaymentStatus.CONFIRMED, paidAt: { gte: promissory.createdAt } }, _sum: { amount: true } });
-        const paidAmount = received._sum.amount ?? new Prisma.Decimal(0);
-        const settled = paidAmount.gte(promissory.amount);
-        await tx.financialEntry.update({ where: { id: promissory.id }, data: { paidAmount: paidAmount.gt(promissory.amount) ? promissory.amount : paidAmount, status: settled ? 'PAID' : 'OPEN', settledAt: settled ? new Date() : null } });
-      }
+      await syncPromissory(tx, tenantId!, order.id, 'payment');
       await tx.auditLog.create({ data: { tenantId: tenantId!, actorUserId: userId, action: 'PAYMENT_RECORDED', entityType: 'Payment', entityId: payment.id } });
       return { payment, amountPaid, orderTotal: order.total } as const;
     });
@@ -103,19 +103,14 @@ cashRoutes.post('/payments/:id/refund', requireRoles(...FINANCE_ROLES), async (r
     const refunded = await serializable(prisma, async tx => {
       const payment = await tx.payment.findFirst({ where: { id: req.params.id, tenantId: tenantId!, ...(unitId ? { unitId } : {}), status: PaymentStatus.CONFIRMED } });
       if (!payment) return false;
+      // A card/PIX payment taken through TEF is only reversed by the provider (POST /tef/transactions/:id/cancel); flipping the books alone would leave the money charged.
+      if (await tx.tefTransaction.findFirst({ where: { paymentId: payment.id, status: 'APPROVED' }, select: { id: true } })) return 'tef' as const;
       await tx.payment.update({ where: { id: payment.id }, data: { status: PaymentStatus.REFUNDED } });
-      if (payment.orderId) {
-        const promissory = await tx.financialEntry.findUnique({ where: { orderId: payment.orderId } });
-        if (promissory && promissory.status !== 'CANCELLED') {
-          const received = await tx.payment.aggregate({ where: { tenantId: tenantId!, orderId: payment.orderId, status: PaymentStatus.CONFIRMED, paidAt: { gte: promissory.createdAt } }, _sum: { amount: true } });
-          const paidAmount = received._sum.amount ?? new Prisma.Decimal(0);
-          const settled = paidAmount.gte(promissory.amount);
-          await tx.financialEntry.update({ where: { id: promissory.id }, data: { paidAmount: paidAmount.gt(promissory.amount) ? promissory.amount : paidAmount, status: settled ? 'PAID' : 'OPEN', settledAt: settled ? promissory.settledAt ?? new Date() : null } });
-        }
-      }
+      if (payment.orderId) await syncPromissory(tx, tenantId!, payment.orderId, 'refund');
       await tx.auditLog.create({ data: { tenantId: tenantId!, actorUserId: userId, action: 'PAYMENT_REFUNDED', entityType: 'Payment', entityId: payment.id } });
       return true;
     });
+    if (refunded === 'tef') return res.status(409).json({ message: 'Este pagamento foi feito por TEF: cancele a transação TEF para estornar no provedor.' });
     if (!refunded) return res.status(409).json({ message: 'Only confirmed payments of this tenant can be refunded' });
     return res.status(204).end();
   } catch (error) { return next(error); }

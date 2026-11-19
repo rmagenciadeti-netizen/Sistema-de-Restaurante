@@ -4,6 +4,7 @@ import { useRef, useState } from 'react';
 import { api, errorMessage, formatDateTime, formatMoney, Ingredient, InventoryAdjustment, ListResponse, PurchaseOrder, Supplier, toIso } from '../../lib/api';
 import { useAutoLoad } from '../../lib/use-auto-load';
 import { AppShell, buttonClass, Field, Notice, panelClass, secondaryButtonClass, Select } from '../../components/app-shell';
+import { PriceComparison, ReceivingConference } from '../../components/stock/receiving';
 
 type Row = { ingredientId: string; quantity: string; unitCost: string };
 const emptyRow: Row = { ingredientId: '', quantity: '', unitCost: '' };
@@ -16,6 +17,7 @@ export default function PurchasingPage() {
   const [orderForm, setOrderForm] = useState({ supplierId: '', dueAt: '', notes: '' }); const [rows, setRows] = useState<Row[]>([{ ...emptyRow }]);
   const [counts, setCounts] = useState<Record<string, string>>({}); const [countNote, setCountNote] = useState(''); const [adjustments, setAdjustments] = useState<InventoryAdjustment[] | null>(null);
   const [notice, setNotice] = useState<{ text: string; kind: 'error' | 'success' } | null>(null);
+  const [receiving, setReceiving] = useState<PurchaseOrder | null>(null);
   const ingredientLinkHandled = useRef(false);
   const ok = (text: string) => setNotice({ text, kind: 'success' });
   const fail = (e: unknown, fallback: string) => setNotice({ text: errorMessage(e, fallback), kind: 'error' });
@@ -48,10 +50,7 @@ export default function PurchasingPage() {
     const body = { supplierId: orderForm.supplierId, dueAt: toIso(orderForm.dueAt), notes: orderForm.notes || undefined, items: rows.map(row => ({ ingredientId: row.ingredientId, quantity: Number(row.quantity), unitCost: Number(row.unitCost) })) };
     try { await api('/purchasing/orders', { method: 'POST', body: JSON.stringify(body) }); ok('Pedido de compra criado.'); setOrderForm({ supplierId: orderForm.supplierId, dueAt: '', notes: '' }); setRows([{ ...emptyRow }]); await load(); } catch (e) { fail(e, 'Erro ao criar pedido de compra'); }
   }
-  async function receive(order: PurchaseOrder) {
-    if (!window.confirm(`Receber a compra ${order.code}? O estoque, o custo médio e o contas a pagar serão atualizados.`)) return;
-    try { await api(`/purchasing/orders/${order.id}/receive`, { method: 'POST' }); ok(`Compra ${order.code} recebida.`); await load(); } catch (e) { fail(e, 'Erro ao receber compra'); }
-  }
+  async function receive(order: PurchaseOrder) { setReceiving(order); setNotice(null); window.scrollTo({ top: 0, behavior: 'smooth' }); }
   async function cancel(order: PurchaseOrder) {
     if (!window.confirm(`Cancelar a compra ${order.code}?`)) return;
     try { await api(`/purchasing/orders/${order.id}/cancel`, { method: 'POST' }); ok(`Compra ${order.code} cancelada.`); await load(); } catch (e) { fail(e, 'Erro ao cancelar compra'); }
@@ -68,6 +67,7 @@ export default function PurchasingPage() {
 
   return <AppShell title="Compras e fornecedores">
     {notice && <Notice message={notice.text} kind={notice.kind} />}
+    {receiving && <ReceivingConference order={receiving} onCancel={() => setReceiving(null)} onDone={message => { setReceiving(null); ok(message); void load(); }} />}
     <section className={`${panelClass} mb-6`}><h2 className="mb-4 text-lg font-semibold">Fornecedores ({suppliers.length})</h2>
       <form onSubmit={createSupplier} className="grid gap-4 md:grid-cols-5"><Field label="Nome" required minLength={2} maxLength={160} value={supplierForm.name} onChange={e => setSupplierForm({ ...supplierForm, name: e.target.value })} /><Field label="CNPJ/CPF" maxLength={20} value={supplierForm.document} onChange={e => setSupplierForm({ ...supplierForm, document: e.target.value })} /><Field label="Telefone" maxLength={30} value={supplierForm.phone} onChange={e => setSupplierForm({ ...supplierForm, phone: e.target.value })} /><Field label="E-mail" type="email" value={supplierForm.email} onChange={e => setSupplierForm({ ...supplierForm, email: e.target.value })} /><div className="flex items-end"><button className={buttonClass}>Adicionar</button></div></form>
       <div className="mt-4 grid gap-2 md:grid-cols-3">{suppliers.map(item => <div key={item.id} className="rounded-lg border border-slate-800 p-3 text-sm"><div className="font-semibold">{item.name}</div><div className="text-slate-400">{[item.document, item.phone, item.email].filter(Boolean).join(' · ') || 'Sem contato'}</div></div>)}</div>{suppliers.length === 0 && <p className="mt-4 text-slate-400">Nenhum fornecedor cadastrado.</p>}</section>
@@ -80,6 +80,8 @@ export default function PurchasingPage() {
       </form></section>
 
     <section className={`${panelClass} mb-6`}><h2 className="mb-4 text-lg font-semibold">Pedidos de compra ({orders.length})</h2><div className="grid gap-3">{orders.map(order => <article key={order.id} className="rounded-lg border border-slate-800 p-4"><div className="flex flex-wrap items-start justify-between gap-3"><div><h3 className="font-semibold">{order.code} · {order.supplier.name} <span className="text-xs font-normal text-blue-300">{statusLabel[order.status] ?? order.status}</span></h3><p className="mt-1 text-sm text-slate-400">Criada em {formatDateTime(order.createdAt)}{order.dueAt ? ` · vence em ${formatDateTime(order.dueAt)}` : ''} · {formatMoney(order.total)}</p><ul className="mt-2 text-sm text-slate-300">{order.items.map(line => <li key={line.id}>{Number(line.quantity)} {line.ingredient.unitOfMeasure} de {line.ingredient.name} × {formatMoney(line.unitCost)}</li>)}</ul></div>{order.status === 'DRAFT' && <div className="flex gap-2"><button className={buttonClass} onClick={() => void receive(order)}>Receber</button><button className={secondaryButtonClass} onClick={() => void cancel(order)}>Cancelar</button></div>}</div></article>)}</div>{orders.length === 0 && <p className="text-slate-400">Nenhum pedido de compra.</p>}</section>
+
+    <PriceComparison ingredients={ingredients} />
 
     <section className={panelClass}><h2 className="mb-1 text-lg font-semibold">Inventário guiado</h2><p className="mb-4 text-sm text-slate-400">Informe a quantidade contada. Somente as linhas alteradas serão enviadas e ajustadas no estoque.</p>
       <div className="overflow-x-auto"><table className="w-full text-left text-sm"><thead className="text-slate-400"><tr><th className="py-2">Ingrediente</th><th>Estoque atual</th><th>Quantidade contada</th><th>Diferença</th></tr></thead><tbody>{ingredients.map(item => { const counted = counts[item.id]; const diff = counted ? Number(counted) - Number(item.currentStock) : 0; return <tr key={item.id} className="border-t border-slate-800"><td className="py-2">{item.name}</td><td>{Number(item.currentStock)} {item.unitOfMeasure}</td><td><input aria-label={`Quantidade contada de ${item.name}`} type="number" min="0" step="0.001" className="w-32 rounded-lg border border-slate-700 bg-slate-950 px-2 py-1 text-white" value={counted ?? ''} onChange={e => setCounts({ ...counts, [item.id]: e.target.value })} /></td><td className={diff < 0 ? 'text-red-300' : diff > 0 ? 'text-emerald-300' : 'text-slate-500'}>{counted ? (diff > 0 ? '+' : '') + Number(diff.toFixed(3)) : '—'}</td></tr>; })}</tbody></table></div>

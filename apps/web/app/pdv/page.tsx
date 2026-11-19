@@ -1,9 +1,11 @@
 'use client';
 
-import Link from 'next/link';
+import Link from '../../components/nav-link';
 import { useEffect, useRef, useState } from 'react';
 import { api, ApiError, errorMessage, formatMoney, ListResponse, ModifierGroup, ModifierGroupView, ProductComposition, storedUser, toIso, Unit } from '../../lib/api';
 import { useAutoLoad } from '../../lib/use-auto-load';
+import { OfflineSyncBar } from '../../components/offline-sync';
+import { OrderQueuedOffline, placeOrder, saveSnapshot, loadSnapshot, isNetworkFailure } from '../../lib/offline-pos';
 import type { SettingsResponse, TenantSettings } from '../../lib/settings';
 import { foreignTotals } from '../../lib/settings-helpers';
 import { parseQuantity } from '../../lib/quantity';
@@ -13,6 +15,8 @@ import { OpsNav } from '../../components/ops-nav';
 import { ProductPhoto } from '../../components/product-photo';
 import { OrderReceipt, PickupTicket, pickupTicketItems } from '../../components/order-receipt';
 import { OnlineCharges } from '../../components/online-charges';
+import { TefPaymentDialog } from '../../components/tef/tef-payment-dialog';
+import type { TefProvider, TefStartResponse, TefTransaction } from '../../lib/types-tef';
 import { PasswordReleaseDialog } from '../../components/password-release';
 import type { ReleaseAction } from '../../lib/types-settings';
 import { textareaClass } from '../../components/ui';
@@ -95,6 +99,10 @@ export default function PdvPage() {
   const [scheduledFor, setScheduledFor] = useState('');
   const [payOpen, setPayOpen] = useState(false);
   const [onlinePixOrderId, setOnlinePixOrderId] = useState('');
+  // Usable TEF providers (in testing or later). Card payments go through the TEF when one is enabled for the method; otherwise the manual cash-desk flow is unchanged.
+  const [tefProviders, setTefProviders] = useState<TefProvider[]>([]);
+  const [tefPending, setTefPending] = useState<{ transaction: TefTransaction; orderLabel: string } | null>(null);
+  useEffect(() => { api<{ items: TefProvider[] }>('/tef/providers').then(result => setTefProviders(result.items.filter(item => ['IN_TESTING', 'HOMOLOGATED', 'PRODUCTION_ENABLED'].includes(item.integrationStatus)))).catch(() => setTefProviders([])); }, []);
   const [methodId, setMethodId] = useState('');
   const [received, setReceived] = useState('');
   const [busy, setBusy] = useState(false);
@@ -117,7 +125,7 @@ export default function PdvPage() {
 
   async function load() {
     try {
-      const [catalog, settingsResult, promotionList, tableList, zoneList, groupList, unitList, sessionList, methodList, coverNow, fiscalView] = await Promise.all([
+      const fetchAll = () => Promise.all([
         loadProducts(),
         optional(api<SettingsResponse>('/settings'), null),
         optional(api<ListResponse<OpsPromotion>>('/promotions'), { items: [], total: 0 }),
@@ -130,6 +138,15 @@ export default function PdvPage() {
         optional(api<unknown>('/cover-events/current'), null),
         optional(api<FiscalSettingsView>('/fiscal/settings'), null).catch(() => null),
       ]);
+      // The catalog and settings of the last successful load stay on the device, so the PDV still opens (and sells) without connection.
+      let loaded: Awaited<ReturnType<typeof fetchAll>>;
+      try { loaded = await fetchAll(); void saveSnapshot('pdv', loaded); }
+      catch (error) {
+        const cached = isNetworkFailure(error) ? await loadSnapshot<Awaited<ReturnType<typeof fetchAll>>>('pdv') : null;
+        if (!cached) throw error;
+        loaded = cached; setMessage('Sem conexão: usando o catálogo e as configurações salvos neste aparelho. Os pedidos serão enviados quando a internet voltar.');
+      }
+      const [catalog, settingsResult, promotionList, tableList, zoneList, groupList, unitList, sessionList, methodList, coverNow, fiscalView] = loaded;
       setProducts(catalog); setSettings(settingsResult?.settings ?? null); setFiscalSettings(fiscalView); setPromotions(promotionList.items);
       if (settingsResult?.settings.pdv.askSeller) {
         const staff = await optional(api<ListResponse<{ id: string; name: string }>>('/orders/sellers'), { items: [], total: 0 });
@@ -184,8 +201,19 @@ export default function PdvPage() {
   async function groupsFor(product: OpsProduct): Promise<ModifierGroupView[]> {
     let composition = compositions[product.id];
     if (!composition) {
-      try { composition = await api<ProductComposition>(`/catalog/products/${product.id}/composition`); setCompositions(current => ({ ...current, [product.id]: composition })); }
-      catch (error) { if (!(error instanceof ApiError && [403, 404].includes(error.status))) throw error; return []; }
+      try {
+        composition = await api<ProductComposition>(`/catalog/products/${product.id}/composition`);
+        const known = { ...compositions, [product.id]: composition };
+        setCompositions(known); void saveSnapshot('compositions', known).catch(() => undefined);
+      } catch (error) {
+        // Offline: use the composition saved on this device; without one the product is added without complements and the server validates it on sync.
+        if (isNetworkFailure(error)) {
+          const saved = (await loadSnapshot<Record<string, ProductComposition>>('compositions'))?.[product.id];
+          if (!saved) { setMessage('Sem conexão: os complementos deste produto não puderam ser carregados. O pedido segue sem eles e é conferido ao sincronizar.'); return []; }
+          composition = saved;
+        } else if (error instanceof ApiError && [403, 404].includes(error.status)) return [];
+        else throw error;
+      }
     }
     return groupsCatalog.filter(group => group.active && composition.modifierGroups.some(link => link.groupId === group.id)).map(group => ({ ...group, options: group.options.filter(option => option.active !== false) })).filter(group => group.options.length > 0);
   }
@@ -299,7 +327,7 @@ export default function PdvPage() {
     const knownCustomer = Boolean(customer);
     const phoneAllowed = Boolean(chosenName) && (knownCustomer || pdv.autoRegisterCustomer);
     const phoneText = customer?.phone ?? customerTerm.replace(/[^\d+]/g, '');
-    return api<OpsOrder>('/orders', { method: 'POST', body: JSON.stringify({
+    const orderBody = {
       channel: channel === 'TAB' ? 'TABLE' : channel,
       unitId: orderUnit || undefined,
       tableId: channel === 'TABLE' ? tableId : undefined,
@@ -316,7 +344,9 @@ export default function PdvPage() {
       orderReleaseId: orderRelease || undefined,
       sellerId: pdv.askSeller && sellerId ? sellerId : undefined,
       items: lines,
-    }) });
+    };
+    const channelName = channelOptions.find(option => option.key === channel)?.label ?? 'Venda';
+    return placeOrder<OpsOrder>(orderBody, `${channelName} · ${lines.length} item(ns) · ${formatMoney(total)}`);
   }
 
   function resetCart() {
@@ -364,7 +394,15 @@ export default function PdvPage() {
         resetCart(); return;
       }
       if (!openSession) throw new Error('Nenhum caixa aberto para esta unidade.');
-      const paid = await api<{ payment: { id: string; amount: string | number; method: string } }>('/cash/payments', { method: 'POST', body: JSON.stringify({ orderId: order.id, method: method.equivalent, amount: Number(order.total).toFixed(2), cashSessionId: openSession.id, reference: DEFAULT_PAYMENT_METHODS.some(item => item.id === method.id) ? undefined : method.name }) });
+      const tefProvider = method.equivalent === 'CREDIT_CARD' || method.equivalent === 'DEBIT_CARD' ? tefProviders.find(item => item.enabledMethods.includes(method.equivalent) && item.capabilities.methods.includes(method.equivalent)) : undefined;
+      let tefPayment: { payment: { id: string; amount: string | number; method: string } } | null = null;
+      if (tefProvider) {
+        // One key per order and method: repeating the click returns the same transaction instead of charging twice.
+        const result = await api<TefStartResponse>('/tef/transactions', { method: 'POST', body: JSON.stringify({ orderId: order.id, provider: tefProvider.provider, method: method.equivalent, amount: Number(order.total), idempotencyKey: `pdv-${order.id}-${method.equivalent}`, cashSessionId: openSession.id }) });
+        if (!result.paid) { setTefPending({ transaction: result.transaction, orderLabel: orderTitle(order) }); setPayOpen(false); resetCart(); return; }
+        tefPayment = { payment: { id: result.transaction.paymentId!, amount: result.transaction.amount, method: method.equivalent } };
+      }
+      const paid = tefPayment ?? await api<{ payment: { id: string; amount: string | number; method: string } }>('/cash/payments', { method: 'POST', body: JSON.stringify({ orderId: order.id, method: method.equivalent, amount: Number(order.total).toFixed(2), cashSessionId: openSession.id, reference: DEFAULT_PAYMENT_METHODS.some(item => item.id === method.id) ? undefined : method.name }) });
       const settled = { ...order, payments: [{ id: paid.payment.id, amount: paid.payment.amount, method: paid.payment.method }] };
       setLastOrder(settled);
       const change = method.allowChange && receivedValue > Number(order.total) ? ` Troco: ${formatMoney(receivedValue - Number(order.total))}.` : '';
@@ -375,6 +413,10 @@ export default function PdvPage() {
       setSuccess(`Venda ${orderTitle(order)} registrada: ${formatMoney(order.total)} em ${method.name}.${change}${fiscalNote ? ` ${fiscalNote}` : ''}`);
       askToPrint(settled, true); resetCart();
     } catch (error) {
+      if (error instanceof OrderQueuedOffline) {
+        setSuccess(`Sem conexão: ${error.entry.label} guardado neste aparelho e será enviado automaticamente quando a internet voltar. Pagamento e nota fiscal: finalize no Caixa depois da sincronização.`);
+        setPayOpen(false); resetCart(); return;
+      }
       if (order) { setMessage(`Pedido ${orderTitle(order)} foi gerado, mas o pagamento não foi registrado: ${opsError(error, 'erro ao pagar')}. Conclua em Caixa.`); setPayOpen(false); resetCart(); }
       else setMessage(opsError(error, 'Erro ao gerar o pedido'));
     } finally { setBusy(false); }
@@ -417,6 +459,7 @@ export default function PdvPage() {
         </div>
         {message && <Notice message={message} />}
         {success && <Notice message={success} kind="success" />}
+        <OfflineSyncBar />
         <FiscalReadinessBanner settings={fiscalSettings} />
         {sessions !== null && sessions.length === 0 && <div role="status" className="mb-3 flex flex-wrap items-center justify-between gap-2 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">Nenhum caixa aberto: você pode gerar pedidos, mas a venda com pagamento exige caixa aberto.<Link href="/cash" className="font-semibold underline">Abrir caixa</Link></div>}
 
@@ -573,6 +616,7 @@ export default function PdvPage() {
             <p className="mt-3 text-sm text-slate-600">A confirmação é recebida pelo servidor. Se nenhum provedor estiver configurado, feche esta janela e registre o pagamento manualmente no Caixa.</p>
           </div>
         </div>}
+        {tefPending && <TefPaymentDialog transaction={tefPending.transaction} orderLabel={tefPending.orderLabel} onClose={() => setTefPending(null)} onApproved={() => { setSuccess(`Pagamento TEF do pedido ${tefPending.orderLabel} aprovado.`); setTefPending(null); }} />}
         {fiscalAsk && <FiscalChoiceDialog onChoose={emit => { setFiscalAsk(false); fiscalResolver.current?.(emit); fiscalResolver.current = null; }} />}
         {inutilOpen && <InutilizationDialog onClose={() => setInutilOpen(false)} />}
         <PasswordReleaseDialog key={releaseAction} open={releaseOpen} action={releaseAction} defaultReason={releaseAction === 'OTHER' ? 'PDV_TABLE_ORDER' : undefined} fixedReason={releaseAction === 'OTHER'} onCancel={() => setReleaseOpen(false)} onAuthorized={id => {

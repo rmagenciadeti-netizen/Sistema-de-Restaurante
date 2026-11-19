@@ -24,11 +24,11 @@ export const MODULE_KEYS = MODULE_CATALOG.map(item => item.key) as [ModuleKey, .
 
 const ROUTE_MODULES: Record<string, ModuleKey> = {
   orders: 'pos', tables: 'tables', reservations: 'tables', delivery: 'delivery', inventory: 'inventory', purchasing: 'inventory',
-  financial: 'financial', cash: 'financial', employees: 'employees', shifts: 'employees', production: 'kds', printing: 'printing',
+  financial: 'financial', 'bank-reconciliation': 'financial', cash: 'financial', employees: 'employees', shifts: 'employees', commissions: 'employees', production: 'kds', printing: 'printing',
   whatsapp: 'whatsapp', coupons: 'marketing', fiscal: 'fiscal', reports: 'reports', integrations: 'integrations', payments: 'integrations',
   releases: 'pos', scale: 'pos', couriers: 'delivery', carriers: 'inventory', 'payment-methods': 'financial', 'financial-categories': 'financial',
-  promotions: 'marketing', 'cover-events': 'tables', 'tax-rules': 'fiscal', 'fiscal-registry': 'fiscal',
-  intelligence: 'intelligence', profit: 'profit',
+  promotions: 'marketing', 'cover-events': 'tables', 'table-requests': 'tables', 'tax-rules': 'fiscal', 'fiscal-registry': 'fiscal',
+  intelligence: 'intelligence', profit: 'profit', pricing: 'profit', tef: 'integrations',
 };
 
 export function moduleForPath(originalUrl: string): ModuleKey | null {

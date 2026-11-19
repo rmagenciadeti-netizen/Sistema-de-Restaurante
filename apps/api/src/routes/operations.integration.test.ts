@@ -148,4 +148,48 @@ test('counter operations: weighed products, promotions, scheduling, cover charge
     const pickup = await call('GET', '/orders?type=pickup&pageSize=100', admin);
     assert.equal(pickup.body.items.some((item: any) => item.channel === 'DELIVERY'), false);
   });
+
+  await t.test('custom KDS stages map to real item phases without touching the order status', async () => {
+    const stages = [
+      { key: 'RECEIVED', label: 'Recebido', phase: 'PENDING', color: '#b45309' }, { key: 'ASSEMBLY', label: 'Montagem', phase: 'PREPARING', color: '#0369a1' },
+      { key: 'OVEN', label: 'No forno', phase: 'PREPARING', color: '#dc2626' }, { key: 'READY', label: 'Pronto', phase: 'READY', color: '#047857' }, { key: 'DELIVERED', label: 'Entregue', phase: 'DELIVERED', color: '#475569' },
+    ];
+    // Invalid flows are refused: out of order phases, repeated keys, a missing phase.
+    assert.equal((await call('PUT', '/production/stages', admin, { stages: [stages[1], stages[0], stages[3], stages[4]] })).status, 400);
+    assert.equal((await call('PUT', '/production/stages', admin, { stages: [stages[0], stages[0], stages[3], stages[4]] })).status, 400);
+    assert.equal((await call('PUT', '/production/stages', admin, { stages: [stages[0], stages[1], stages[2], stages[4]] })).status, 400);
+    assert.equal((await call('PUT', '/production/stages', tokens.CASHIER.token, { stages })).status, 403, 'only managers define the flow');
+    assert.equal((await call('PUT', '/production/stages', admin, { stages })).status, 200);
+
+    const created = await order({ items: [{ productId: plain.id, quantity: 1 }] });
+    const listed = async () => (await call('GET', '/production/kds', admin)).body.items.find((item: any) => item.order.id === created.body.id);
+    assert.equal((await listed()).stage.key, 'RECEIVED');
+    const itemId = (await listed()).id;
+    assert.equal((await call('PATCH', `/production/items/${itemId}/status`, admin, { stage: 'OVEN' })).status, 200);
+    const inOven = await listed();
+    assert.deepEqual([inOven.status, inOven.stage.key, inOven.kdsStage], ['PREPARING', 'OVEN', 'OVEN']);
+    assert.ok(inOven.startedAt, 'the phase timeline still runs');
+    assert.equal((await prisma.order.findUniqueOrThrow({ where: { id: created.body.id } })).status, 'OPEN', 'the general order status is not a KDS stage');
+    assert.equal((await call('PATCH', `/production/items/${itemId}/status`, admin, { stage: 'NOPE' })).status, 400);
+    assert.equal((await call('PATCH', `/production/items/${itemId}/status`, admin, { stage: 'OVEN', status: 'READY' })).status, 400, 'stage and status are exclusive');
+    // The plain status API keeps working and lands on the first stage of that phase.
+    assert.equal((await call('PATCH', `/production/items/${itemId}/status`, admin, { status: 'PREPARING' })).status, 200);
+    assert.equal((await listed()).stage.key, 'ASSEMBLY');
+    assert.equal((await call('PATCH', `/production/items/${itemId}/status`, admin, { stage: 'READY' })).body.orderReady, true);
+    assert.equal((await call('PATCH', `/production/items/${itemId}/status`, admin, { stage: 'DELIVERED' })).status, 200);
+    assert.equal(await listed(), undefined, 'a delivered stage leaves the panel');
+    assert.equal(await prisma.auditLog.count({ where: { tenantId: tenant.id, action: 'KDS_STAGES_UPDATED' } }), 1);
+  });
+
+  await t.test('scope=unpaid lists only orders with an outstanding balance', async () => {
+    const items = [{ productId: plain.id, quantity: 1 }];
+    const open = await order({ items });
+    const paid = await order({ items });
+    const partial = await order({ items });
+    await prisma.payment.create({ data: { tenantId: tenant.id, unitId: unit.id, orderId: paid.body.id, method: 'PIX', amount: Number(paid.body.total) } });
+    await prisma.payment.create({ data: { tenantId: tenant.id, unitId: unit.id, orderId: partial.body.id, method: 'PIX', amount: 1 } });
+    const ids = (await call('GET', '/orders?scope=unpaid&pageSize=100', admin)).body.items.map((item: any) => item.id);
+    assert.ok(ids.includes(open.body.id) && ids.includes(partial.body.id));
+    assert.equal(ids.includes(paid.body.id), false);
+  });
 });

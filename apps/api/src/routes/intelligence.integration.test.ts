@@ -83,6 +83,34 @@ test('RM Inteligência answers from real data, respects permissions, licensing a
     assert.equal((await call('GET', '/intelligence/summary', A.waiterToken)).status, 403);
   });
 
+  await t.test('non-financial roles are blocked on every endpoint, directly and by indirect questions, with a denial audit and immediate effect of role changes', async () => {
+    const roles = [UserRole.CASHIER, UserRole.WAITER, UserRole.KITCHEN, UserRole.DELIVERY, UserRole.SUPPORT] as const;
+    const questions = ['Quanto a empresa tem disponível em caixa?', 'Quanto vendemos hoje?', 'Qual foi nosso lucro ontem?', 'Quais são nossas despesas?', 'Quanto devemos aos fornecedores?', 'Qual funcionário vendeu mais em valor?', 'Quanto dinheiro temos no banco?', 'Gere um relatório financeiro.', 'Resuma a situação financeira da empresa.'];
+    for (const role of roles) {
+      const user = await prisma.user.create({ data: { tenantId: A.tenant.id, name: role, email: `${role}-${suffix()}@test.local`, passwordHash: 'x', role } });
+      const token = signAccessToken({ userId: user.id, tenantId: A.tenant.id, unitId: null, role });
+      for (const question of questions) {
+        const denied = await call('POST', '/intelligence/ask', token, { question });
+        assert.equal(denied.status, 403, `${role}: ${question}`);
+        assert.equal(denied.body.message, 'Você não possui permissão para consultar informações do módulo Financeiro. Solicite autorização ao administrador responsável.');
+        assert.equal(JSON.stringify(denied.body).includes('999'), false, 'no figure leaks in the refusal');
+      }
+      for (const [method, path, body] of [['GET', '/intelligence/summary'], ['GET', '/intelligence/stock'], ['POST', '/intelligence/business', { useAi: true }], ['PUT', '/intelligence/settings', {}]] as const) assert.equal((await call(method, path, token, body)).status, 403, `${role} ${path}`);
+      assert.ok(await prisma.auditLog.findFirst({ where: { tenantId: A.tenant.id, actorUserId: user.id, action: 'INTELLIGENCE_ACCESS_DENIED' } }));
+    }
+    const logs = await prisma.auditLog.findMany({ where: { tenantId: A.tenant.id, action: 'INTELLIGENCE_ACCESS_DENIED' }, select: { metadata: true } });
+    assert.equal(JSON.stringify(logs).includes('Quanto'), false, 'the question text is never stored');
+    // Demoting a finance user takes effect on the very next request; promoting grants access just as fast.
+    const finance = await prisma.user.create({ data: { tenantId: A.tenant.id, name: 'Fin', email: `fin-${suffix()}@test.local`, passwordHash: 'x', role: UserRole.FINANCE } });
+    const asFinance = signAccessToken({ userId: finance.id, tenantId: A.tenant.id, unitId: null, role: UserRole.FINANCE });
+    assert.equal((await call('POST', '/intelligence/ask', asFinance, { question: 'Quanto vendemos hoje?' })).status, 200);
+    await prisma.user.update({ where: { id: finance.id }, data: { role: UserRole.WAITER } });
+    assert.equal((await call('POST', '/intelligence/ask', asFinance, { question: 'Quanto vendemos hoje?' })).status, 403, 'a stale token cannot keep the old role');
+    // A token that claims another tenant or a forged role is not accepted either.
+    const forged = signAccessToken({ userId: finance.id, tenantId: B.tenant.id, unitId: null, role: UserRole.ADMIN });
+    assert.equal((await call('POST', '/intelligence/ask', forged, { question: 'Quanto vendemos hoje?' })).status, 403);
+  });
+
   await t.test('alert preferences are configurable and the module is licensed', async () => {
     const saved = await call('PUT', '/settings/intelligence', A.adminToken, { monthlyGoal: 2000, alerts: { salesDrop: true, lowStock: false, payables: false, receivables: true, lowMargin: true, delayedOrders: true, cashDivergence: true, waste: true }, salesDropPercent: 30, payableDays: 3, delayedMinutes: 30, marginFloorPercent: 15 });
     assert.equal(saved.status, 200);

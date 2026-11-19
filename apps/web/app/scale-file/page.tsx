@@ -1,7 +1,7 @@
 'use client';
 
 import { useState } from 'react';
-import Link from 'next/link';
+import Link from '../../components/nav-link';
 import { API_BASE, api, errorMessage, formatMoney, ListResponse, tokenStorageKey } from '../../lib/api';
 import { useAutoLoad } from '../../lib/use-auto-load';
 import { SCALE_BRAND_OPTIONS, type ScaleBrandValue, type ScaleProduct } from '../../lib/types-catalog';

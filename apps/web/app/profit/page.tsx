@@ -1,5 +1,6 @@
 'use client';
 
+import Link from '../../components/nav-link';
 import { useCallback, useEffect, useState } from 'react';
 import { api, errorMessage, formatDateTime, formatMoney } from '../../lib/api';
 import { AppShell, buttonClass, Check, Field, Notice, panelClass, secondaryButtonClass } from '../../components/app-shell';
@@ -77,6 +78,7 @@ export default function ProfitPage() {
 
   return <AppShell title="RM Controle de Lucro">
     <PageHeader title="RM Controle de Lucro" subtitle="Quanto o restaurante realmente ganha: faturamento, recebimento, lucro bruto, margem de contribuição e resultado operacional, a partir dos dados registrados." />
+    <p className="-mt-2 mb-4 text-sm text-slate-600">Para definir preços e margens por produto, use <Link href="/pricing" className="font-semibold text-brand-700 hover:underline">Formação de preço e rentabilidade</Link>. O percentual de impostos abaixo é informado por você: o sistema não presume alíquotas; confirme com seu contador.</p>
     {message && <Notice message={message} kind={success ? 'success' : 'error'} />}
     <Section title="Período"><div className="grid gap-3 sm:grid-cols-4"><Field label="De" type="date" value={from} onChange={event => setFrom(event.target.value)} /><Field label="Até" type="date" value={to} onChange={event => setTo(event.target.value)} /><button type="button" className={`${secondaryButtonClass} self-end`} onClick={() => void load()}>Atualizar</button></div></Section>
     <Tabs tabs={tabs.map(item => ({ key: item.key, label: item.label }))} value={tab} onChange={setTab} label="Controle de lucro" />

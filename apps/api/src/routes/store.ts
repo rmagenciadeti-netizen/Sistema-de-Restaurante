@@ -46,7 +46,7 @@ storeRoutes.get('/:slug', async (req, res, next) => {
         where: { tenantId: tenant.id, active: true, startsAt: { lte: now }, OR: [{ endsAt: null }, { endsAt: { gte: now } }] },
         include: { products: { select: { productId: true } } },
       }),
-      prisma.deliveryZone.findMany({ where: { tenantId: tenant.id, active: true, ...unitScope }, select: { id: true, name: true, fee: true, minOrder: true }, orderBy: { name: 'asc' } }),
+      prisma.deliveryZone.findMany({ where: { tenantId: tenant.id, active: true, ...unitScope }, select: { id: true, name: true, fee: true, minOrder: true, estimatedMinutes: true, neighborhoods: true }, orderBy: { name: 'asc' } }),
       prisma.paymentMethodConfig.findMany({ where: { tenantId: tenant.id, active: true, showStore: true }, select: { id: true, name: true, equivalent: true, allowChange: true }, orderBy: [{ sortOrder: 'asc' }, { name: 'asc' }] }),
       prisma.storeImage.findMany({ where: { tenantId: tenant.id }, select: { kind: true, updatedAt: true } }),
     ]);

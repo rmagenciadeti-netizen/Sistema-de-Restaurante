@@ -1,6 +1,6 @@
 'use client';
 
-import Link from 'next/link';
+import Link from './nav-link';
 import { useEffect, useState } from 'react';
 import { buttonClass, Field, Notice, Select, secondaryButtonClass } from './app-shell';
 import { textareaClass } from './ui';

@@ -8,6 +8,7 @@ import { DataTable, EmptyState, StatCard } from '../ui';
 import { exportCsv, Section, type PlanRow } from './common';
 
 type Overview = {
+  movement?: { newContracts: number; cancelled: number; churnPercent: number };
   clients: { total: number; active: number; trial: number; suspended: number; delinquent: number };
   subscriptions: { active: number; expired: number; suspended: number; pending: number; cancelled: number; created: number };
   revenue: { mrr: number; arr: number; issued: number; received: number; open: number; overdue: number; discounts: number };
@@ -61,7 +62,7 @@ export function CommercialOverview() {
         <StatCard icon="⏳" label="Em aberto / vencido" value={`${formatMoney(data.revenue.open)} / ${formatMoney(data.revenue.overdue)}`} hint={`${data.clients.delinquent} cliente(s) inadimplente(s)`} />
         <StatCard icon="🏢" label="Clientes" value={data.clients.total} hint={`${data.clients.active} ativos · ${data.clients.trial} em teste · ${data.clients.suspended} suspensos/bloqueados`} />
         <StatCard icon="🔁" label="Assinaturas ativas" value={data.subscriptions.active} hint={`${data.subscriptions.expired} vencidas · ${data.subscriptions.suspended} suspensas · ${data.subscriptions.pending} pendentes`} />
-        <StatCard icon="🆕" label="Novas × cancelamentos" value={`${data.subscriptions.created} / ${data.subscriptions.cancelled}`} hint="No período filtrado" />
+        <StatCard icon="🆕" label="Novas × cancelamentos" value={`${data.subscriptions.created} / ${data.subscriptions.cancelled}`} hint={`No período filtrado${data.movement ? ` · churn ${data.movement.churnPercent}%` : ''}`} />
         <StatCard icon="🧩" label="Catálogo" value={`${data.catalog.plans} planos · ${data.catalog.modules} módulos`} hint={`${data.catalog.activeCampaigns} promoções e ${data.catalog.activeCoupons} cupons ativos · ${data.catalog.couponUses + data.catalog.campaignUses} usos`} />
       </div>
       <div className="grid gap-6 xl:grid-cols-2">

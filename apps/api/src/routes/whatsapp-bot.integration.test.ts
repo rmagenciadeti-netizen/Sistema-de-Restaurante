@@ -7,7 +7,7 @@ import path from 'node:path';
 import { UserRole } from '@prisma/client';
 import { prisma } from '../lib/prisma';
 import { signAccessToken } from '../middleware/auth';
-import { saveSettingsSection } from '../lib/settings';
+import { loadSettings, saveSettingsSection } from '../lib/settings';
 import { processInbound } from '../lib/whatsapp-inbound';
 import { WhatsappSessionManager } from '../lib/whatsapp-sessions';
 import { enqueueAutoMessage } from '../lib/whatsapp-auto';
@@ -115,6 +115,9 @@ test('WhatsApp bot, QR session manager and panel API', { skip: !enabled }, async
     let received = '';
     setAiProvider({ name: 'fake', answer: async ({ system, question }) => { received = `${system}\n${question}`; return question.includes('casamento') ? 'Isso eu não sei. [ATENDENTE]' : 'Fazemos sim, consulte a gerência para valores!'; } });
     await saveSettingsSection(prisma, tenant.id, 'whatsapp', { botEnabled: true, aiFallback: true });
+    // The shared AI gate applies here too: without the company's consent the customer's text is not sent to the model.
+    assert.equal((await say('vocês fazem festa de aniversário infantil?', '5566777776666@s.whatsapp.net', '5566777776666', 'Ana')).intent, 'fallback'); assert.equal(received, '');
+    await saveSettingsSection(prisma, tenant.id, 'ai', { ...(await loadSettings(prisma, tenant.id)).ai, externalConsent: true });
     const ai = await say('vocês fazem festa de aniversário infantil?', '5566777776666@s.whatsapp.net', '5566777776666', 'Ana');
     assert.equal(ai.intent, 'ai');
     assert.match(joined(ai), /Fazemos sim/);

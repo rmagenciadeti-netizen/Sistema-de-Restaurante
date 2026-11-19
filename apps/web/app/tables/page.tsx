@@ -1,11 +1,12 @@
 'use client';
 
 import QRCode from 'qrcode';
-import Link from 'next/link';
+import Link from '../../components/nav-link';
 import { useState } from 'react';
 import { api, errorMessage, ListResponse, RestaurantTable, storedUser, Unit } from '../../lib/api';
 import { useAutoLoad } from '../../lib/use-auto-load';
 import { AppShell, buttonClass, Check, Field, Notice, panelClass, secondaryButtonClass, Select } from '../../components/app-shell';
+import { TableRequestsPanel } from '../../components/tables/requests';
 
 const emptyForm = { label: '', seats: '4', unitId: '', active: true };
 
@@ -46,6 +47,7 @@ export default function TablesPage() {
   const unitName = (id: string) => units.find(unit => unit.id === id)?.name ?? '';
 
   return <AppShell title="Mesas e QR Code">
+    <TableRequestsPanel />
     <div className="print:hidden">{notice && <Notice message={notice.text} kind={notice.kind} />}</div>
     <section className={`${panelClass} mb-6 print:hidden`}><h2 className="mb-4 text-lg font-semibold">{editingId ? 'Editar mesa' : 'Nova mesa'}</h2>
       <form onSubmit={save} className="grid gap-4 md:grid-cols-4">

@@ -1,4 +1,5 @@
 import { FiscalConfigError } from './fiscal-config';
+import { brandCode } from './card-brands';
 import type { FiscalContext, FiscalDocumentRef, FiscalEmission, FiscalEventResult, FiscalInutilization, FiscalItemTax, FiscalOrder, FiscalProvider, FiscalResultStatus } from './providers';
 
 /**
@@ -9,7 +10,7 @@ import type { FiscalContext, FiscalDocumentRef, FiscalEmission, FiscalEventResul
 type FocusResponse = Record<string, unknown> & { status?: string; status_sefaz?: string | number; mensagem_sefaz?: string; mensagem?: string; codigo?: string; erros?: Array<{ mensagem?: string; campo?: string }> };
 const BASE = { HOMOLOGATION: 'https://homologacao.focusnfe.com.br', PRODUCTION: 'https://api.focusnfe.com.br' } as const;
 const TIMEOUT_MS = 45_000;
-const PAYMENT_CODE: Record<string, string> = { CASH: '01', CREDIT_CARD: '03', DEBIT_CARD: '04', VOUCHER: '10', PIX: '17', OTHER: '99' };
+const PAYMENT_CODE: Record<string, string> = { NONE: '90', CASH: '01', CREDIT_CARD: '03', DEBIT_CARD: '04', VOUCHER: '10', PIX: '17', OTHER: '99' };
 
 export const focusStatus = (status: string | undefined): FiscalResultStatus => {
   switch (status) {
@@ -64,7 +65,11 @@ export function focusPayload(order: FiscalOrder, kind: 'NFCE' | 'NFE', context: 
   const address = order.customer.address;
   if (address) Object.assign(recipient, { logradouro_destinatario: address.street, numero_destinatario: address.number, complemento_destinatario: address.complement || undefined, bairro_destinatario: address.district, municipio_destinatario: address.city, codigo_municipio_destinatario: address.cityIbge, uf_destinatario: address.uf, cep_destinatario: address.cep, pais_destinatario: 'Brasil' });
   if (kind === 'NFE' && doc) Object.assign(recipient, { indicador_inscricao_estadual_destinatario: order.customer.contributorIndicator ?? '9', inscricao_estadual_destinatario: order.customer.stateRegistration || undefined });
-  const payments = order.payments?.length ? order.payments : [{ method: 'OTHER', amount: order.total }];
+  // No "Outros" line is invented for the missing amount: an order not fully paid is refused (NF-e without payment is "sem pagamento", 90).
+  const paidCents = (order.payments ?? []).reduce((sum, payment) => sum + cents(payment.amount), 0);
+  const noPayment = !['3', '4'].includes(order.finality ?? '1') && (order.payments ?? []).length === 0;
+  if (!['3', '4'].includes(order.finality ?? '1') && !(kind === 'NFE' && noPayment) && paidCents < cents(order.total)) throw new FiscalConfigError(`Pagamento confirmado (${money(paidCents)}) menor que o total do documento (${order.total}): registre ou recupere o pagamento antes de emitir.`);
+  const payments: NonNullable<FiscalOrder['payments']> = noPayment || ['3', '4'].includes(order.finality ?? '1') ? [{ method: 'NONE', amount: '0.00' }] : order.payments!;
   const interstate = Boolean(address?.uf && context.issuer.uf && address.uf !== context.issuer.uf);
   return {
     natureza_operacao: order.nature ?? 'Venda de mercadoria', data_emissao: order.issuedAt.toISOString(), numero: order.number, serie: order.series,
@@ -80,7 +85,13 @@ export function focusPayload(order: FiscalOrder, kind: 'NFCE' | 'NFE', context: 
       valor_desconto: discount[index] ? money(discount[index]) : undefined, valor_frete: freight[index] ? money(freight[index]) : undefined, valor_outras_despesas: other[index] ? money(other[index]) : undefined,
       ...itemTax(item.tax),
     })),
-    formas_pagamento: payments.map(payment => ({ forma_pagamento: PAYMENT_CODE[payment.method] ?? '99', valor_pagamento: Number(payment.amount).toFixed(2) })),
+    formas_pagamento: payments.map(payment => {
+      const base = { forma_pagamento: PAYMENT_CODE[payment.method] ?? '99', valor_pagamento: Number(payment.amount).toFixed(2) };
+      const cnpj = ('acquirerCnpj' in payment ? payment.acquirerCnpj ?? '' : '').replace(/\D/g, '');
+      // Integrated (TEF) card payments carry the real data returned by the provider; anything missing is left out, never invented.
+      if (!('integrated' in payment) || !payment.integrated || !['CREDIT_CARD', 'DEBIT_CARD'].includes(payment.method)) return base;
+      return { ...base, tipo_integracao: 1, cnpj_credenciadora: cnpj.length === 14 ? cnpj : undefined, bandeira_operadora: payment.cardBrand ? brandCode(payment.cardBrand) : undefined, numero_autorizacao: payment.authorizationCode || undefined };
+    }),
   };
 }
 

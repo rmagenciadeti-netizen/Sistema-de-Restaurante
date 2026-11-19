@@ -28,12 +28,15 @@ jobs:
           --health-retries 5
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
       - uses: actions/setup-node@v4
         with:
           node-version: 22
           cache: npm
       - run: npm ci
       - run: npm audit --audit-level=moderate
+      - run: node scripts/check-migrations.mjs "origin/${{ github.base_ref || 'main' }}"
       - run: npm run db:validate
       - run: npm run db:generate
       - run: npm run db:deploy
@@ -44,7 +47,7 @@ jobs:
         env:
           RUN_DB_TESTS: '1'
       - run: npm run test --workspace apps/print-agent
-      - run: npm exec --workspace apps/web -- node --import tsx --test app/orders/page.test.mjs app/cash/page.test.mjs app/inventory/page.test.mjs app/purchasing/page.test.mjs app/reservations/page.test.mjs app/products/page.test.mjs app/delivery/page.test.mjs app/monitor/page.test.mjs app/production/page.test.mjs app/categories/page.test.mjs lib/settings-helpers.test.mjs lib/api.test.mjs lib/session-guard.test.mjs lib/product-templates.test.mjs
+      - run: npm exec --workspace apps/web -- node --import tsx --test app/orders/page.test.mjs app/cash/page.test.mjs app/inventory/page.test.mjs app/purchasing/page.test.mjs app/reservations/page.test.mjs app/products/page.test.mjs app/delivery/page.test.mjs app/monitor/page.test.mjs app/production/page.test.mjs app/categories/page.test.mjs lib/settings-helpers.test.mjs lib/api.test.mjs lib/session-guard.test.mjs lib/product-templates.test.mjs lib/menu-catalog.test.mjs lib/offline-queue.test.mjs lib/shell-profile.test.mjs
       - run: npm run lint --workspace apps/web
       - run: npm run build --workspace apps/web
       - run: npm run build --workspace apps/admin

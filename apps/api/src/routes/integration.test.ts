@@ -657,6 +657,8 @@ test('database-backed API behaviour', { skip: !enabled }, async t => {
     const order = await call('POST', '/orders', a, { unitId: A.unit.id, items: [{ productId: soda.id, quantity: 1 }] });
     const emit = (token = a) => call('POST', `/fiscal/orders/${order.body.id}/emit`, token, { provider: 'fakefisc' });
     assert.equal((await emit()).status, 501);
+    // A document is only issued for what was really paid: unpaid is refused before any number is used.
+    await prisma.payment.create({ data: { tenantId: A.tenant.id, unitId: A.unit.id, orderId: order.body.id, method: 'CASH', amount: order.body.total } });
     let outcome: 'AUTHORIZED' | 'REJECTED' = 'REJECTED';
     fiscalProviders.register({ name: 'fakefisc', emit: async () => ({ status: outcome, number: '123', accessKey: 'K'.repeat(44), error: outcome === 'REJECTED' ? 'CNPJ inválido' : undefined }), cancel: async () => ({ cancelled: true }) });
     t.after(() => fiscalProviders.clear());

@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import { NextRequest } from 'next/server';
-import { guardSession, isPublicPath, tokenExpired } from './session-guard.ts';
+import { guardSession, isMasterOnlyPath, isPublicPath, tokenExpired } from './session-guard.ts';
 
 const jwt = (exp) => `h.${Buffer.from(JSON.stringify({ exp })).toString('base64url')}.s`;
 const now = 1_800_000_000_000;
@@ -37,4 +37,11 @@ test('the API decides revoked sessions (401 -> redirect), valid ones continue an
   assert.equal(await guardSession(request('/orders', valid), opts(ok)), null);
   assert.equal(calls, 1);
   assert.equal(await guardSession(request('/dashboard', jwt(now / 1000 + 9000)), opts(async () => { throw new Error('down'); })), null);
+});
+
+test('master-only screens are recognised so the restaurant app can answer 404', () => {
+  assert.equal(isMasterOnlyPath('/migrations'), true);
+  assert.equal(isMasterOnlyPath('/migrations/anything'), true);
+  assert.equal(isMasterOnlyPath('/migrations-other'), false);
+  assert.equal(isMasterOnlyPath('/financial'), false);
 });

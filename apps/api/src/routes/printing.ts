@@ -3,13 +3,61 @@ import { PrintJobKind, PrintJobStatus, PrinterKind } from '@prisma/client';
 import { z } from 'zod';
 import { prisma } from '../lib/prisma';
 import { requireAuth, requireTenant } from '../middleware/auth';
-import { allowRead, MANAGEMENT_ROLES, PRODUCTION_ROLES } from '../lib/permissions';
+import { allowRead, CASH_ROLES, FINANCE_ROLES, MANAGEMENT_ROLES, PRODUCTION_ROLES, requireRoles } from '../lib/permissions';
+import { companyHeader, enqueueReceipt, fiscalDocumentText, loadFiscalDocument, loadSaleOrder, ReceiptError, receiptLines, saleReceiptText } from '../lib/receipts';
+import { loadTransaction } from '../lib/tef/service';
 import { generateAgentToken, hashAgentToken } from '../lib/agent-auth';
 import { enqueueProductionPrints, pickPrinter, sectorMatchesUnit } from '../lib/print-queue';
 import { paperColumns } from '../lib/ticket';
 
 export const printingRoutes = Router();
-printingRoutes.use(requireAuth, requireTenant, allowRead(PRODUCTION_ROLES, MANAGEMENT_ROLES));
+printingRoutes.use(requireAuth, requireTenant);
+const unitOfReq = (req: { auth?: { unitId: string | null } }) => req.auth!.unitId;
+const receiptBody = z.object({ copy: z.enum(['CUSTOMER', 'MERCHANT', 'BOTH']).optional(), reason: z.string().trim().max(300).optional(), printerId: z.string().uuid().optional() });
+const receiptFailure = (res: import('express').Response, next: import('express').NextFunction, error: unknown) => error instanceof ReceiptError ? res.status(error.status).json({ message: error.message, code: error.code }) : next(error);
+
+// Receipts are printed from the cash desk: the cash profiles can queue them (originals once; reprints with a reason and audit trail).
+printingRoutes.post('/receipts/tef/:transactionId', requireRoles(...CASH_ROLES), async (req, res, next) => {
+  try {
+    const body = receiptBody.safeParse(req.body ?? {}); if (!body.success) return res.status(400).json({ message: 'Validation failed' });
+    const { tenantId, userId, role } = req.auth!;
+    const transaction = await loadTransaction(tenantId!, req.params.transactionId, unitOfReq(req), FINANCE_ROLES.includes(role) ? null : userId);
+    if (!transaction) return res.status(404).json({ message: 'Transação não encontrada.' });
+    if (transaction.status !== 'APPROVED') return res.status(409).json({ message: 'Só há comprovante TEF para transação aprovada.', code: 'TEF_NOT_APPROVED' });
+    const scope = { tenantId: tenantId!, unitId: transaction.unitId };
+    const header = await companyHeader(scope);
+    const wanted = body.data.copy ?? header.tefCopies;
+    const copies = wanted === 'BOTH' ? ['CUSTOMER', 'MERCHANT'] as const : [wanted] as const;
+    const results = [];
+    for (const copy of copies) results.push(await enqueueReceipt({ scope, orderId: transaction.orderId, userId, key: `tef:${transaction.id}:${copy}`, copies: 1, reason: body.data.reason, printerId: body.data.printerId, label: `TEF ${copy}`, render: (columns, reprint) => receiptLines(transaction, copy, header, columns, reprint).join('\n') }));
+    return res.status(results.some(item => !item.deduplicated || item.reprint) ? 201 : 200).json({ items: results.flatMap(item => item.jobs), deduplicated: results.every(item => item.deduplicated), reprint: Boolean(body.data.reason), printerFound: results.every(item => item.printerFound) });
+  } catch (error) { return receiptFailure(res, next, error); }
+});
+printingRoutes.post('/receipts/order/:orderId', requireRoles(...CASH_ROLES), async (req, res, next) => {
+  try {
+    const body = receiptBody.safeParse(req.body ?? {}); if (!body.success) return res.status(400).json({ message: 'Validation failed' });
+    const { tenantId, userId } = req.auth!;
+    const scope = { tenantId: tenantId!, unitId: unitOfReq(req) };
+    const header = await companyHeader(scope);
+    const order = await loadSaleOrder(scope, req.params.orderId);
+    const result = await enqueueReceipt({ scope: { tenantId: tenantId!, unitId: order.unitId }, orderId: order.id, userId, key: `sale:${order.id}`, copies: header.receiptCopies, reason: body.data.reason, printerId: body.data.printerId, label: `Recibo ${order.code}`,
+      render: (columns, reprint) => saleReceiptText(order, columns, reprint, header) });
+    return res.status(result.deduplicated && !result.reprint ? 200 : 201).json({ items: result.jobs, deduplicated: result.deduplicated, reprint: result.reprint, printerFound: result.printerFound });
+  } catch (error) { return receiptFailure(res, next, error); }
+});
+printingRoutes.post('/receipts/fiscal/:documentId', requireRoles(...CASH_ROLES), async (req, res, next) => {
+  try {
+    const body = receiptBody.safeParse(req.body ?? {}); if (!body.success) return res.status(400).json({ message: 'Validation failed' });
+    const { tenantId, userId } = req.auth!;
+    const scope = { tenantId: tenantId!, unitId: unitOfReq(req) };
+    const header = await companyHeader(scope);
+    const document = await loadFiscalDocument(scope, req.params.documentId);
+    const result = await enqueueReceipt({ scope: { tenantId: tenantId!, unitId: document.unitId }, orderId: document.order.id, userId, key: `fiscal:${document.id}`, copies: 1, reason: body.data.reason, printerId: body.data.printerId, label: `Fiscal ${document.kind} ${document.number ?? ''}`.trim(), render: (columns, reprint) => fiscalDocumentText(document, columns, reprint, header) });
+    return res.status(result.deduplicated && !result.reprint ? 200 : 201).json({ items: result.jobs, deduplicated: result.deduplicated, reprint: result.reprint, printerFound: result.printerFound });
+  } catch (error) { return receiptFailure(res, next, error); }
+});
+
+printingRoutes.use(allowRead(PRODUCTION_ROLES, MANAGEMENT_ROLES));
 const unitScope = (req: { auth?: { unitId: string | null } }) => (req.auth!.unitId ? { OR: [{ unitId: req.auth!.unitId }, { unitId: null }] } : {});
 
 const printerSchema = z.object({
@@ -24,7 +72,7 @@ const printerSchema = z.object({
   port: z.number().int().min(1).max(65535).optional(),
   manufacturer: z.string().max(80).optional(),
   model: z.string().max(80).optional(),
-  paperWidthMm: z.union([z.literal(58), z.literal(80)]).default(80),
+  paperWidthMm: z.union([z.literal(55), z.literal(58), z.literal(80)]).default(80),
   autoCut: z.boolean().default(true),
   cashDrawer: z.boolean().default(false),
   isPrimary: z.boolean().default(false),
