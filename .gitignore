@@ -11,3 +11,7 @@ npm-debug.log*
 
 # WhatsApp Web sessions (credentials)
 .whatsapp-sessions/
+
+# local backups and recovery archives
+/backups/
+RM-RECUPERACAO-COMPLETA.tar.gz

@@ -26,6 +26,23 @@ services:
     volumes:
       - minio_data:/data
 
+  # Opt-in daily backup: `docker compose --profile backup up -d backup`. Dumps go to ./backups (keep this folder off the server's only disk).
+  backup:
+    image: postgres:16
+    profiles: ["backup"]
+    restart: unless-stopped
+    depends_on:
+      - postgres
+    environment:
+      DATABASE_URL: ${BACKUP_DATABASE_URL:-postgresql://postgres:postgres@postgres:5432/rm_restaurant}
+      BACKUP_DIR: /backups
+      BACKUP_RETENTION_DAYS: ${BACKUP_RETENTION_DAYS:-14}
+      BACKUP_ENCRYPT_PASSPHRASE: ${BACKUP_ENCRYPT_PASSPHRASE:-}
+    volumes:
+      - ./scripts/backup:/scripts:ro
+      - ./backups:/backups
+    entrypoint: ["/bin/bash", "-c", "while true; do /scripts/pg-backup.sh || echo 'backup failed' >&2; sleep ${BACKUP_INTERVAL_SECONDS:-86400}; done"]
+
 volumes:
   postgres_data:
   minio_data:

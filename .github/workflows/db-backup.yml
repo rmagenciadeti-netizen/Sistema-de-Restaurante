@@ -1,0 +1,49 @@
+name: Backup PostgreSQL (agendado)
+
+# Backup lógico noturno do banco (Neon) para um bucket S3 compatível, além da janela de restauração (PITR) do provedor.
+# Fica DESLIGADO até a variável de repositório BACKUP_ENABLED ser "true" e os segredos abaixo existirem (ver docs/BACKUP.md).
+# Só lê o banco (pg_dump). Não altera nada em produção.
+on:
+  schedule:
+    - cron: '17 5 * * *' # 02:17 em Brasília (UTC-3)
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: db-backup
+  cancel-in-progress: false
+
+jobs:
+  backup:
+    if: ${{ vars.BACKUP_ENABLED == 'true' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    env:
+      # Use a conexão DIRETA do Neon (sem -pooler): o pg_dump precisa de sessão completa.
+      DATABASE_URL: ${{ secrets.BACKUP_DATABASE_URL }}
+      BACKUP_ENCRYPT_PASSPHRASE: ${{ secrets.BACKUP_ENCRYPT_PASSPHRASE }}
+      BACKUP_DIR: ${{ runner.temp }}/backups
+      BACKUP_RETENTION_DAYS: '0'
+      AWS_ACCESS_KEY_ID: ${{ secrets.BACKUP_S3_ACCESS_KEY_ID }}
+      AWS_SECRET_ACCESS_KEY: ${{ secrets.BACKUP_S3_SECRET_ACCESS_KEY }}
+      AWS_DEFAULT_REGION: ${{ vars.BACKUP_S3_REGION || 'us-east-1' }}
+      S3_URI: ${{ vars.BACKUP_S3_URI }} # ex.: s3://meu-bucket/rm-restaurant
+    steps:
+      - uses: actions/checkout@v4
+      - name: Exigir configuração completa
+        run: |
+          for name in DATABASE_URL BACKUP_ENCRYPT_PASSPHRASE AWS_ACCESS_KEY_ID AWS_SECRET_ACCESS_KEY S3_URI; do
+            if [ -z "${!name}" ]; then echo "::error::$name não configurado (ver docs/BACKUP.md)"; exit 1; fi
+          done
+      - name: Instalar cliente PostgreSQL 16
+        run: |
+          sudo install -d /usr/share/postgresql-common/pgdg
+          sudo curl -fsSL -o /usr/share/postgresql-common/pgdg/apt.postgresql.org.asc https://www.postgresql.org/media/keys/ACCC4CF8.asc
+          echo "deb [signed-by=/usr/share/postgresql-common/pgdg/apt.postgresql.org.asc] https://apt.postgresql.org/pub/repos/apt $(lsb_release -cs)-pgdg main" | sudo tee /etc/apt/sources.list.d/pgdg.list
+          sudo apt-get update -qq && sudo apt-get install -y -qq postgresql-client-16
+      - name: Gerar e validar o backup (criptografado, com checksum)
+        run: bash scripts/backup/pg-backup.sh
+      - name: Enviar ao bucket
+        run: aws s3 cp "$BACKUP_DIR" "$S3_URI/$(date -u +%Y/%m)/" --recursive --only-show-errors
