@@ -35,10 +35,12 @@ test('a cold start has no profile (placeholders), then the answers fill it once'
 test('a reload starts from the last known profile (final menu on the first paint) and refreshes silently', async () => {
   storage.set(userStorageKey, JSON.stringify({ id: 'u1' })); resetShellProfile(); hydrateShellProfile(); answers = full(); await refreshShellProfile();
   // A page reload loses module state but keeps localStorage: a fresh instance of the store must already know the profile, without any request.
-  const fresh = await import('./shell-profile.ts?reload');
+  // Memory is wiped but the cached entry is put back: that is exactly what a page reload leaves behind.
+  const saved = [...storage.entries()].filter(([key]) => key.startsWith('rm_shell_profile:'));
+  resetShellProfile(); for (const [key, value] of saved) storage.set(key, value);
   const requests = calls.length;
-  fresh.hydrateShellProfile();
-  const profile = fresh.getShellProfile();
+  hydrateShellProfile();
+  const profile = getShellProfile();
   assert.deepEqual([profile.ready, profile.enabledModules, profile.aiDomains, profile.menuHidden], [true, ['pos', 'financial'], ['sales', 'stock'], ['/crm']]);
   assert.equal(calls.length, requests, 'hydration is local');
   const key = [...storage.keys()].find(item => item.startsWith('rm_shell_profile:'));
