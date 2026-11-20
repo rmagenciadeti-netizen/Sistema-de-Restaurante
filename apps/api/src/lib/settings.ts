@@ -15,6 +15,7 @@ export const SETTINGS_SECTIONS = {
   company: z.object({
     legalName: z.string().max(160).default(''), tradeName: z.string().max(160).default(''), document: z.string().max(20).default(''), activity: z.string().max(80).default(''),
     slogan: z.string().max(120).default(''), phone: z.string().max(30).default(''), whatsapp: z.string().max(30).default(''), zip: z.string().max(10).default(''),
+    email: z.string().trim().email().max(160).or(z.literal('')).default(''), responsibleName: z.string().max(120).default(''),
     dpoName: z.string().max(120).default(''), dpoEmail: z.string().trim().email().or(z.literal('')).default(''),
     sidebarLayout: z.enum(['CLASSIC', 'COMPACT']).default('CLASSIC'),
     state: z.string().max(2).default(''), city: z.string().max(80).default(''), district: z.string().max(80).default(''), address: z.string().max(160).default(''), number: z.string().max(10).default(''),

@@ -11,7 +11,9 @@ import { clearCache } from '../lib/ai/cache';
 
 // Needs a migrated PostgreSQL database (RUN_DB_TESTS=1). Own file/process: own API rate-limit budget. Only fictitious data.
 const enabled = process.env.RUN_DB_TESTS === '1';
-const ago = (days: number, minutes = 0) => new Date(Date.now() - days * 86_400_000 - minutes * 60_000);
+// One fixed reference instant: separate Date.now() calls made durations like 20+30 minutes drift to 50.01 on a slow run.
+const BASE_NOW = Date.now();
+const ago = (days: number, minutes = 0) => new Date(BASE_NOW - days * 86_400_000 - minutes * 60_000);
 
 test('SUPER IA RM Intelligence: routing, specialists vs reference data, permissions, isolation, cache/dedup/limits and measured consumption', { skip: !enabled, timeout: 240_000 }, async t => {
   process.env.JWT_SECRET = 'd'.repeat(32);
