@@ -5,13 +5,13 @@ import { aiDomainOfHref, hrefVisible, menuCatalog, menuGroups } from './menu-cat
 test('"Integração e Migração" is a master-only group that points at the migration screen', () => {
   const group = menuGroups.find(item => item.title === 'Integração e Migração');
   assert.ok(group, 'group exists');
-  assert.deepEqual(group.items.map(item => item.href), ['/migrations']);
+  assert.deepEqual(group.items.map(item => item.href), ['/migrations', '/platform-services']);
   assert.ok(group.items.every(item => item.masterOnly), 'every item is restricted to the Painel Admin');
   assert.equal(menuGroups.filter(item => item.items.some(entry => entry.href === '/migrations')).length, 1, 'listed exactly once');
 });
 
 test('restaurant menus never offer the migration screen', () => {
-  assert.equal(menuCatalog.some(item => item.href.startsWith('/migrations')), false);
+  assert.equal(menuCatalog.some(item => item.href.startsWith('/migrations') || item.href.startsWith('/platform-services')), false);
   const restaurantVisible = menuGroups.flatMap(group => group.items.filter(item => !item.masterOnly));
   assert.equal(restaurantVisible.some(item => item.href.startsWith('/migrations')), false);
 });
