@@ -40,8 +40,8 @@ test('universal WhatsApp (QR) and AI provider: persistence, leader election, lic
     return { status: response.status, text, body: (() => { try { return JSON.parse(text); } catch { return null; } })() as any };
   };
   const id = randomBytes(4).toString('hex');
-  const master = await prisma.user.create({ data: { name: 'Master', email: `master-${id}@test.local`, passwordHash: 'x', role: UserRole.MASTER_ADMIN } });
-  const masterToken = signAccessToken({ userId: master.id, tenantId: null, unitId: null, role: UserRole.MASTER_ADMIN });
+  const master = await prisma.user.create({ data: { name: 'Master', email: `master-${id}@test.local`, passwordHash: 'x', role: UserRole.MASTER_ADMIN, mfaEnabled: true } });
+  const masterToken = signAccessToken({ userId: master.id, tenantId: null, unitId: null, role: UserRole.MASTER_ADMIN, mfaAuthenticated: true });
   const makeTenant = async (label: string) => {
     const tenant = await prisma.tenant.create({ data: { name: `${label} ${id}`, slug: `${label}-${id}`, status: 'ACTIVE' } });
     const token = async (role: UserRole) => signAccessToken({ userId: (await prisma.user.create({ data: { tenantId: tenant.id, name: role, email: `${role}-${label}-${id}@test.local`, passwordHash: 'x', role } })).id, tenantId: tenant.id, unitId: null, role });
