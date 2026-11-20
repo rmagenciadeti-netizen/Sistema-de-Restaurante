@@ -7,6 +7,7 @@ import { api, clearSessionCookie, isAdminApp, tokenStorageKey, userStorageKey } 
 import { alwaysVisibleHrefs, flows, hrefAllowed, hrefVisible, menuGroups, moduleIcon, moduleLabel, pathOf, topTabs, type MenuGroup } from '../lib/menu-catalog';
 import { RmLogo } from './rm-logo';
 import { NotificationBell } from './notification-bell';
+import { GuideHelp } from './guide-help';
 import { isStoreOpen } from '../lib/settings';
 import { patchShellHours, resetShellProfile, useShellProfile } from '../lib/shell-profile';
 
@@ -123,6 +124,7 @@ export function AppShell({ title, children }: { title: string; children: React.R
             <span className={`rm-pulse h-2 w-2 rounded-full ${open ? 'bg-emerald-400 text-emerald-400' : 'bg-red-400 text-red-400'}`} />{open ? 'Aberto' : 'Fechado'}
           </button>}
           {!masterMode && <Link href="/cash" className="hidden rounded-lg border border-white/15 px-3 py-2 text-xs font-medium text-neutral-100 hover:bg-white/10 md:block">💳 Caixa</Link>}
+          {!masterMode && <GuideHelp />}
           {!masterMode && <NotificationBell />}
           <div className="relative">
             <button type="button" onClick={() => setProfileOpen(value => !value)} aria-expanded={profileOpen} aria-haspopup="menu" className="flex items-center gap-2 rounded-full border border-white/15 py-1 pl-1 pr-3 text-xs font-semibold hover:bg-white/10">
