@@ -54,7 +54,7 @@ test('universal WhatsApp (QR) and AI provider: persistence, leader election, lic
     for (const manager of managers) await manager.stop();
     setAiProvider(undefined);
     await prisma.platformAiConfig.deleteMany({});
-    await prisma.whatsappManager.deleteMany({});
+    await prisma.whatsappManager.deleteMany({ where: { id: `lock-${id}` } });
     await new Promise<void>(resolve => server.close(() => resolve()));
     await prisma.tenant.deleteMany({ where: { id: { in: [A.tenant.id, B.tenant.id] } } });
     await prisma.auditLog.deleteMany({ where: { actorUserId: master.id } });
@@ -81,8 +81,8 @@ test('universal WhatsApp (QR) and AI provider: persistence, leader election, lic
   });
 
   await t.test('only one manager operates; the standby takes over on release and on a crash', async () => {
-    await prisma.whatsappManager.deleteMany({});
-    const make = (pid: number) => { const transports: FakeTransport[] = []; const manager = new WhatsappSessionManager(prisma, { identity: { pid, host: 'test' }, factory: () => { const fake = new FakeTransport(); transports.push(fake); return fake; }, sleep: async () => undefined, log: () => undefined }); managers.push(manager); return { manager, transports }; };
+    await prisma.whatsappManager.deleteMany({ where: { id: `lock-${id}` } });
+    const make = (pid: number) => { const transports: FakeTransport[] = []; const manager = new WhatsappSessionManager(prisma, { lockId: `lock-${id}`, tenantIds: [A.tenant.id, B.tenant.id], identity: { pid, host: 'test' }, factory: () => { const fake = new FakeTransport(); transports.push(fake); return fake; }, sleep: async () => undefined, log: () => undefined }); managers.push(manager); return { manager, transports }; };
     const one = make(1001); const two = make(1002);
     await prisma.whatsappSession.upsert({ where: { tenantId: A.tenant.id }, create: { tenantId: A.tenant.id, desired: 'CONNECTED' }, update: { desired: 'CONNECTED', status: 'DISCONNECTED' } });
     await one.manager.tick(); await two.manager.tick();
@@ -91,7 +91,7 @@ test('universal WhatsApp (QR) and AI provider: persistence, leader election, lic
     await one.manager.stop();
     await two.manager.tick();
     assert.equal(two.manager.isLeader(), true); assert.equal(two.transports.length, 1, 'takes over right after a graceful release (deploy)');
-    await prisma.whatsappManager.update({ where: { id: 'default' }, data: { pid: 9999, heartbeatAt: new Date(Date.now() - 60_000) } });
+    await prisma.whatsappManager.update({ where: { id: `lock-${id}` }, data: { pid: 9999, heartbeatAt: new Date(Date.now() - 60_000) } });
     const three = make(1003);
     await three.manager.tick();
     assert.equal(three.manager.isLeader(), true, 'a stale heartbeat (crash) is taken over');
@@ -101,9 +101,9 @@ test('universal WhatsApp (QR) and AI provider: persistence, leader election, lic
   });
 
   await t.test('module released by the administrator controls the WhatsApp session; revoking pauses it and giving it back resumes', async () => {
-    await prisma.whatsappManager.deleteMany({});
+    await prisma.whatsappManager.deleteMany({ where: { id: `lock-${id}` } });
     const transports: FakeTransport[] = [];
-    const manager = new WhatsappSessionManager(prisma, { identity: { pid: 2001, host: 'test' }, factory: () => { const fake = new FakeTransport(); transports.push(fake); return fake; }, sleep: async () => undefined, log: () => undefined });
+    const manager = new WhatsappSessionManager(prisma, { lockId: `lock-${id}`, tenantIds: [A.tenant.id, B.tenant.id], identity: { pid: 2001, host: 'test' }, factory: () => { const fake = new FakeTransport(); transports.push(fake); return fake; }, sleep: async () => undefined, log: () => undefined });
     managers.push(manager);
     await prisma.tenantLicense.create({ data: { tenantId: B.tenant.id, status: 'ACTIVE' } });
     await prisma.tenantModule.create({ data: { tenantId: B.tenant.id, moduleKey: 'pos' } });
@@ -124,13 +124,13 @@ test('universal WhatsApp (QR) and AI provider: persistence, leader election, lic
   });
 
   await t.test('opening the connection screen starts the QR by itself, "Renovar" restarts it and the code keeps renewing while someone watches', async () => {
-    await prisma.whatsappManager.deleteMany({});
+    await prisma.whatsappManager.deleteMany({ where: { id: `lock-${id}` } });
     await prisma.whatsappSession.deleteMany({ where: { tenantId: A.tenant.id } });
     assert.equal((await call('GET', '/whatsapp/session?autoConnect=1', cashierA)).body.desired, 'DISCONNECTED', 'only managers can start it');
     const started = await call('GET', '/whatsapp/session?autoConnect=1', adminA);
     assert.equal(started.body.desired, 'CONNECTED'); assert.equal(started.body.status, 'CONNECTING');
     const transports: FakeTransport[] = [];
-    const manager = new WhatsappSessionManager(prisma, { identity: { pid: 3001, host: 'test' }, factory: () => { const fake = new FakeTransport(); transports.push(fake); return fake; }, sleep: async () => undefined, log: () => undefined });
+    const manager = new WhatsappSessionManager(prisma, { lockId: `lock-${id}`, tenantIds: [A.tenant.id, B.tenant.id], identity: { pid: 3001, host: 'test' }, factory: () => { const fake = new FakeTransport(); transports.push(fake); return fake; }, sleep: async () => undefined, log: () => undefined });
     managers.push(manager);
     await manager.tick(); assert.equal(transports.length, 1);
     transports[0].handlers.onQr('qr-a');

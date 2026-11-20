@@ -17,7 +17,7 @@ export const VIEWER_ACTIVE_MS = 3 * 60_000;
 const MAX_SESSIONS = () => Math.max(1, Number(process.env.WHATSAPP_MAX_SESSIONS) || 25);
 
 type Live = { transport: WaTransport; connected: boolean; unconfirmedCloses: number; sentAt: number[]; chain: Promise<void> };
-type Options = { factory?: TransportFactory; pollMs?: number; sleep?: (ms: number) => Promise<void>; log?: (message: string) => void; identity?: { pid: number; host: string } };
+type Options = { factory?: TransportFactory; pollMs?: number; sleep?: (ms: number) => Promise<void>; log?: (message: string) => void; identity?: { pid: number; host: string }; lockId?: string; tenantIds?: string[] };
 
 const defaultSleep = (ms: number) => new Promise<void>(resolve => setTimeout(resolve, ms));
 
@@ -35,8 +35,12 @@ export class WhatsappSessionManager {
 
   private leader = false;
   private readonly me: { pid: number; host: string };
+  private readonly lockId: string;
+  private readonly only?: string[];
 
   constructor(private readonly prisma: PrismaClient, private readonly options: Options = {}) {
+    this.lockId = options.lockId ?? 'default';
+    this.only = options.tenantIds;
     this.me = options.identity ?? { pid: process.pid, host: os.hostname() };
     this.factory = options.factory ?? defaultTransportFactory(prisma);
     this.sleep = options.sleep ?? defaultSleep;
@@ -60,7 +64,7 @@ export class WhatsappSessionManager {
     if (this.timer) clearTimeout(this.timer);
     for (const [tenantId, entry] of this.live) { await entry.transport.stop().catch(() => undefined); this.live.delete(tenantId); }
     // Hand over immediately instead of making the next instance wait for the heartbeat to go stale.
-    if (this.leader) await this.prisma.whatsappManager.updateMany({ where: { id: 'default', ...this.me }, data: { heartbeatAt: new Date(0) } }).catch(() => undefined);
+    if (this.leader) await this.prisma.whatsappManager.updateMany({ where: { id: this.lockId, ...this.me }, data: { heartbeatAt: new Date(0) } }).catch(() => undefined);
     this.leader = false;
   }
 
@@ -68,9 +72,9 @@ export class WhatsappSessionManager {
 
   private async acquire(): Promise<boolean> {
     const mine = this.me;
-    const updated = await this.prisma.whatsappManager.updateMany({ where: { id: 'default', OR: [{ heartbeatAt: { lt: new Date(Date.now() - MANAGER_STALE_MS) } }, mine] }, data: { heartbeatAt: new Date(), ...mine } });
+    const updated = await this.prisma.whatsappManager.updateMany({ where: { id: this.lockId, OR: [{ heartbeatAt: { lt: new Date(Date.now() - MANAGER_STALE_MS) } }, mine] }, data: { heartbeatAt: new Date(), ...mine } });
     if (updated.count === 1) return true;
-    try { await this.prisma.whatsappManager.create({ data: { id: 'default', heartbeatAt: new Date(), ...mine } }); return true; } catch { return false; }
+    try { await this.prisma.whatsappManager.create({ data: { id: this.lockId, heartbeatAt: new Date(), ...mine } }); return true; } catch { return false; }
   }
 
   liveTenantIds() { return [...this.live.keys()]; }
@@ -84,7 +88,7 @@ export class WhatsappSessionManager {
     }
     if (!this.leader) this.log('this process is now the WhatsApp session manager');
     this.leader = true;
-    const rows = await this.prisma.whatsappSession.findMany();
+    const rows = await this.prisma.whatsappSession.findMany(this.only ? { where: { tenantId: { in: this.only } } } : undefined);
     const denied = await this.unlicensed(rows.filter(row => row.desired === 'CONNECTED' || row.desired === 'RENEW').map(row => row.tenantId));
     for (const row of rows) {
       const entry = this.live.get(row.tenantId);
