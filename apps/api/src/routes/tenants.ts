@@ -5,8 +5,10 @@ import { z } from 'zod';
 import bcrypt from 'bcryptjs';
 import { prisma } from '../lib/prisma';
 import { requireAuth, requireMaster } from '../middleware/auth';
-import { invalidateBlockedModules } from '../lib/licensing';
+import { invalidateBlockedModules, routesOfModule } from '../lib/licensing';
 import { isFeatureLinked, moduleSetProblem } from '../lib/module-catalog';
+import { loadSettings, saveSettingsSection, SETTINGS_SECTIONS } from '../lib/settings';
+import { formatCnpj, isValidCnpj, onlyDigits } from '../lib/cnpj';
 
 export const tenantRoutes = Router();
 tenantRoutes.use(requireAuth, requireMaster);
@@ -17,9 +19,66 @@ const publicProvisioning = (job: { id: string; tenantId: string; status: string;
   completedAt: job.completedAt, createdAt: job.createdAt, updatedAt: job.updatedAt,
 });
 tenantRoutes.get('/', async (_req, res, next) => {
-  try { const items = await prisma.tenant.findMany({ orderBy: { createdAt: 'desc' }, include: { _count: { select: { units: true, users: true } } } }); return res.json({ total: items.length, items }); }
-  catch (error) { return next(error); }
+  try {
+    const [items, settings] = await Promise.all([
+      prisma.tenant.findMany({ orderBy: { createdAt: 'desc' }, include: { _count: { select: { units: true, users: true } } } }),
+      prisma.tenantSettings.findMany({ select: { tenantId: true, settings: true } }),
+    ]);
+    const companyOf = new Map(settings.map(row => [row.tenantId, SETTINGS_SECTIONS.company.safeParse((row.settings as Record<string, unknown> | null)?.company ?? {})]));
+    return res.json({ total: items.length, items: items.map(item => { const company = companyOf.get(item.id); const data = company?.success ? company.data : null; return { ...item, company: data ? { legalName: data.legalName, tradeName: data.tradeName, document: data.document, email: data.email, phone: data.phone, responsibleName: data.responsibleName } : null }; }) });
+  } catch (error) { return next(error); }
 });
+
+// ---- Editing a registered company: identity (name, slug, plan) and its cadastral data (settings › company). ----
+const phoneField = z.string().trim().max(30).refine(value => value === '' || (onlyDigits(value).length >= 10 && onlyDigits(value).length <= 13), 'Telefone inválido (DDD + número)');
+const companyEdit = z.object({
+  legalName: z.string().trim().max(160), tradeName: z.string().trim().max(160),
+  document: z.string().trim().max(20).refine(value => value === '' || isValidCnpj(value), 'CNPJ inválido'),
+  activity: z.string().trim().max(80), phone: phoneField, whatsapp: phoneField, email: z.string().trim().toLowerCase().email('E-mail inválido').max(160).or(z.literal('')),
+  responsibleName: z.string().trim().max(120), zip: z.string().trim().refine(value => value === '' || onlyDigits(value).length === 8, 'CEP inválido'),
+  state: z.string().trim().toUpperCase().refine(value => value === '' || /^[A-Z]{2}$/.test(value), 'UF inválida'),
+  city: z.string().trim().max(80), district: z.string().trim().max(80), address: z.string().trim().max(160), number: z.string().trim().max(10),
+}).partial();
+const editSchema = z.object({
+  name: z.string().trim().min(2, 'Informe o nome da empresa').max(160), slug: z.string().regex(/^[a-z0-9]+(?:-[a-z0-9]+)*$/, 'Slug inválido').max(100),
+  plan: z.enum(['BASIC', 'PRO', 'PREMIUM', 'ENTERPRISE']), company: companyEdit,
+}).partial().refine(value => Object.keys(value).length > 0, 'Nada a alterar');
+
+const normalizeDocument = (value: string) => (value ? formatCnpj(value) : '');
+
+tenantRoutes.patch('/:id', async (req, res, next) => {
+  try {
+    const parsed = editSchema.safeParse(req.body);
+    if (!parsed.success) return res.status(400).json({ message: parsed.error.issues[0]?.message ?? 'Dados inválidos', errors: parsed.error.flatten() });
+    const tenant = await prisma.tenant.findUnique({ where: { id: req.params.id } });
+    if (!tenant) return res.status(404).json({ message: 'Company not found' });
+    const { name, slug, plan, company: companyPatch } = parsed.data;
+    if (slug && slug !== tenant.slug && await prisma.tenant.findUnique({ where: { slug }, select: { id: true } })) return res.status(409).json({ message: 'Já existe uma empresa com este slug' });
+
+    const patch = companyPatch ? { ...companyPatch, ...(companyPatch.document !== undefined ? { document: normalizeDocument(companyPatch.document) } : {}) } : undefined;
+    if (patch?.document) {
+      const digits = onlyDigits(patch.document);
+      const others = await prisma.tenantSettings.findMany({ where: { NOT: { tenantId: tenant.id } }, select: { settings: true } });
+      if (others.some(row => onlyDigits(String((row.settings as { company?: { document?: string } } | null)?.company?.document ?? '')) === digits)) return res.status(409).json({ message: 'Já existe uma empresa cadastrada com este CNPJ' });
+    }
+
+    const result = await prisma.$transaction(async tx => {
+      const before = (await loadSettings(tx, tenant.id)).company;
+      const after = patch ? await saveSettingsSection(tx, tenant.id, 'company', { ...before, ...patch }) : before;
+      const updated = await tx.tenant.update({ where: { id: tenant.id }, data: { ...(name !== undefined ? { name } : {}), ...(slug !== undefined ? { slug } : {}), ...(plan !== undefined ? { plan } : {}) } });
+      const changed: Record<string, { before: unknown; after: unknown }> = {};
+      for (const [key, value] of Object.entries({ name, slug, plan })) if (value !== undefined && value !== (tenant as Record<string, unknown>)[key]) changed[key] = { before: (tenant as Record<string, unknown>)[key], after: value };
+      for (const key of Object.keys(patch ?? {}) as (keyof typeof before)[]) if (before[key] !== after[key]) changed[`company.${key}`] = { before: before[key], after: after[key] };
+      if (Object.keys(changed).length > 0) await tx.auditLog.create({ data: { tenantId: tenant.id, actorUserId: req.auth!.userId, action: 'TENANT_UPDATED', entityType: 'Tenant', entityId: tenant.id, metadata: { changed } as Prisma.InputJsonValue } });
+      return { tenant: updated, company: after, changedFields: Object.keys(changed) };
+    });
+    return res.json(result);
+  } catch (error) {
+    if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === 'P2002') return res.status(409).json({ message: 'Já existe uma empresa com este slug' });
+    return next(error);
+  }
+});
+
 tenantRoutes.get('/stats/summary', async (_req, res, next) => {
   try {
     const [total, active, trial, suspended] = await Promise.all([prisma.tenant.count(), prisma.tenant.count({ where: { status: 'ACTIVE' } }), prisma.tenant.count({ where: { status: 'TRIAL' } }), prisma.tenant.count({ where: { status: { in: ['SUSPENDED', 'BLOCKED'] } } })]);
@@ -218,5 +277,58 @@ tenantRoutes.put('/:id/license', async (req, res, next) => {
     });
     invalidateBlockedModules();
     return res.json({ license: result, modules: wanted });
+  } catch (error) { return next(error); }
+});
+
+// ---- Simple module management: pick a company, tick the modules, save. The license (status, plan, prices, limits) is kept as it is. ----
+tenantRoutes.get('/:id/modules', async (req, res, next) => {
+  try {
+    const tenant = await prisma.tenant.findUnique({ where: { id: req.params.id }, select: { id: true, name: true, status: true, license: true, modules: { select: { moduleKey: true, source: true, blocked: true } } } });
+    if (!tenant) return res.status(404).json({ message: 'Company not found' });
+    const catalog = await prisma.saaSModule.findMany({ where: { status: { not: 'ARCHIVED' } }, orderBy: [{ category: 'asc' }, { name: 'asc' }] });
+    const owned = new Map(tenant.modules.map(item => [item.moduleKey, item]));
+    // Without a license record every module is open (legacy companies); the screen then shows them all ticked.
+    const restricted = Boolean(tenant.license);
+    return res.json({
+      tenant: { id: tenant.id, name: tenant.name, status: tenant.status }, restricted,
+      license: tenant.license ? { status: tenant.license.status, validUntil: tenant.license.validUntil, planId: tenant.license.planId } : null,
+      modules: catalog.filter(item => isFeatureLinked(item.key)).map(item => ({
+        key: item.key, name: item.name, description: item.description, category: item.category, dependsOn: item.dependsOn, globallyBlocked: item.blocked,
+        enabled: restricted ? owned.has(item.key) && !owned.get(item.key)!.blocked : true, source: owned.get(item.key)?.source ?? null, apiRoutes: routesOfModule(item.key),
+      })),
+    });
+  } catch (error) { return next(error); }
+});
+
+tenantRoutes.put('/:id/modules', async (req, res, next) => {
+  try {
+    const parsed = z.object({ modules: z.array(z.string().min(1).max(60)).max(100), reason: z.string().trim().max(300).optional() }).safeParse(req.body);
+    if (!parsed.success) return res.status(400).json({ message: 'Validation failed' });
+    const tenant = await prisma.tenant.findUnique({ where: { id: req.params.id }, select: { id: true, license: true, modules: { select: { moduleKey: true } } } });
+    if (!tenant) return res.status(404).json({ message: 'Company not found' });
+    const wanted = [...new Set(parsed.data.modules)];
+    const problem = await moduleSetProblem(wanted, tenant.modules.map(item => item.moduleKey));
+    if (problem) return res.status(400).json({ message: problem });
+    const plan = tenant.license?.planId ? await prisma.saaSPlan.findUnique({ where: { id: tenant.license.planId }, include: { modules: true } }) : null;
+    const includedByPlan = new Set(plan?.modules.filter(item => !item.optional).map(item => item.moduleKey) ?? []);
+    const before = tenant.modules.map(item => item.moduleKey);
+    await prisma.$transaction(async tx => {
+      // The first save on a company without a license creates an active one, so the selection starts to be enforced by the backend.
+      if (!tenant.license) await tx.tenantLicense.create({ data: { tenantId: tenant.id, status: 'ACTIVE' } });
+      await tx.tenantModule.deleteMany({ where: { tenantId: tenant.id, moduleKey: { notIn: wanted } } });
+      await tx.tenantModule.createMany({ data: wanted.filter(key => !before.includes(key)).map(moduleKey => ({ tenantId: tenant.id, moduleKey, source: plan && !includedByPlan.has(moduleKey) ? 'ADDON' : 'PLAN' })), skipDuplicates: true });
+      await tx.auditLog.create({ data: { actorUserId: req.auth!.userId, tenantId: tenant.id, action: 'TENANT_MODULES_UPDATED', entityType: 'Tenant', entityId: tenant.id, metadata: { reason: parsed.data.reason ?? null, before, after: wanted, added: wanted.filter(key => !before.includes(key)), removed: before.filter(key => !wanted.includes(key)) } } });
+    });
+    invalidateBlockedModules();
+    return res.json({ modules: wanted });
+  } catch (error) { return next(error); }
+});
+
+// Registered after the fixed-path GET routes above (/stats/summary, /provisioning, /modules/catalog) so they are not captured by :id.
+tenantRoutes.get('/:id', async (req, res, next) => {
+  try {
+    const tenant = await prisma.tenant.findUnique({ where: { id: req.params.id }, include: { _count: { select: { units: true, users: true } } } });
+    if (!tenant) return res.status(404).json({ message: 'Company not found' });
+    return res.json({ tenant, company: (await loadSettings(prisma, tenant.id)).company });
   } catch (error) { return next(error); }
 });

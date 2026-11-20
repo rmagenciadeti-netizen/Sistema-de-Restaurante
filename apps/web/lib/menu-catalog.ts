@@ -106,7 +106,7 @@ export const menuGroups: MenuGroup[] = [
     { href: '/commercial?tab=modules', label: 'Módulos', icon: '🧩', masterOnly: true },
     { href: '/commercial?tab=campaigns', label: 'Promoções', icon: '🔖', masterOnly: true },
     { href: '/commercial?tab=coupons', label: 'Cupons', icon: '🏷️', masterOnly: true },
-    { href: '/licenses', label: 'Clientes e assinaturas', icon: '🔑', masterOnly: true },
+    { href: '/licenses', label: 'Clientes e assinaturas', icon: '🔑', masterOnly: true }, { href: '/modules', label: 'Módulos por empresa', icon: '🧩', masterOnly: true },
     { href: '/commercial?tab=billing', label: 'Cobranças e financeiro', icon: '🧾', masterOnly: true },
     { href: '/commercial?tab=reports', label: 'Relatórios comerciais', icon: '📑', masterOnly: true },
     { href: '/commercial?tab=history', label: 'Auditoria comercial', icon: '🛡️', masterOnly: true },
@@ -145,6 +145,8 @@ const moduleByPath: Record<string, string> = {
   '/fiscal': 'fiscal', '/tax-rules': 'fiscal', '/fiscal-xmls': 'fiscal', '/contingency': 'fiscal', '/reconciliation': 'fiscal', '/bank-reconciliation': 'financial', '/received-invoices': 'fiscal', '/natures': 'fiscal', '/cst-map': 'fiscal',
   '/reports': 'reports', '/integrations': 'integrations', '/intelligence': 'intelligence', '/profit': 'profit', '/pricing': 'profit',
 };
+// Pages that belong to a module (used by the admin panel to show what each checkbox unlocks).
+export const pathsOfModule = (key: string): string[] => Object.entries(moduleByPath).filter(([, module]) => module === key).map(([path]) => path).sort();
 export const moduleOfHref = (href: string): string | undefined => moduleByPath[pathOf(href)];
 export const hrefAllowed = (href: string, enabledModules: string[] | null | undefined) => {
   const required = moduleOfHref(href);

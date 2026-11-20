@@ -31,6 +31,9 @@ const ROUTE_MODULES: Record<string, ModuleKey> = {
   intelligence: 'intelligence', profit: 'profit', pricing: 'profit', tef: 'integrations',
 };
 
+// API route prefixes that belong to a module (what the license gate protects); shown in the admin panel so the link is never typed by hand.
+export const routesOfModule = (key: string) => Object.entries(ROUTE_MODULES).filter(([, module]) => module === key).map(([route]) => `/${route}`).sort();
+
 export function moduleForPath(originalUrl: string): ModuleKey | null {
   const segment = originalUrl.split('?')[0].match(/^\/api\/v1\/([^/]+)/)?.[1];
   return segment ? ROUTE_MODULES[segment] ?? null : null;
