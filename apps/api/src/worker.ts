@@ -3,8 +3,9 @@ import { prisma } from './lib/prisma';
 import { processWhatsappOutbox } from './lib/whatsapp-worker';
 import { whatsappProviderFromEnv } from './lib/whatsapp-cloud';
 import { releaseDueOrders } from './lib/scheduling';
-import { WhatsappSessionManager, whatsappSessionsMode } from './lib/whatsapp-sessions';
+import { WhatsappSessionManager, runsInWorker } from './lib/whatsapp-sessions';
 import { runAutomationsForAllTenants } from './lib/automations';
+import { startAiConfigRefresh } from './lib/ai-provider';
 
 // Run as a single process: `npm run worker --workspace apps/api`.
 // It releases scheduled orders, keeps the WhatsApp Web (QR) sessions alive (unless WHATSAPP_SESSIONS_MODE=api/off) and
@@ -12,7 +13,7 @@ import { runAutomationsForAllTenants } from './lib/automations';
 const provider = whatsappProviderFromEnv();
 if (!provider) console.error('WhatsApp Cloud API is not configured (WHATSAPP_TOKEN, WHATSAPP_PHONE_NUMBER_ID, WHATSAPP_TEMPLATES); only QR sessions can send.');
 const intervalMs = Number(process.env.WORKER_INTERVAL_MS) || 10_000;
-const manager = whatsappSessionsMode() === 'worker' ? new WhatsappSessionManager(prisma) : null;
+const manager = runsInWorker() ? new WhatsappSessionManager(prisma) : null;
 let stopping = false;
 const automationsEveryMs = Number(process.env.AUTOMATIONS_INTERVAL_MS) || 15 * 60_000;
 let lastAutomations = 0;
@@ -20,6 +21,7 @@ for (const signal of ['SIGINT', 'SIGTERM'] as const) process.on(signal, () => { 
 
 async function main() {
   console.log('Worker started');
+  startAiConfigRefresh(prisma);
   await manager?.start();
   while (!stopping) {
     try {

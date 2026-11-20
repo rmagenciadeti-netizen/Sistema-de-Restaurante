@@ -5,7 +5,7 @@ Estado: o repositório está pronto; **as contas Vercel, Render e Neon ainda pre
 ## 1. Neon (banco de produção, separado do desenvolvimento)
 1. Projeto/branch de produção novo; copie duas strings: **com pooler** (`DATABASE_URL` da API) e **direta** (`DATABASE_DIRECT_URL`, só migrations). Ambas com `sslmode=require`.
 2. Antes da primeira migration em banco com dados: conferir a janela de restauração (PITR) do plano e anotar o horário (ponto de retorno).
-3. Banco já existente: não rode a migration inicial às cegas (ver README, "baseline"). Banco vazio: `migrate deploy` aplica as 55 migrations (todas aditivas; testado em banco vazio e em upgrade com dados).
+3. Banco já existente: não rode a migration inicial às cegas (ver README, "baseline"). Banco vazio: `migrate deploy` aplica todas as migrations (todas aditivas; testado em banco vazio e em upgrade com dados).
 
 ## 2. Render (`render.yaml`, Blueprint)
 - *New › Blueprint* apontando para este repositório/branch `main`. Cria `rm-restaurant-api` (health check `/api/v1/health`) e `rm-restaurant-worker`, ambos com deploy automático.
@@ -13,6 +13,10 @@ Estado: o repositório está pronto; **as contas Vercel, Render e Neon ainda pre
 - `preDeployCommand` roda `prisma migrate deploy` com a conexão direta antes de cada deploy; se falhar, o deploy não troca a versão em execução.
 - O disco `/var/data` guarda os backups da RM Smart Migration (exige plano com disco).
 - `TEF_ENABLE_SIMULATOR` e `DEV_DISABLE_MFA` **não** devem existir em produção.
+
+### WhatsApp (QR Code) e IA nos restaurantes
+- **WhatsApp:** sem variáveis por cliente. A API (e o worker, se existir) inicia o serviço de sessões sozinho (`WHATSAPP_SESSIONS_MODE=auto`); só um processo opera por vez (eleição no banco) e assume se o outro cair ou for reiniciado. O pareamento fica **criptografado no banco** (chave `WHATSAPP_AUTH_ENCRYPTION_KEY`, ou `MFA_ENCRYPTION_KEY`; **não troque a chave** depois de existirem pareamentos, ou será preciso ler o QR de novo). O restaurante só precisa do módulo *WhatsApp* liberado no painel admin e ler o QR em *WhatsApp › Conexão*.
+- **IA:** no RM Painel Admin › *Serviços da plataforma*, escolha provedor e modelo, informe a chave e clique em *Testar conexão*. A chave é guardada criptografada e nunca volta ao navegador. Alternativa por ambiente: `AI_PROVIDER`, `AI_API_KEY`, `AI_MODEL`, `AI_BASE_URL`. Sem chave válida o sistema exibe "IA não configurada"; só aparece "verificada" após uma chamada real bem-sucedida.
 
 ## 3. Vercel (dois projetos, mesmo repositório)
 | Projeto | Root Directory | Install | Build |

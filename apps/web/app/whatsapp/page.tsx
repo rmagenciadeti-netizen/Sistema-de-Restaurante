@@ -53,7 +53,8 @@ function WhatsappCenter() {
   async function loadSession() {
     if (sessionInFlight.current) return;
     sessionInFlight.current = true;
-    try { setSession(await api<WhatsappSession>('/whatsapp/session')); setSessionError(null); } catch (e) { setSessionError(friendlyError(e, 'Erro ao carregar o status da conexão')); } finally { sessionInFlight.current = false; }
+    // On the connection screen an unpaired number starts connecting by itself, so the QR Code appears without pressing anything.
+    try { setSession(await api<WhatsappSession>(`/whatsapp/session${tab === 'connection' ? '?autoConnect=1' : ''}`)); setSessionError(null); } catch (e) { setSessionError(friendlyError(e, 'Erro ao carregar o status da conexão')); } finally { sessionInFlight.current = false; }
   }
   async function loadStats() {
     if (statsInFlight.current) return;

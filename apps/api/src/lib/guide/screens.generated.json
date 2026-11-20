@@ -3033,6 +3033,54 @@
    ]
   },
   {
+   "href": "/platform-services",
+   "menu": [],
+   "module": null,
+   "title": "Serviços da plataforma",
+   "subtitle": "Provedor de IA e monitoramento do WhatsApp (QR Code) de todos os restaurantes. Chaves ficam criptografadas no servidor e nunca são exibidas.",
+   "tabs": [],
+   "fields": [
+    {
+     "label": "Provedor"
+    },
+    {
+     "label": "Modelo"
+    },
+    {
+     "label": "custom"
+    },
+    {
+     "label": "Endereço da API (https)"
+    },
+    {
+     "label": "Endereço da API (opcional)"
+    },
+    {
+     "label": "Nova chave de API (deixe em branco para manter a atual)"
+    },
+    {
+     "label": "Chave de API"
+    },
+    {
+     "label": "Sessões"
+    },
+    {
+     "label": "Conectadas"
+    },
+    {
+     "label": "Aguardando QR"
+    },
+    {
+     "label": "Com problema"
+    }
+   ],
+   "buttons": [
+    "Salvar",
+    "Testar conexão",
+    "Remover do painel"
+   ]
+  },
+  {
    "href": "/pricing",
    "menu": [
     {

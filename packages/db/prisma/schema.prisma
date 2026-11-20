@@ -45,6 +45,7 @@ model Tenant {
   tableRequests         TableRequest[]
   notifications         Notification[]
   commissionRules       CommissionRule[]
+  whatsappAuthKeys      WhatsappAuthKey[]
   commissionClosings    CommissionClosing[]
   suppliers             Supplier[]
   purchaseOrders        PurchaseOrder[]
@@ -1888,8 +1889,34 @@ model WhatsappSession {
   lastError   String?
   heartbeatAt DateTime?
   connectedAt DateTime?
+  // Last time someone had the connection screen open: while it is recent the manager keeps renewing expired QR Codes.
+  viewedAt    DateTime?
   updatedAt   DateTime  @updatedAt
   tenant      Tenant    @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+}
+
+// WhatsApp credentials and Signal keys of each restaurant, encrypted at rest. Stored in the database (not on the server disk) so pairing survives deploys and restarts.
+model WhatsappAuthKey {
+  tenantId  String
+  name      String
+  value     String
+  updatedAt DateTime @updatedAt
+  tenant    Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  @@id([tenantId, name])
+}
+
+// Platform-wide AI provider chosen by the master admin. The API key is encrypted and never returned by any endpoint.
+model PlatformAiConfig {
+  id          String    @id @default("default")
+  provider    String
+  model       String
+  baseUrl     String?
+  apiKeyEnc   String
+  validatedAt DateTime?
+  lastError   String?
+  updatedById String?
+  updatedAt   DateTime  @updatedAt
 }
 
 model WhatsappConversation {

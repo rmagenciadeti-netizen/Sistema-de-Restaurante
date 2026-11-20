@@ -1,6 +1,6 @@
 import { createHash } from 'node:crypto';
 import { prisma } from '../prisma';
-import { currentAiProvider } from '../ai-provider';
+import { aiSource, currentAiProvider } from '../ai-provider';
 import { effectiveModules, globallyBlockedModules, licenseDenial } from '../licensing';
 import { loadSettings, type TenantSettingsData } from '../settings';
 import { MANAGEMENT_ROLES } from '../permissions';
@@ -71,7 +71,8 @@ export function routeQuestion(question: string): { domains: DomainKey[]; scores:
 // ---- External model gate: lives in gateway.ts (shared with the assistant, the WhatsApp bot and the migration mapping) ----
 export { breakerState, resetBreaker };
 const modelGate = (ctx: ModelCtx, settings: TenantSettingsData, module: string) => sharedGate(ctx, settings, module, 'narrative');
-const modelFor = (complex: boolean) => (complex ? process.env.AI_MODEL : process.env.AI_MODEL_SIMPLE ?? process.env.AI_MODEL);
+// The environment can name a cheaper model for simple questions; a provider saved in the platform panel uses the model chosen there.
+const modelFor = (complex: boolean) => (aiSource().source === 'platform' ? undefined : complex ? process.env.AI_MODEL : process.env.AI_MODEL_SIMPLE ?? process.env.AI_MODEL);
 
 async function narrate(ctx: AiContext, settings: TenantSettingsData, domains: DomainDef[], question: string, results: ToolResult[]) {
   const module = domains.length === 1 ? domains[0].key : 'central';

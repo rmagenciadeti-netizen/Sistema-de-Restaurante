@@ -99,6 +99,7 @@ export const menuGroups: MenuGroup[] = [
   // RM Painel Admin only (masterOnly items are never listed for restaurant users).
   { title: 'Integração e Migração', icon: '🔄', items: [
     { href: '/migrations', label: 'Migração de dados (RM Smart Migration)', icon: '🧭', masterOnly: true },
+    { href: '/platform-services', label: 'Provedor de IA e WhatsApp', icon: '🔌', masterOnly: true },
   ] },
   { title: 'Gestão comercial', icon: '💼', items: [
     { href: '/commercial', label: 'Visão geral comercial', icon: '📊', masterOnly: true },

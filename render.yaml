@@ -18,6 +18,11 @@ services:
       - { key: JWT_SECRET, sync: false }
       - { key: MFA_ENCRYPTION_KEY, sync: false }
       - { key: FISCAL_ENCRYPTION_KEY, sync: false }
+      # IA: opcional aqui. O provedor/modelo/chave podem ser definidos no RM Painel Admin › Serviços da plataforma (chave criptografada no banco).
+      - { key: AI_PROVIDER, sync: false }
+      - { key: AI_API_KEY, sync: false }
+      - { key: AI_MODEL, sync: false }
+      - { key: AI_BASE_URL, sync: false }
       - { key: CORS_ORIGIN, sync: false }         # origens exatas do Vercel (web e admin), sem *
       - { key: RM_RESTAURANT_URL, sync: false }
       - { key: RM_ADMIN_URL, sync: false }
@@ -46,3 +51,7 @@ services:
       - { key: JWT_SECRET, sync: false }
       - { key: MFA_ENCRYPTION_KEY, sync: false }
       - { key: FISCAL_ENCRYPTION_KEY, sync: false }
+      - { key: AI_PROVIDER, sync: false }
+      - { key: AI_API_KEY, sync: false }
+      - { key: AI_MODEL, sync: false }
+      - { key: AI_BASE_URL, sync: false }

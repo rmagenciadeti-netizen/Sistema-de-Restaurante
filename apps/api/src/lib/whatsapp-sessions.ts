@@ -4,15 +4,20 @@ import { loadSettings } from './settings';
 import { findOrCreateConversation, processInbound, recordOutbound } from './whatsapp-inbound';
 import { isOptedOut, renderStored, toWhatsappDigits } from './whatsapp-auto';
 import { autoMessageDef } from './whatsapp-messages';
-import { defaultTransportFactory, wipeAuth, type InboundMessage, type TransportFactory, type WaTransport } from './whatsapp-transport';
+import { effectiveModules, globallyBlockedModules, licenseDenial } from './licensing';
+import { wipeAllAuth } from './whatsapp-auth-store';
+import { defaultTransportFactory, type InboundMessage, type TransportFactory, type WaTransport } from './whatsapp-transport';
 
 export const MANAGER_STALE_MS = 20_000;
 const MESSAGE_TTL_MS = 60 * 60 * 1000;
 const MAX_PER_MINUTE = 20;
 const MAX_UNCONFIRMED_CLOSES = 4;
+// While someone is looking at the connection screen the QR Code keeps being renewed (Baileys rotates it every ~20 s and closes after ~1 min).
+export const VIEWER_ACTIVE_MS = 3 * 60_000;
+const MAX_SESSIONS = () => Math.max(1, Number(process.env.WHATSAPP_MAX_SESSIONS) || 25);
 
 type Live = { transport: WaTransport; connected: boolean; unconfirmedCloses: number; sentAt: number[]; chain: Promise<void> };
-type Options = { factory?: TransportFactory; pollMs?: number; sleep?: (ms: number) => Promise<void>; log?: (message: string) => void };
+type Options = { factory?: TransportFactory; pollMs?: number; sleep?: (ms: number) => Promise<void>; log?: (message: string) => void; identity?: { pid: number; host: string } };
 
 const defaultSleep = (ms: number) => new Promise<void>(resolve => setTimeout(resolve, ms));
 
@@ -28,18 +33,19 @@ export class WhatsappSessionManager {
   private readonly sleep: (ms: number) => Promise<void>;
   private readonly log: (message: string) => void;
 
+  private leader = false;
+  private readonly me: { pid: number; host: string };
+
   constructor(private readonly prisma: PrismaClient, private readonly options: Options = {}) {
-    this.factory = options.factory ?? defaultTransportFactory;
+    this.me = options.identity ?? { pid: process.pid, host: os.hostname() };
+    this.factory = options.factory ?? defaultTransportFactory(prisma);
     this.sleep = options.sleep ?? defaultSleep;
     this.log = options.log ?? (message => console.log(`[whatsapp] ${message}`));
   }
 
+  // Several processes (API and worker) may run a manager: only the holder of the WhatsappManager row operates the sockets, the others stand by and
+  // take over when its heartbeat goes stale (crash) or is released (deploy). Two sockets for the same account would kick each other out.
   async start() {
-    const owner = await this.prisma.whatsappManager.findUnique({ where: { id: 'default' } });
-    const mine = { pid: process.pid, host: os.hostname() };
-    if (owner && Date.now() - owner.heartbeatAt.getTime() < MANAGER_STALE_MS && (owner.pid !== mine.pid || owner.host !== mine.host)) {
-      throw new Error(`Another WhatsApp session manager is already running (pid ${owner.pid} on ${owner.host}). Run only one (worker or API).`);
-    }
     this.running = true;
     const loop = async () => {
       if (!this.running) return;
@@ -53,29 +59,73 @@ export class WhatsappSessionManager {
     this.running = false;
     if (this.timer) clearTimeout(this.timer);
     for (const [tenantId, entry] of this.live) { await entry.transport.stop().catch(() => undefined); this.live.delete(tenantId); }
+    // Hand over immediately instead of making the next instance wait for the heartbeat to go stale.
+    if (this.leader) await this.prisma.whatsappManager.updateMany({ where: { id: 'default', ...this.me }, data: { heartbeatAt: new Date(0) } }).catch(() => undefined);
+    this.leader = false;
+  }
+
+  isLeader() { return this.leader; }
+
+  private async acquire(): Promise<boolean> {
+    const mine = this.me;
+    const updated = await this.prisma.whatsappManager.updateMany({ where: { id: 'default', OR: [{ heartbeatAt: { lt: new Date(Date.now() - MANAGER_STALE_MS) } }, mine] }, data: { heartbeatAt: new Date(), ...mine } });
+    if (updated.count === 1) return true;
+    try { await this.prisma.whatsappManager.create({ data: { id: 'default', heartbeatAt: new Date(), ...mine } }); return true; } catch { return false; }
   }
 
   liveTenantIds() { return [...this.live.keys()]; }
   connectedTenantIds() { return [...this.live.entries()].filter(([, entry]) => entry.connected).map(([tenantId]) => tenantId); }
 
   async tick() {
-    const mine = { pid: process.pid, host: os.hostname() };
-    await this.prisma.whatsappManager.upsert({ where: { id: 'default' }, create: { id: 'default', heartbeatAt: new Date(), ...mine }, update: { heartbeatAt: new Date(), ...mine } });
+    const leader = await this.acquire();
+    if (!leader) {
+      if (this.leader) { this.log('another manager took over: standing by'); for (const [tenantId, entry] of this.live) { this.live.delete(tenantId); await entry.transport.stop().catch(() => undefined); } }
+      this.leader = false; return;
+    }
+    if (!this.leader) this.log('this process is now the WhatsApp session manager');
+    this.leader = true;
     const rows = await this.prisma.whatsappSession.findMany();
+    const denied = await this.unlicensed(rows.filter(row => row.desired === 'CONNECTED' || row.desired === 'RENEW').map(row => row.tenantId));
     for (const row of rows) {
       const entry = this.live.get(row.tenantId);
+      if (denied.has(row.tenantId) && (row.desired === 'CONNECTED' || row.desired === 'RENEW')) {
+        // Module revoked or license suspended by the administrator: the session is paused (pairing kept), and resumes when access returns.
+        if (entry) { this.live.delete(row.tenantId); await entry.transport.stop().catch(() => undefined); }
+        if (row.status !== 'DISCONNECTED' || !row.lastError) await this.setSession(row.tenantId, { status: 'DISCONNECTED', qr: null, lastError: 'O módulo WhatsApp não está liberado para esta empresa. Fale com o suporte.' });
+        continue;
+      }
       if (row.desired === 'LOGOUT') {
         if (entry) { this.live.delete(row.tenantId); await entry.transport.stop({ logout: true }).catch(() => undefined); }
-        wipeAuth(row.tenantId); this.failures.delete(row.tenantId); this.retryAt.delete(row.tenantId);
+        await wipeAllAuth(this.prisma, row.tenantId); this.failures.delete(row.tenantId); this.retryAt.delete(row.tenantId);
         await this.prisma.whatsappSession.update({ where: { tenantId: row.tenantId }, data: { desired: 'DISCONNECTED', status: 'LOGGED_OUT', qr: null, phone: null, pushName: null, connectedAt: null, lastError: null } });
+      } else if (row.desired === 'RENEW') {
+        // "Renovar": drop the socket, forget failed attempts and connect again (a fresh QR Code when the number is not paired).
+        if (entry) { this.live.delete(row.tenantId); await entry.transport.stop().catch(() => undefined); }
+        this.failures.delete(row.tenantId); this.retryAt.delete(row.tenantId);
+        await this.prisma.whatsappSession.update({ where: { tenantId: row.tenantId }, data: { desired: 'CONNECTED', status: 'CONNECTING', qr: null, lastError: null } });
       } else if (row.desired === 'CONNECTED') {
-        if (!entry && (this.retryAt.get(row.tenantId) ?? 0) <= Date.now()) await this.connect(row.tenantId);
+        if (!entry && (this.retryAt.get(row.tenantId) ?? 0) <= Date.now()) {
+          if (this.live.size >= MAX_SESSIONS()) { await this.setSession(row.tenantId, { status: 'CONNECTING', lastError: 'Capacidade de sessões do servidor atingida. Tente novamente em instantes.' }); continue; }
+          await this.connect(row.tenantId);
+        }
       } else if (entry) {
         this.live.delete(row.tenantId); await entry.transport.stop().catch(() => undefined);
         await this.prisma.whatsappSession.update({ where: { tenantId: row.tenantId }, data: { status: 'DISCONNECTED', qr: null } });
       }
     }
     await this.processOutbox();
+  }
+
+  // Tenants whose license/module does not allow the WhatsApp area right now (same rule the API gate applies to /api/v1/whatsapp).
+  private async unlicensed(tenantIds: string[]): Promise<Set<string>> {
+    const denied = new Set<string>();
+    if (tenantIds.length === 0) return denied;
+    const [tenants, blocked] = await Promise.all([
+      this.prisma.tenant.findMany({ where: { id: { in: tenantIds } }, select: { id: true, license: true, modules: { select: { moduleKey: true, blocked: true, startsAt: true, endsAt: true } } } }),
+      globallyBlockedModules(async () => (await this.prisma.saaSModule.findMany({ where: { blocked: true }, select: { key: true } })).map(item => item.key)),
+    ]);
+    for (const tenant of tenants) if (licenseDenial(tenant.license, effectiveModules(tenant.modules, blocked), '/api/v1/whatsapp')) denied.add(tenant.id);
+    return denied;
   }
 
   private async setSession(tenantId: string, data: Prisma.WhatsappSessionUpdateInput) {
@@ -107,8 +157,11 @@ export class WhatsappSessionManager {
   private async failConnection(tenantId: string, entry: Live, reason: string) {
     const attempts = entry.unconfirmedCloses + 1;
     this.failures.set(tenantId, attempts);
-    // After several QR cycles nobody scanned: stop instead of generating codes forever.
-    if (!entry.connected && attempts >= MAX_UNCONFIRMED_CLOSES) {
+    // After several QR cycles nobody scanned: stop instead of generating codes forever — unless someone is still looking at the screen, in which case the
+    // code keeps being renewed. The pairing screen opening again reconnects by itself.
+    const viewed = await this.prisma.whatsappSession.findUnique({ where: { tenantId }, select: { viewedAt: true } }).catch(() => null);
+    const viewing = Boolean(viewed?.viewedAt && Date.now() - viewed.viewedAt.getTime() < VIEWER_ACTIVE_MS);
+    if (!entry.connected && attempts >= MAX_UNCONFIRMED_CLOSES && !viewing) {
       this.failures.delete(tenantId); this.retryAt.delete(tenantId);
       await this.setSession(tenantId, { desired: 'DISCONNECTED', status: 'DISCONNECTED', qr: null, lastError: 'O QR Code expirou sem ser lido. Clique em Conectar para gerar outro.' });
       return;
@@ -122,7 +175,7 @@ export class WhatsappSessionManager {
     this.live.delete(tenantId);
     await entry.transport.stop().catch(() => undefined);
     if (info.loggedOut) {
-      wipeAuth(tenantId); this.failures.delete(tenantId); this.retryAt.delete(tenantId);
+      await wipeAllAuth(this.prisma, tenantId); this.failures.delete(tenantId); this.retryAt.delete(tenantId);
       this.log(`tenant ${tenantId} logged out from the phone`);
       await this.setSession(tenantId, { desired: 'DISCONNECTED', status: 'LOGGED_OUT', qr: null, phone: null, pushName: null, connectedAt: null, lastError: 'A sessão foi encerrada pelo celular. Conecte novamente.' });
       return;
@@ -193,9 +246,12 @@ export class WhatsappSessionManager {
   }
 }
 
-// Mode: 'api' runs the manager inside the API process (default outside production); 'worker' leaves it to `npm run worker`; 'off' disables QR sessions.
-export function whatsappSessionsMode(env: NodeJS.ProcessEnv = process.env): 'api' | 'worker' | 'off' {
+// Mode: unset/'auto' (default) lets both the API and the worker run a manager with leader election, so QR sessions work whichever of them is deployed;
+// 'api' or 'worker' restricts it to one process; 'off' disables QR sessions.
+export type SessionsMode = 'api' | 'worker' | 'auto' | 'off';
+export function whatsappSessionsMode(env: NodeJS.ProcessEnv = process.env): SessionsMode {
   const value = env.WHATSAPP_SESSIONS_MODE;
-  if (value === 'api' || value === 'worker' || value === 'off') return value;
-  return env.NODE_ENV === 'production' ? 'worker' : 'api';
+  return value === 'api' || value === 'worker' || value === 'off' ? value : 'auto';
 }
+export const runsInApi = (mode = whatsappSessionsMode()) => mode === 'api' || mode === 'auto';
+export const runsInWorker = (mode = whatsappSessionsMode()) => mode === 'worker' || mode === 'auto';
