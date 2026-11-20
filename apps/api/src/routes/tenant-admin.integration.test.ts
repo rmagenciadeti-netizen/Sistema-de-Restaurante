@@ -73,6 +73,34 @@ test('SaaS admin: simple module release per company (enforced by the backend) an
     assert.equal((await call('GET', '/couriers', tokenA)).status, 403, 'a suspended license blocks the modules even when ticked');
   });
 
+  await t.test('a blocked customer (pending or expired license) is diagnosed and fixed for real from the module screen', async () => {
+    const C = await prisma.tenant.create({ data: { name: `Cliente C ${id}`, slug: `cli-c-${id}`, status: 'ACTIVE' } });
+    const adminC = await prisma.user.create({ data: { tenantId: C.id, name: 'Admin C', email: `c-${id}@test.local`, passwordHash: 'x', role: UserRole.ADMIN } });
+    const tokenC = signAccessToken({ userId: adminC.id, tenantId: C.id, unitId: null, role: UserRole.ADMIN });
+    try {
+      await prisma.tenantLicense.create({ data: { tenantId: C.id, status: 'PENDING' } });
+      await prisma.tenantModule.createMany({ data: [{ tenantId: C.id, moduleKey: 'pos', source: 'PLAN' }, { tenantId: C.id, moduleKey: 'delivery', source: 'PLAN' }] });
+      assert.equal((await call('GET', '/orders', tokenC)).status, 403, 'pending license blocks the restaurant');
+      const diagnostics = await call('GET', '/tenants/license-diagnostics', masterToken);
+      const row = diagnostics.body.items.find((item: any) => item.id === C.id);
+      assert.deepEqual([row.access, row.licenseStatus, row.modules], ['BLOCKED', 'PENDING', 2]);
+      assert.ok(row.reasons.some((reason: string) => reason.includes('PENDING')));
+      assert.ok(diagnostics.body.summary.blocked >= 1);
+      assert.equal((await call('GET', '/tenants/license-diagnostics', tokenC)).status, 403, 'master only');
+
+      assert.equal((await call('PUT', `/tenants/${C.id}/modules`, masterToken, { modules: ['pos', 'delivery'], status: 'ACTIVE', validUntil: '2020-01-01T00:00:00.000Z' })).status, 200);
+      assert.equal((await call('GET', '/orders', tokenC)).status, 403, 'expired license blocks');
+      assert.equal((await call('GET', '/tenants/license-diagnostics', masterToken)).body.items.find((item: any) => item.id === C.id).reasons[0].includes('vencida'), true);
+
+      assert.equal((await call('PUT', `/tenants/${C.id}/modules`, masterToken, { modules: ['pos', 'delivery'], validUntil: null })).status, 200);
+      assert.equal((await call('GET', '/orders', tokenC)).status, 200, 'released: persisted in the database, effective immediately');
+      assert.equal((await call('GET', '/couriers', tokenC)).status, 200);
+      const stored = await prisma.tenantLicense.findUniqueOrThrow({ where: { tenantId: C.id } });
+      assert.deepEqual([stored.status, stored.validUntil], ['ACTIVE', null]);
+      assert.equal((await call('GET', '/tenants/license-diagnostics', masterToken)).body.items.find((item: any) => item.id === C.id).access, 'OK');
+    } finally { await prisma.tenant.delete({ where: { id: C.id } }); }
+  });
+
   await t.test('unknown modules and broken dependencies are rejected without changing anything', async () => {
     assert.equal((await call('PUT', `/tenants/${B.id}/modules`, masterToken, { modules: ['nao-existe'] })).status, 400);
     const withDependency = (await call('GET', `/tenants/${B.id}/modules`, masterToken)).body.modules.find((item: any) => item.dependsOn.length > 0);

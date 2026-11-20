@@ -220,6 +220,24 @@ tenantRoutes.get('/modules/catalog', async (_req, res, next) => {
     return res.json({ items: items.filter(item => isFeatureLinked(item.key)).map(item => ({ key: item.key, name: item.name, category: item.category, dependsOn: item.dependsOn, blocked: item.blocked })) });
   } catch (error) { return next(error); }
 });
+// Which companies the license gate currently blocks, and why. Companies without a license record are open (legacy).
+tenantRoutes.get('/license-diagnostics', async (_req, res, next) => {
+  try {
+    const now = new Date();
+    const tenants = await prisma.tenant.findMany({ orderBy: { name: 'asc' }, select: { id: true, name: true, slug: true, status: true, license: { select: { status: true, validUntil: true, graceDays: true } }, _count: { select: { modules: true, users: true } } } });
+    const items = tenants.map(tenant => {
+      const reasons: string[] = [];
+      if (tenant.license) {
+        if (tenant.license.status !== 'ACTIVE') reasons.push(`Licença ${tenant.license.status}: o restaurante não consegue usar o sistema.`);
+        else if (tenant.license.validUntil && tenant.license.validUntil.getTime() + tenant.license.graceDays * 86_400_000 < now.getTime()) reasons.push('Licença vencida: o restaurante não consegue usar o sistema.');
+        if (tenant._count.modules === 0) reasons.push('Nenhum módulo liberado.');
+      }
+      if (tenant.status === 'SUSPENDED' || tenant.status === 'BLOCKED') reasons.push(`Empresa ${tenant.status === 'SUSPENDED' ? 'suspensa' : 'bloqueada'}.`);
+      return { id: tenant.id, name: tenant.name, slug: tenant.slug, companyStatus: tenant.status, licenseStatus: tenant.license?.status ?? null, validUntil: tenant.license?.validUntil ?? null, modules: tenant._count.modules, users: tenant._count.users, access: !tenant.license ? 'OPEN' : reasons.length ? 'BLOCKED' : 'OK', reasons };
+    });
+    return res.json({ items, summary: { total: items.length, blocked: items.filter(item => item.access === 'BLOCKED').length, open: items.filter(item => item.access === 'OPEN').length, ok: items.filter(item => item.access === 'OK').length } });
+  } catch (error) { return next(error); }
+});
 tenantRoutes.get('/:id/license', async (req, res, next) => {
   try {
     const tenant = await prisma.tenant.findUnique({ where: { id: req.params.id }, select: { id: true, name: true, status: true, license: true, modules: { select: { moduleKey: true } }, _count: { select: { units: true, users: true } } } });
@@ -302,7 +320,7 @@ tenantRoutes.get('/:id/modules', async (req, res, next) => {
 
 tenantRoutes.put('/:id/modules', async (req, res, next) => {
   try {
-    const parsed = z.object({ modules: z.array(z.string().min(1).max(60)).max(100), reason: z.string().trim().max(300).optional() }).safeParse(req.body);
+    const parsed = z.object({ modules: z.array(z.string().min(1).max(60)).max(100), reason: z.string().trim().max(300).optional(), status: z.enum(['PENDING', 'ACTIVE', 'SUSPENDED', 'REVOKED', 'CANCELLED']).optional(), validUntil: z.string().datetime().nullable().optional() }).safeParse(req.body);
     if (!parsed.success) return res.status(400).json({ message: 'Validation failed' });
     const tenant = await prisma.tenant.findUnique({ where: { id: req.params.id }, select: { id: true, license: true, modules: { select: { moduleKey: true } } } });
     if (!tenant) return res.status(404).json({ message: 'Company not found' });
@@ -314,10 +332,13 @@ tenantRoutes.put('/:id/modules', async (req, res, next) => {
     const before = tenant.modules.map(item => item.moduleKey);
     await prisma.$transaction(async tx => {
       // The first save on a company without a license creates an active one, so the selection starts to be enforced by the backend.
-      if (!tenant.license) await tx.tenantLicense.create({ data: { tenantId: tenant.id, status: 'ACTIVE' } });
+      const { status, validUntil } = parsed.data;
+      const licenseChange = { ...(status !== undefined ? { status } : {}), ...(validUntil !== undefined ? { validUntil: validUntil ? new Date(validUntil) : null } : {}) };
+      if (!tenant.license) await tx.tenantLicense.create({ data: { tenantId: tenant.id, status: status ?? 'ACTIVE', ...(licenseChange.validUntil !== undefined ? { validUntil: licenseChange.validUntil } : {}) } });
+      else if (Object.keys(licenseChange).length > 0) await tx.tenantLicense.update({ where: { tenantId: tenant.id }, data: licenseChange });
       await tx.tenantModule.deleteMany({ where: { tenantId: tenant.id, moduleKey: { notIn: wanted } } });
       await tx.tenantModule.createMany({ data: wanted.filter(key => !before.includes(key)).map(moduleKey => ({ tenantId: tenant.id, moduleKey, source: plan && !includedByPlan.has(moduleKey) ? 'ADDON' : 'PLAN' })), skipDuplicates: true });
-      await tx.auditLog.create({ data: { actorUserId: req.auth!.userId, tenantId: tenant.id, action: 'TENANT_MODULES_UPDATED', entityType: 'Tenant', entityId: tenant.id, metadata: { reason: parsed.data.reason ?? null, before, after: wanted, added: wanted.filter(key => !before.includes(key)), removed: before.filter(key => !wanted.includes(key)) } } });
+      await tx.auditLog.create({ data: { actorUserId: req.auth!.userId, tenantId: tenant.id, action: 'TENANT_MODULES_UPDATED', entityType: 'Tenant', entityId: tenant.id, metadata: { reason: parsed.data.reason ?? null, licenseStatus: parsed.data.status ?? null, validUntil: parsed.data.validUntil ?? undefined, before, after: wanted, added: wanted.filter(key => !before.includes(key)), removed: before.filter(key => !wanted.includes(key)) } } });
     });
     invalidateBlockedModules();
     return res.json({ modules: wanted });
