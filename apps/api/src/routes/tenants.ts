@@ -6,7 +6,7 @@ import bcrypt from 'bcryptjs';
 import { prisma } from '../lib/prisma';
 import { requireAuth, requireMaster } from '../middleware/auth';
 import { invalidateBlockedModules, routesOfModule } from '../lib/licensing';
-import { isFeatureLinked, moduleSetProblem } from '../lib/module-catalog';
+import { ensureModuleCatalogOnce, isFeatureLinked, moduleSetProblem } from '../lib/module-catalog';
 import { loadSettings, saveSettingsSection, SETTINGS_SECTIONS } from '../lib/settings';
 import { formatCnpj, isValidCnpj, onlyDigits } from '../lib/cnpj';
 
@@ -216,6 +216,7 @@ const licenseSchema = z.object({
 // Modules that can be granted to a contract: catalogued, not archived and linked to a real feature.
 tenantRoutes.get('/modules/catalog', async (_req, res, next) => {
   try {
+    await ensureModuleCatalogOnce();
     const items = await prisma.saaSModule.findMany({ where: { status: { not: 'ARCHIVED' } }, orderBy: [{ category: 'asc' }, { name: 'asc' }] });
     return res.json({ items: items.filter(item => isFeatureLinked(item.key)).map(item => ({ key: item.key, name: item.name, category: item.category, dependsOn: item.dependsOn, blocked: item.blocked })) });
   } catch (error) { return next(error); }
@@ -303,6 +304,7 @@ tenantRoutes.get('/:id/modules', async (req, res, next) => {
   try {
     const tenant = await prisma.tenant.findUnique({ where: { id: req.params.id }, select: { id: true, name: true, status: true, license: true, modules: { select: { moduleKey: true, source: true, blocked: true } } } });
     if (!tenant) return res.status(404).json({ message: 'Company not found' });
+    await ensureModuleCatalogOnce();
     const catalog = await prisma.saaSModule.findMany({ where: { status: { not: 'ARCHIVED' } }, orderBy: [{ category: 'asc' }, { name: 'asc' }] });
     const owned = new Map(tenant.modules.map(item => [item.moduleKey, item]));
     // Without a license record every module is open (legacy companies); the screen then shows them all ticked.

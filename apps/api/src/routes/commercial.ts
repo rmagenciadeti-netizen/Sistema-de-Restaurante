@@ -3,7 +3,7 @@ import { CampaignAudience, CampaignStatus, CatalogStatus, DiscountType, ModuleBi
 import { z } from 'zod';
 import { prisma } from '../lib/prisma';
 import { invalidateBlockedModules } from '../lib/licensing';
-import { isFeatureLinked } from '../lib/module-catalog';
+import { ensureModuleCatalogOnce, isFeatureLinked } from '../lib/module-catalog';
 import { addonRecurringCents, fromCents, monthlyRecurringCents, PERIOD_MONTHS } from '../lib/commercial';
 import { requireAuth, requireMaster } from '../middleware/auth';
 
@@ -66,7 +66,7 @@ async function dependencyProblem(keys: string[]) {
 }
 
 commercialRoutes.get('/modules', async (_req, res, next) => {
-  try { const items = await presentModules(); return res.json({ items, total: items.length }); } catch (error) { return next(error); }
+  try { await ensureModuleCatalogOnce(); const items = await presentModules(); return res.json({ items, total: items.length }); } catch (error) { return next(error); }
 });
 
 commercialRoutes.post('/modules', async (req, res, next) => {

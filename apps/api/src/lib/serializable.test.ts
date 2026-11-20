@@ -16,7 +16,7 @@ test('retries serialization conflicts, but not other errors, with a bounded limi
   attempts = 0;
   const alwaysConflict = { $transaction: async () => { attempts++; throw conflict; } } as unknown as PrismaClient;
   await assert.rejects(serializable(alwaysConflict, async () => 'unused'), error => error === conflict);
-  assert.equal(attempts, 3);
+  assert.equal(attempts, 6, 'one attempt plus five retries');
   const failure = new Error('audit failed');
   const failed = { $transaction: async () => { throw failure; } } as unknown as PrismaClient;
   await assert.rejects(serializable(failed, async () => 'unused'), error => error === failure);
