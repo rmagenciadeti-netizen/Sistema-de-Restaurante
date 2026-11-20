@@ -1,5 +1,6 @@
 import './lib/env';
 import { assertProductionEnv } from './lib/env-check';
+import { ensureModuleCatalogOnce } from './lib/module-catalog';
 import express from 'express';
 import cors from 'cors';
 import helmet from 'helmet';
@@ -193,6 +194,7 @@ if (require.main === module) {
   assertProductionEnv();
   const port = Number(process.env.PORT || 4000);
   const server = app.listen(port, () => console.log(`RM Restaurant API listening on port ${port}`));
+  ensureModuleCatalogOnce().then(created => { if (created) console.log(`module catalog: ${created} module(s) added automatically`); }).catch(error => console.error('module catalog sync failed:', error instanceof Error ? error.message : error));
   // In 'api' mode (default outside production) this process also owns the WhatsApp Web sessions and releases scheduled orders.
   if (whatsappSessionsMode() === 'api') {
     const manager = new WhatsappSessionManager(prisma);

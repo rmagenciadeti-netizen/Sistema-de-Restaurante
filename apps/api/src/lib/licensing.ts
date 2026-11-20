@@ -17,6 +17,7 @@ export const MODULE_CATALOG = [
   { key: 'integrations', name: 'Integrações e Pagamentos' },
   { key: 'intelligence', name: 'RM Inteligência' },
   { key: 'profit', name: 'RM Controle de Lucro' },
+  { key: 'network', name: 'Gestão Multiunidades e Rede' },
 ] as const;
 
 export type ModuleKey = typeof MODULE_CATALOG[number]['key'];
@@ -28,7 +29,7 @@ const ROUTE_MODULES: Record<string, ModuleKey> = {
   whatsapp: 'whatsapp', coupons: 'marketing', fiscal: 'fiscal', reports: 'reports', integrations: 'integrations', payments: 'integrations',
   releases: 'pos', scale: 'pos', couriers: 'delivery', carriers: 'inventory', 'payment-methods': 'financial', 'financial-categories': 'financial',
   promotions: 'marketing', 'cover-events': 'tables', 'table-requests': 'tables', 'tax-rules': 'fiscal', 'fiscal-registry': 'fiscal',
-  intelligence: 'intelligence', profit: 'profit', pricing: 'profit', tef: 'integrations',
+  intelligence: 'intelligence', profit: 'profit', pricing: 'profit', tef: 'integrations', network: 'network',
 };
 
 // API route prefixes that belong to a module (what the license gate protects); shown in the admin panel so the link is never typed by hand.

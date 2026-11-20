@@ -143,7 +143,7 @@ const moduleByPath: Record<string, string> = {
   '/inventory': 'inventory', '/purchasing': 'inventory', '/carriers': 'inventory', '/financial': 'financial', '/cash': 'financial', '/payment-methods': 'financial', '/financial-categories': 'financial',
   '/employees': 'employees', '/shifts': 'employees', '/commissions': 'employees', '/kds': 'kds', '/production': 'kds', '/whatsapp': 'whatsapp', '/coupons': 'marketing', '/promotions': 'marketing', '/crm': 'marketing',
   '/fiscal': 'fiscal', '/tax-rules': 'fiscal', '/fiscal-xmls': 'fiscal', '/contingency': 'fiscal', '/reconciliation': 'fiscal', '/bank-reconciliation': 'financial', '/received-invoices': 'fiscal', '/natures': 'fiscal', '/cst-map': 'fiscal',
-  '/reports': 'reports', '/integrations': 'integrations', '/intelligence': 'intelligence', '/profit': 'profit', '/pricing': 'profit',
+  '/reports': 'reports', '/integrations': 'integrations', '/intelligence': 'intelligence', '/profit': 'profit', '/pricing': 'profit', '/network': 'network',
 };
 // Pages that belong to a module (used by the admin panel to show what each checkbox unlocks).
 export const pathsOfModule = (key: string): string[] => Object.entries(moduleByPath).filter(([, module]) => module === key).map(([path]) => path).sort();
