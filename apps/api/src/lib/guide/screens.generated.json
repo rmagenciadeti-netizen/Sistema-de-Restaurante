@@ -1,0 +1,5383 @@
+{
+ "generatedFrom": "apps/web (menu-catalog + pages)",
+ "groups": [
+  {
+   "title": "Início",
+   "icon": "🏠"
+  },
+  {
+   "title": "Para seus clientes",
+   "icon": "🙂"
+  },
+  {
+   "title": "Gerenciamento de produtos",
+   "icon": "📦"
+  },
+  {
+   "title": "Controle de entrega",
+   "icon": "🛵"
+  },
+  {
+   "title": "Gerenciamento financeiro",
+   "icon": "💵"
+  },
+  {
+   "title": "Integração",
+   "icon": "🔗"
+  },
+  {
+   "title": "Comandas",
+   "icon": "🪑"
+  },
+  {
+   "title": "Movimento",
+   "icon": "🧾"
+  },
+  {
+   "title": "RM INTELLIGENCE",
+   "icon": "🧠"
+  },
+  {
+   "title": "Operação RM",
+   "icon": "🏁"
+  },
+  {
+   "title": "Relatórios",
+   "icon": "📊"
+  },
+  {
+   "title": "Cadastros",
+   "icon": "🗃️"
+  },
+  {
+   "title": "Fiscal / Tributos",
+   "icon": "📄"
+  },
+  {
+   "title": "Configurações gerais",
+   "icon": "⚙️"
+  }
+ ],
+ "screens": [
+  {
+   "href": "/ai",
+   "menu": [
+    {
+     "label": "Central de Inteligência Empresarial",
+     "group": "RM INTELLIGENCE",
+     "href": "/ai"
+    }
+   ],
+   "module": null,
+   "title": "RM INTELLIGENCE — Central de Inteligência Empresarial",
+   "subtitle": "A SUPER IA coordena especialistas independentes, consulta só os necessários e respeita a sua permissão e a licença contratada. Os números vêm do sistema; a IA externa só explica.",
+   "tabs": [
+    "🧭 Visão geral",
+    "🧠 Assistente central",
+    "🩺 Diagnóstico integrado",
+    "📊 Consumo e controles"
+   ],
+   "fields": [
+    {
+     "label": "Seções da central"
+    },
+    {
+     "label": "De"
+    },
+    {
+     "label": "Até"
+    },
+    {
+     "label": "Unidade"
+    },
+    {
+     "label": "Pergunte a este especialista"
+    },
+    {
+     "label": "Pergunte à SUPER IA RM Intelligence"
+    },
+    {
+     "label": "Pedir explicação por IA externa",
+     "hint": "Só envia números agregados e exige o consentimento da empresa."
+    }
+   ],
+   "buttons": [
+    "Excluir",
+    "Estimar consumo",
+    "Consultando…",
+    "Perguntar"
+   ]
+  },
+  {
+   "href": "/audit",
+   "menu": [
+    {
+     "label": "Auditoria",
+     "group": "Configurações gerais",
+     "href": "/audit"
+    }
+   ],
+   "module": null,
+   "title": "Auditoria",
+   "subtitle": null,
+   "tabs": [],
+   "fields": [
+    {
+     "label": "Ação"
+    },
+    {
+     "label": "Tipo de registro"
+    },
+    {
+     "label": "A partir de"
+    },
+    {
+     "label": "Até"
+    }
+   ],
+   "buttons": [
+    "Filtrar",
+    "Anterior",
+    "Próxima"
+   ]
+  },
+  {
+   "href": "/bank-reconciliation",
+   "menu": [
+    {
+     "label": "Conciliação bancária",
+     "group": "Fiscal / Tributos",
+     "href": "/bank-reconciliation"
+    }
+   ],
+   "module": "financial",
+   "title": "Conciliação bancária",
+   "subtitle": "Importe o extrato (OFX ou CSV com data, descrição e valor) e confronte com os lançamentos pagos. Confirmar apenas marca os lançamentos como conciliados; nada é criado ou alterado no financeiro.",
+   "tabs": [],
+   "fields": [
+    {
+     "label": "Arquivo do extrato"
+    },
+    {
+     "label": "Linhas do extrato"
+    },
+    {
+     "label": "Conciliadas"
+    },
+    {
+     "label": "Extrato sem lançamento"
+    },
+    {
+     "label": "Lançamentos sem extrato"
+    }
+   ],
+   "buttons": []
+  },
+  {
+   "href": "/bulk-adjust",
+   "menu": [
+    {
+     "label": "Ajuste em massa",
+     "group": "Gerenciamento de produtos",
+     "href": "/bulk-adjust"
+    }
+   ],
+   "module": null,
+   "title": "Ajuste de preços em massa",
+   "subtitle": "Reajuste preço e custo de vários produtos de uma vez, conferindo a prévia antes de aplicar.",
+   "tabs": [],
+   "fields": [
+    {
+     "label": "Como alterar"
+    },
+    {
+     "label": "Etapas"
+    },
+    {
+     "label": "Arredondamento do novo preço"
+    },
+    {
+     "label": "Buscar por nome, código ou código de barras"
+    },
+    {
+     "label": "Categoria"
+    },
+    {
+     "label": "Situação"
+    },
+    {
+     "label": "Conferi a prévia e confirmo a alteração destes produtos."
+    }
+   ],
+   "buttons": [
+    "Novo ajuste",
+    "Continuar",
+    "Voltar",
+    "Voltar à prévia"
+   ]
+  },
+  {
+   "href": "/carriers",
+   "menu": [
+    {
+     "label": "Transportadoras",
+     "group": "Cadastros",
+     "href": "/carriers"
+    }
+   ],
+   "module": "inventory",
+   "title": "Transportadoras",
+   "subtitle": "Empresas que transportam mercadorias para o seu estabelecimento.",
+   "tabs": [],
+   "fields": [
+    {
+     "label": "Nome"
+    },
+    {
+     "label": "CPF/CNPJ"
+    },
+    {
+     "label": "Telefone"
+    },
+    {
+     "label": "E-mail"
+    },
+    {
+     "label": "Ativo"
+    }
+   ],
+   "buttons": [
+    "Cancelar",
+    "Buscar",
+    "Adicionar",
+    "Editar",
+    "Excluir",
+    "Salvando…",
+    "Salvar"
+   ]
+  },
+  {
+   "href": "/cash",
+   "menu": [
+    {
+     "label": "Caixa e pagamentos",
+     "group": "Gerenciamento financeiro",
+     "href": "/cash"
+    }
+   ],
+   "module": "financial",
+   "title": "Caixa e pagamentos",
+   "subtitle": null,
+   "tabs": [],
+   "fields": [
+    {
+     "label": "Valor inicial (R$)"
+    },
+    {
+     "label": "Valor contado (R$)"
+    },
+    {
+     "label": "Valor recebido (R$)"
+    },
+    {
+     "label": "Provedor"
+    },
+    {
+     "label": "Forma"
+    },
+    {
+     "label": "Pagamento TEF"
+    }
+   ],
+   "buttons": [
+    "Abrir caixa",
+    "Fechar caixa",
+    "Fechar",
+    "Estornar",
+    "Atualizar",
+    "Cancelar cobrança",
+    "Copiar código",
+    "Desfazer cobrança",
+    "Processando...",
+    "Registrar pagamento"
+   ]
+  },
+  {
+   "href": "/catalog",
+   "menu": [
+    {
+     "label": "Adicionais e combos",
+     "group": "Gerenciamento de produtos",
+     "href": "/catalog"
+    }
+   ],
+   "module": null,
+   "title": "Adicionais e combos",
+   "subtitle": null,
+   "tabs": [],
+   "fields": [
+    {
+     "label": "Ingrediente consumido (opcional)"
+    },
+    {
+     "label": "Ingrediente consumido"
+    },
+    {
+     "label": "Qtd. por unidade"
+    },
+    {
+     "label": "Quantidade do ingrediente"
+    },
+    {
+     "label": "Nome do grupo"
+    },
+    {
+     "label": "Mínimo de escolhas"
+    },
+    {
+     "label": "Máximo de escolhas"
+    },
+    {
+     "label": "Opção"
+    },
+    {
+     "label": "Nome da opção"
+    },
+    {
+     "label": "Preço (R$)"
+    },
+    {
+     "label": "Preço da opção"
+    },
+    {
+     "label": "Nome"
+    },
+    {
+     "label": "Mínimo"
+    },
+    {
+     "label": "Máximo"
+    },
+    {
+     "label": "Nova opção"
+    },
+    {
+     "label": "Produto"
+    },
+    {
+     "label": "Componente"
+    },
+    {
+     "label": "Qtd."
+    },
+    {
+     "label": "Quantidade"
+    }
+   ],
+   "buttons": [
+    "Criar grupo",
+    "Remover",
+    "Editar grupo",
+    "Salvar grupo",
+    "Salvar preço",
+    "Adicionar opção",
+    "Salvar adicionais",
+    "Salvar combo"
+   ]
+  },
+  {
+   "href": "/categories",
+   "menu": [
+    {
+     "label": "Categorias",
+     "group": "Gerenciamento de produtos",
+     "href": "/categories"
+    }
+   ],
+   "module": null,
+   "title": "Categorias do cardápio",
+   "subtitle": null,
+   "tabs": [],
+   "fields": [
+    {
+     "label": "Nome"
+    }
+   ],
+   "buttons": [
+    "Cancelar",
+    "Editar",
+    "Salvar",
+    "Adicionar categoria"
+   ]
+  },
+  {
+   "href": "/category-hours",
+   "menu": [
+    {
+     "label": "Exibição das categorias",
+     "group": "Gerenciamento de produtos",
+     "href": "/category-hours"
+    }
+   ],
+   "module": null,
+   "title": "Gestão de exibição das categorias",
+   "subtitle": "Defina em quais dias e horários cada categoria aparece no cardápio das mesas. Categoria sem horários fica sempre visível. Os horários seguem o fuso das configurações do restaurante.",
+   "tabs": [],
+   "fields": [],
+   "buttons": [
+    "Limpar (sempre visível)",
+    "Remover",
+    "Dia todo",
+    "Copiar para todos os dias"
+   ]
+  },
+  {
+   "href": "/change-password",
+   "menu": [],
+   "module": null,
+   "title": null,
+   "subtitle": null,
+   "tabs": [],
+   "fields": [
+    {
+     "label": "Senha atual"
+    },
+    {
+     "label": "Nova senha"
+    },
+    {
+     "label": "Confirme a nova senha"
+    }
+   ],
+   "buttons": [
+    "Salvando...",
+    "Salvar nova senha"
+   ]
+  },
+  {
+   "href": "/comandas",
+   "menu": [
+    {
+     "label": "Controle de comandas",
+     "group": "Comandas",
+     "href": "/comandas"
+    },
+    {
+     "label": "Comandas",
+     "group": "Acesso rápido",
+     "href": "/comandas"
+    }
+   ],
+   "module": "pos",
+   "title": "Controle de comandas",
+   "subtitle": null,
+   "tabs": [],
+   "fields": [
+    {
+     "label": "Pesquisar comanda ou mesa"
+    },
+    {
+     "label": "Nova comanda"
+    },
+    {
+     "label": "Mapa do salão"
+    },
+    {
+     "label": "Legenda"
+    },
+    {
+     "label": "Operação de balcão"
+    },
+    {
+     "label": "Solicitações das mesas"
+    }
+   ],
+   "buttons": [
+    "Abrir",
+    "Aceitar e enviar à cozinha",
+    "Recusar",
+    "Atendido"
+   ]
+  },
+  {
+   "href": "/commercial",
+   "menu": [],
+   "module": null,
+   "title": "Gestão comercial — planos, módulos e assinaturas",
+   "subtitle": "Controle toda a oferta do RM Restaurant sem alterar código. Planos e clientes têm telas próprias em “Planos e preços” e “Clientes e assinaturas”.",
+   "tabs": [
+    "📊 Visão geral",
+    "🧩 Módulos",
+    "🔖 Promoções",
+    "🏷️ Cupons",
+    "🧾 Cobranças",
+    "📑 Relatórios",
+    "🛡️ Auditoria"
+   ],
+   "fields": [
+    {
+     "label": "Gestão comercial"
+    },
+    {
+     "label": "De"
+    },
+    {
+     "label": "Até"
+    },
+    {
+     "label": "Plano"
+    },
+    {
+     "label": "Receita recorrente (MRR)"
+    },
+    {
+     "label": "Recebido no período",
+     "hint": "Pagamentos confirmados"
+    },
+    {
+     "label": "Cobranças emitidas"
+    },
+    {
+     "label": "Em aberto / vencido"
+    },
+    {
+     "label": "Clientes"
+    },
+    {
+     "label": "Assinaturas ativas"
+    },
+    {
+     "label": "Novas × cancelamentos"
+    },
+    {
+     "label": "Catálogo"
+    },
+    {
+     "label": "Evolução do faturamento recebido"
+    },
+    {
+     "label": "Chave técnica"
+    },
+    {
+     "label": "Nome"
+    },
+    {
+     "label": "Categoria"
+    },
+    {
+     "label": "Ícone (emoji)"
+    },
+    {
+     "label": "Cobrança"
+    },
+    {
+     "label": "Valor mensal (R$)"
+    },
+    {
+     "label": "Valor anual (R$)"
+    },
+    {
+     "label": "Valor único (R$)"
+    },
+    {
+     "label": "Preço promocional mensal (R$)"
+    },
+    {
+     "label": "Promoção início"
+    },
+    {
+     "label": "Promoção término"
+    },
+    {
+     "label": "Situação"
+    },
+    {
+     "label": "Disponível para contratação avulsa"
+    },
+    {
+     "label": "Depende de outros módulos"
+    },
+    {
+     "label": "Buscar módulo"
+    },
+    {
+     "label": "Código"
+    },
+    {
+     "label": "Tipo de desconto"
+    },
+    {
+     "label": "PERCENT"
+    },
+    {
+     "label": "Desconto (%)"
+    },
+    {
+     "label": "Desconto (R$)"
+    },
+    {
+     "label": "Válido a partir de (opcional)"
+    },
+    {
+     "label": "Início"
+    },
+    {
+     "label": "Validade (opcional)"
+    },
+    {
+     "label": "Término"
+    },
+    {
+     "label": "Público"
+    },
+    {
+     "label": "Ciclos de cobrança com desconto"
+    },
+    {
+     "label": "Limite total de usos"
+    },
+    {
+     "label": "Limite por cliente"
+    },
+    {
+     "label": "Valor mínimo da assinatura (R$)"
+    },
+    {
+     "label": "Planos participantes"
+    },
+    {
+     "label": "Módulos participantes"
+    },
+    {
+     "label": "Cliente"
+    },
+    {
+     "label": "Cupom"
+    },
+    {
+     "label": "Promoção ativa"
+    },
+    {
+     "label": "Vencimento"
+    },
+    {
+     "label": "Taxas de ativação/implantação"
+    },
+    {
+     "label": "Observações"
+    },
+    {
+     "label": "Buscar cliente"
+    },
+    {
+     "label": "Forma de pagamento"
+    },
+    {
+     "label": "Comprovante / referência"
+    },
+    {
+     "label": "Renovar a validade da licença pelo período pago"
+    },
+    {
+     "label": "Área"
+    },
+    {
+     "label": "Relatório"
+    }
+   ],
+   "buttons": [
+    "Voltar",
+    "Cancelar edição",
+    "Confirmar pagamento",
+    "Atualizar",
+    "Exportar CSV",
+    "Editar",
+    "Ativar",
+    "Desativar",
+    "Arquivar",
+    "Utilizações",
+    "Encerrar",
+    "Fechar",
+    "Calcular prévia",
+    "Emitir cobrança",
+    "Registrar pagamento",
+    "Cancelar",
+    "Anterior",
+    "Próxima",
+    "Aguarde...",
+    "Salvando...",
+    "Salvar módulo",
+    "Criar módulo",
+    "Salvar alterações",
+    "Criar cupom",
+    "Criar promoção"
+   ]
+  },
+  {
+   "href": "/commissions",
+   "menu": [
+    {
+     "label": "Comissões",
+     "group": "Cadastros",
+     "href": "/commissions"
+    }
+   ],
+   "module": "employees",
+   "title": "Comissões e produtividade",
+   "subtitle": "Regras por colaborador, função, produto ou meta. O cálculo usa apenas vendas concluídas e itens não cancelados.",
+   "tabs": [],
+   "fields": [
+    {
+     "label": "De"
+    },
+    {
+     "label": "Até"
+    },
+    {
+     "label": "Nome"
+    },
+    {
+     "label": "Tipo"
+    },
+    {
+     "label": "Colaborador (opcional)"
+    },
+    {
+     "label": "Função (opcional)"
+    },
+    {
+     "label": "Produto"
+    },
+    {
+     "label": "Percentual (%)"
+    },
+    {
+     "label": "Meta de vendas (R$)"
+    },
+    {
+     "label": "Bônus (R$)"
+    }
+   ],
+   "buttons": [
+    "Calcular",
+    "Fechar período",
+    "Cancelar",
+    "Editar",
+    "Excluir",
+    "Salvar alterações",
+    "Adicionar regra"
+   ]
+  },
+  {
+   "href": "/companies",
+   "menu": [],
+   "module": null,
+   "title": "Empresas e unidades",
+   "subtitle": null,
+   "tabs": [],
+   "fields": [
+    {
+     "label": "Nome da empresa"
+    },
+    {
+     "label": "Slug"
+    },
+    {
+     "label": "Plano comercial (opcional)"
+    },
+    {
+     "label": "Nome do administrador"
+    },
+    {
+     "label": "E-mail do administrador"
+    },
+    {
+     "label": "Senha inicial (mín. 12 caracteres)"
+    },
+    {
+     "label": "Unidade inicial"
+    },
+    {
+     "label": "Editar empresa"
+    },
+    {
+     "label": "Plano"
+    }
+   ],
+   "buttons": [
+    "Cancelar",
+    "Fechar",
+    "Editar",
+    "Provisionando...",
+    "Criar empresa",
+    "Salvando…",
+    "Salvar alterações"
+   ]
+  },
+  {
+   "href": "/contingency",
+   "menu": [
+    {
+     "label": "Contingências",
+     "group": "Fiscal / Tributos",
+     "href": "/contingency"
+    }
+   ],
+   "module": "fiscal",
+   "title": "Contingências",
+   "subtitle": "Registre os períodos sem comunicação com a SEFAZ/provedor fiscal, regularize os documentos pendentes e inutilize faixas de numeração não utilizadas.",
+   "tabs": [
+    "Hoje",
+    "Ontem",
+    "Esta semana",
+    "Semana anterior",
+    "Este mês",
+    "Mês anterior",
+    "Personalizado"
+   ],
+   "fields": [
+    {
+     "label": "Situação"
+    },
+    {
+     "label": "Modelo"
+    },
+    {
+     "label": "Ambiente"
+    },
+    {
+     "label": "Selecionar todos"
+    },
+    {
+     "label": "Série"
+    },
+    {
+     "label": "Número inicial"
+    },
+    {
+     "label": "Número final"
+    },
+    {
+     "label": "Período"
+    },
+    {
+     "label": "De"
+    },
+    {
+     "label": "Até"
+    }
+   ],
+   "buttons": [
+    "Inutilizar numeração",
+    "Fechar",
+    "Reenviar todos os pendentes",
+    "Consultar selecionados",
+    "Consultar todos os pendentes",
+    "Exportar XML",
+    "Baixar XML",
+    "Registrando...",
+    "Iniciar contingência"
+   ]
+  },
+  {
+   "href": "/coupons",
+   "menu": [
+    {
+     "label": "Cupons de desconto",
+     "group": "Para seus clientes",
+     "href": "/coupons"
+    }
+   ],
+   "module": "marketing",
+   "title": "Cupons e promoções",
+   "subtitle": null,
+   "tabs": [],
+   "fields": [
+    {
+     "label": "Código"
+    },
+    {
+     "label": "Tipo"
+    },
+    {
+     "label": "PERCENT"
+    },
+    {
+     "label": "Desconto (%)"
+    },
+    {
+     "label": "Desconto (R$)"
+    },
+    {
+     "label": "Pedido mínimo (R$)"
+    },
+    {
+     "label": "Máximo de usos"
+    },
+    {
+     "label": "Válido a partir de"
+    },
+    {
+     "label": "Válido até"
+    }
+   ],
+   "buttons": [
+    "Criar cupom"
+   ]
+  },
+  {
+   "href": "/couriers",
+   "menu": [
+    {
+     "label": "Entregadores",
+     "group": "Operação RM",
+     "href": "/couriers"
+    }
+   ],
+   "module": "delivery",
+   "title": "Entregadores",
+   "subtitle": "Cadastre quem faz as entregas para escolhê-los rapidamente em Entregas.",
+   "tabs": [],
+   "fields": [
+    {
+     "label": "Relatório do entregador"
+    },
+    {
+     "label": "Nome"
+    },
+    {
+     "label": "Telefone/WhatsApp"
+    },
+    {
+     "label": "Pagamento por entrega (R$)"
+    },
+    {
+     "label": "Comissão sobre a taxa de entrega (%)"
+    },
+    {
+     "label": "Ativo",
+     "hint": "Entregadores inativos não aparecem na escolha de novas entregas."
+    }
+   ],
+   "buttons": [
+    "Cancelar",
+    "Buscar",
+    "Adicionar",
+    "Fechar",
+    "Relatório",
+    "Editar",
+    "Excluir",
+    "Salvando…",
+    "Salvar"
+   ]
+  },
+  {
+   "href": "/cover-events",
+   "menu": [
+    {
+     "label": "Couvert artístico",
+     "group": "Configurações gerais",
+     "href": "/cover-events"
+    }
+   ],
+   "module": "tables",
+   "title": "Couvert artístico",
+   "subtitle": "Cadastre os eventos com cobrança por pessoa. Durante o período, o caixa pode lançar o couvert nos pedidos.",
+   "tabs": [],
+   "fields": [
+    {
+     "label": "Descrição"
+    },
+    {
+     "label": "Valor por pessoa (R$)"
+    },
+    {
+     "label": "Data inicial"
+    },
+    {
+     "label": "Data final"
+    },
+    {
+     "label": "Ativo",
+     "hint": "Somente eventos ativos dentro do período são oferecidos no caixa."
+    }
+   ],
+   "buttons": [
+    "Cancelar",
+    "Buscar",
+    "Adicionar",
+    "Editar",
+    "Excluir",
+    "Salvando…",
+    "Salvar"
+   ]
+  },
+  {
+   "href": "/crm",
+   "menu": [
+    {
+     "label": "Clientes VIP e fidelização",
+     "group": "Para seus clientes",
+     "href": "/crm"
+    }
+   ],
+   "module": "marketing",
+   "title": "RM Cliente VIP",
+   "subtitle": "Segmentação automática pelo histórico real de pedidos concluídos, programa de fidelidade com extrato e resgate, e campanhas para quem autorizou comunicações.",
+   "tabs": [
+    "👑 Segmentos",
+    "🎁 Fidelidade",
+    "📣 Campanhas"
+   ],
+   "fields": [
+    {
+     "label": "RM Cliente VIP"
+    },
+    {
+     "label": "Buscar por nome ou telefone"
+    },
+    {
+     "label": "Programa de fidelidade ativo (pontos por compra concluída)"
+    },
+    {
+     "label": "Pontos por R$ 1,00 gasto"
+    },
+    {
+     "label": "Valor de cada ponto no resgate (R$)"
+    },
+    {
+     "label": "Resgate mínimo (pontos)"
+    },
+    {
+     "label": "Validade: expira após X dias sem comprar (0 = nunca)"
+    },
+    {
+     "label": "Validade do cupom de resgate (dias)"
+    },
+    {
+     "label": "Buscar cliente por nome ou telefone"
+    },
+    {
+     "label": "Ajuste (+/−)"
+    },
+    {
+     "label": "Justificativa"
+    },
+    {
+     "label": "Sem comprar há (dias)"
+    }
+   ],
+   "buttons": [
+    "Salvar regras",
+    "Buscar",
+    "Gerar cupom",
+    "Ajustar",
+    "Voltar",
+    "Exportar CSV",
+    "Aguarde..."
+   ]
+  },
+  {
+   "href": "/cst-map",
+   "menu": [
+    {
+     "label": "Correlação CST ICMS x Entrada",
+     "group": "Fiscal / Tributos",
+     "href": "/cst-map"
+    }
+   ],
+   "module": "fiscal",
+   "title": "Correlação CST ICMS x Entrada",
+   "subtitle": "Defina qual CST/CSOSN de entrada corresponde ao CST de saída do fornecedor. Apenas armazena a tabela de equivalência; o lançamento fiscal continua sendo conferido pelo contador.",
+   "tabs": [],
+   "fields": [
+    {
+     "label": "CST/CSOSN de saída (fornecedor)"
+    },
+    {
+     "label": "CST/CSOSN de entrada"
+    },
+    {
+     "label": "Observações"
+    },
+    {
+     "label": "Ativa"
+    }
+   ],
+   "buttons": [
+    "Cancelar",
+    "Buscar",
+    "Adicionar",
+    "Editar",
+    "Excluir",
+    "Salvando…",
+    "Salvar"
+   ]
+  },
+  {
+   "href": "/customers",
+   "menu": [
+    {
+     "label": "Cadastro de clientes",
+     "group": "Para seus clientes",
+     "href": "/customers"
+    }
+   ],
+   "module": null,
+   "title": "Clientes (CRM)",
+   "subtitle": null,
+   "tabs": [],
+   "fields": [
+    {
+     "label": "Nome"
+    },
+    {
+     "label": "Telefone"
+    },
+    {
+     "label": "E-mail"
+    },
+    {
+     "label": "Documento"
+    },
+    {
+     "label": "Endereço"
+    },
+    {
+     "label": "Observações"
+    },
+    {
+     "label": "Data de aniversário"
+    },
+    {
+     "label": "Cliente consentiu receber marketing (LGPD)"
+    },
+    {
+     "label": "Buscar por nome ou telefone"
+    }
+   ],
+   "buttons": [
+    "Buscar",
+    "Cancelar edição",
+    "Editar",
+    "Exportar dados (LGPD)",
+    "Anonimizar",
+    "Fechar",
+    "Detalhes",
+    "Anterior",
+    "Próxima",
+    "Salvar cliente",
+    "Adicionar cliente"
+   ]
+  },
+  {
+   "href": "/dashboard",
+   "menu": [
+    {
+     "label": "Visão geral",
+     "group": "Início",
+     "href": "/dashboard"
+    }
+   ],
+   "module": null,
+   "title": null,
+   "subtitle": null,
+   "tabs": [],
+   "fields": [
+    {
+     "label": "Receita recorrente (MRR)"
+    },
+    {
+     "label": "Recebido no mês"
+    },
+    {
+     "label": "Em aberto"
+    },
+    {
+     "label": "Vencido"
+    },
+    {
+     "label": "Evolução do faturamento recebido"
+    },
+    {
+     "label": "Carregando"
+    },
+    {
+     "label": "Carregando indicadores"
+    },
+    {
+     "label": "Empresas cadastradas"
+    },
+    {
+     "label": "Empresas ativas"
+    },
+    {
+     "label": "Em período de teste"
+    },
+    {
+     "label": "Suspensas"
+    },
+    {
+     "label": "Usuários"
+    },
+    {
+     "label": "Pedidos"
+    },
+    {
+     "label": "Indicadores do dia"
+    },
+    {
+     "label": "Vendas concluídas hoje"
+    },
+    {
+     "label": "Pedidos de hoje"
+    },
+    {
+     "label": "Ticket médio hoje"
+    },
+    {
+     "label": "Vendas concluídas no mês"
+    },
+    {
+     "label": "Gráfico de vendas concluídas nos últimos sete dias"
+    },
+    {
+     "label": "Carregando alertas"
+    },
+    {
+     "label": "Estrutura"
+    },
+    {
+     "label": "Mesas ocupadas"
+    },
+    {
+     "label": "Mesas disponíveis"
+    },
+    {
+     "label": "Produtos ativos"
+    },
+    {
+     "label": "Funcionários ativos"
+    },
+    {
+     "label": "Assistente RM"
+    }
+   ],
+   "buttons": [
+    ":"
+   ]
+  },
+  {
+   "href": "/delivery",
+   "menu": [
+    {
+     "label": "RM Delivery — Central de Delivery",
+     "group": "Operação RM",
+     "href": "/delivery"
+    }
+   ],
+   "module": "delivery",
+   "title": "RM Delivery — Central de Delivery",
+   "subtitle": "Pedidos de entrega, entregadores, regiões, taxas e tempo estimado em um só lugar.",
+   "tabs": [],
+   "fields": [
+    {
+     "label": "Em andamento",
+     "hint": "Pendentes, atribuídas ou em rota"
+    },
+    {
+     "label": "Entregues hoje"
+    },
+    {
+     "label": "Tempo médio de entrega",
+     "hint": "Da saída até a entrega"
+    },
+    {
+     "label": "Taxas cobradas hoje"
+    },
+    {
+     "label": "Vendido em entregas hoje"
+    },
+    {
+     "label": "Nome"
+    },
+    {
+     "label": "Taxa (R$)"
+    },
+    {
+     "label": "Tempo estimado (min)"
+    },
+    {
+     "label": "Pedido mínimo (R$)"
+    },
+    {
+     "label": "Bairros atendidos (separados por vírgula)"
+    }
+   ],
+   "buttons": [
+    "Adicionar zona",
+    "Salvar taxa",
+    "Desativar"
+   ]
+  },
+  {
+   "href": "/demo",
+   "menu": [],
+   "module": null,
+   "title": null,
+   "subtitle": null,
+   "tabs": [],
+   "fields": [],
+   "buttons": [
+    "Enviando…",
+    "Solicitar contato"
+   ]
+  },
+  {
+   "href": "/downloads",
+   "menu": [
+    {
+     "label": "Downloads",
+     "group": "Configurações gerais",
+     "href": "/downloads"
+    }
+   ],
+   "module": null,
+   "title": "Downloads e ajuda",
+   "subtitle": "Agente de impressão: programa leve que roda no computador do restaurante e imprime os pedidos da cozinha nas impressoras locais.",
+   "tabs": [],
+   "fields": [
+    {
+     "label": "Instalar no Windows"
+    },
+    {
+     "label": "Remover a tarefa"
+    },
+    {
+     "label": "Executar manualmente"
+    },
+    {
+     "label": "Executar pela raiz do projeto"
+    }
+   ],
+   "buttons": []
+  },
+  {
+   "href": "/employees",
+   "menu": [
+    {
+     "label": "Funcionários",
+     "group": "Cadastros",
+     "href": "/employees"
+    }
+   ],
+   "module": "employees",
+   "title": "Funcionários",
+   "subtitle": null,
+   "tabs": [],
+   "fields": [
+    {
+     "label": "Nome completo"
+    },
+    {
+     "label": "Cargo"
+    },
+    {
+     "label": "Telefone"
+    },
+    {
+     "label": "E-mail"
+    }
+   ],
+   "buttons": [
+    "Cadastrar"
+   ]
+  },
+  {
+   "href": "/financial",
+   "menu": [
+    {
+     "label": "Contas a pagar",
+     "group": "Gerenciamento financeiro",
+     "href": "/financial?type=EXPENSE"
+    },
+    {
+     "label": "Contas a receber",
+     "group": "Gerenciamento financeiro",
+     "href": "/financial?type=INCOME"
+    },
+    {
+     "label": "Visão geral do financeiro",
+     "group": "Gerenciamento financeiro",
+     "href": "/financial"
+    }
+   ],
+   "module": "financial",
+   "title": null,
+   "subtitle": null,
+   "tabs": [],
+   "fields": [
+    {
+     "label": "Descrição"
+    },
+    {
+     "label": "Tipo"
+    },
+    {
+     "label": "Valor (R$)"
+    },
+    {
+     "label": "Categoria"
+    },
+    {
+     "label": "Vencimento"
+    },
+    {
+     "label": "Unidade"
+    },
+    {
+     "label": "Situação"
+    }
+   ],
+   "buttons": [
+    "Registrar conta",
+    "Filtrar",
+    "Anterior",
+    "Próxima"
+   ]
+  },
+  {
+   "href": "/financial-categories",
+   "menu": [
+    {
+     "label": "Categorias (Contas a pagar)",
+     "group": "Gerenciamento financeiro",
+     "href": "/financial-categories?type=EXPENSE"
+    },
+    {
+     "label": "Categorias (Contas a receber)",
+     "group": "Gerenciamento financeiro",
+     "href": "/financial-categories?type=INCOME"
+    }
+   ],
+   "module": "financial",
+   "title": "Categorias de contas",
+   "subtitle": "Organize os lançamentos do financeiro. Ao lançar uma conta com o nome de uma categoria cadastrada, o nome oficial é usado.",
+   "tabs": [
+    "Contas a pagar",
+    "Contas a receber"
+   ],
+   "fields": [
+    {
+     "label": "Tipo de conta"
+    },
+    {
+     "label": "Nome"
+    },
+    {
+     "label": "Ativo"
+    }
+   ],
+   "buttons": [
+    "Cancelar",
+    "Buscar",
+    "Adicionar",
+    "Editar",
+    "Excluir",
+    "Salvando…",
+    "Salvar"
+   ]
+  },
+  {
+   "href": "/fiscal",
+   "menu": [
+    {
+     "label": "Documentos fiscais",
+     "group": "Fiscal / Tributos",
+     "href": "/fiscal"
+    }
+   ],
+   "module": "fiscal",
+   "title": "Documentos fiscais",
+   "subtitle": "Emita NFC-e e NF-e a partir dos pedidos, acompanhe autorizações e rejeições da SEFAZ, cancele e consulte o histórico. Emitente, certificado, CFOP, tributação e séries vêm de Configurações › Fiscais.",
+   "tabs": [
+    "Emitir",
+    "Documentos",
+    "Numeração",
+    "Hoje",
+    "Ontem",
+    "Esta semana",
+    "Semana anterior",
+    "Este mês",
+    "Mês anterior",
+    "Personalizado"
+   ],
+   "fields": [
+    {
+     "label": "Seções fiscais"
+    },
+    {
+     "label": "Pedido"
+    },
+    {
+     "label": "Modelo"
+    },
+    {
+     "label": "Provedor"
+    },
+    {
+     "label": "Natureza da operação"
+    },
+    {
+     "label": "Finalidade"
+    },
+    {
+     "label": "Frete (R$)"
+    },
+    {
+     "label": "Outras despesas (R$)"
+    },
+    {
+     "label": "Buscar cliente cadastrado (nome ou documento)"
+    },
+    {
+     "label": "Nome"
+    },
+    {
+     "label": "Telefone"
+    },
+    {
+     "label": "CPF/CNPJ"
+    },
+    {
+     "label": "E-mail"
+    },
+    {
+     "label": "Nome / razão social"
+    },
+    {
+     "label": "Inscrição estadual"
+    },
+    {
+     "label": "Indicador de IE"
+    },
+    {
+     "label": "Logradouro"
+    },
+    {
+     "label": "Número"
+    },
+    {
+     "label": "Complemento"
+    },
+    {
+     "label": "Bairro"
+    },
+    {
+     "label": "Município"
+    },
+    {
+     "label": "Cód. IBGE (7 dígitos)"
+    },
+    {
+     "label": "UF"
+    },
+    {
+     "label": "CEP"
+    },
+    {
+     "label": "Situação"
+    },
+    {
+     "label": "Ambiente"
+    },
+    {
+     "label": "Busca"
+    },
+    {
+     "label": "Série"
+    },
+    {
+     "label": "Próximo número"
+    },
+    {
+     "label": "Período"
+    },
+    {
+     "label": "De"
+    },
+    {
+     "label": "Até"
+    }
+   ],
+   "buttons": [
+    "Filtrar",
+    "Voltar à edição",
+    "Transmitir",
+    "Fechar",
+    "Buscar",
+    "Cadastrar e usar",
+    "Pré-visualizar DANFE",
+    "Consultar SEFAZ",
+    "Reenviar",
+    "Cancelar",
+    "Carta de correção",
+    "Ver XML",
+    "Baixar XML",
+    "Histórico",
+    "Confirmar cancelamento",
+    "Registrar correção",
+    "XML do evento",
+    "Imprimir / salvar PDF",
+    "Processando...",
+    "Salvando...",
+    "Salvar"
+   ]
+  },
+  {
+   "href": "/fiscal-xmls",
+   "menu": [
+    {
+     "label": "XMLs",
+     "group": "Fiscal / Tributos",
+     "href": "/fiscal-xmls"
+    }
+   ],
+   "module": "fiscal",
+   "title": "XMLs",
+   "subtitle": "XMLs das notas recebidas e dos documentos fiscais emitidos (NFC-e/NF-e e seus eventos), exatamente como foram autorizados.",
+   "tabs": [
+    "Recebidos (XML armazenado)",
+    "Emitidos",
+    "Hoje",
+    "Ontem",
+    "Esta semana",
+    "Semana anterior",
+    "Este mês",
+    "Mês anterior",
+    "Personalizado"
+   ],
+   "fields": [
+    {
+     "label": "Origem dos XMLs"
+    },
+    {
+     "label": "De"
+    },
+    {
+     "label": "Até"
+    },
+    {
+     "label": "Ambiente"
+    },
+    {
+     "label": "Modelo"
+    },
+    {
+     "label": "Situação"
+    },
+    {
+     "label": "Série"
+    },
+    {
+     "label": "Número, chave, cliente ou CPF/CNPJ"
+    },
+    {
+     "label": "Incluir eventos (cancelamento, CC-e, inutilização)"
+    },
+    {
+     "label": "Selecionar todos com XML"
+    },
+    {
+     "label": "Período"
+    }
+   ],
+   "buttons": [
+    "Filtrar",
+    "Exportar período (ZIP)",
+    "Fechar",
+    "Baixar XML",
+    "XML do dia",
+    "XML da semana",
+    "XML do mês",
+    "Visualizar"
+   ]
+  },
+  {
+   "href": "/forgot-password",
+   "menu": [],
+   "module": null,
+   "title": null,
+   "subtitle": null,
+   "tabs": [],
+   "fields": [
+    {
+     "label": "E-mail cadastrado"
+    }
+   ],
+   "buttons": [
+    "Enviando...",
+    "Enviar link de recuperação"
+   ]
+  },
+  {
+   "href": "/history",
+   "menu": [
+    {
+     "label": "Histórico de comandas",
+     "group": "Comandas",
+     "href": "/history?channel=TABLE"
+    },
+    {
+     "label": "Histórico de vendas/pedidos",
+     "group": "Movimento",
+     "href": "/history"
+    }
+   ],
+   "module": "pos",
+   "title": null,
+   "subtitle": null,
+   "tabs": [],
+   "fields": [
+    {
+     "label": "Buscar"
+    },
+    {
+     "label": "De"
+    },
+    {
+     "label": "Até"
+    },
+    {
+     "label": "Operação de balcão"
+    }
+   ],
+   "buttons": [
+    "Limpar",
+    "Imprimir",
+    "Próxima ›",
+    "Buscando…",
+    "Filtrar"
+   ]
+  },
+  {
+   "href": "/integrations",
+   "menu": [
+    {
+     "label": "Integração PIX",
+     "group": "Integração",
+     "href": "/integrations?tab=payments"
+    },
+    {
+     "label": "Integração POS",
+     "group": "Integração",
+     "href": "/integrations?tab=pos"
+    },
+    {
+     "label": "Marketplaces e API",
+     "group": "Integração",
+     "href": "/integrations"
+    }
+   ],
+   "module": "integrations",
+   "title": "Integrações",
+   "subtitle": null,
+   "tabs": [
+    "Marketplaces e API",
+    "PIX e fiscal",
+    "POS (maquininhas)",
+    "TEF"
+   ],
+   "fields": [
+    {
+     "label": "Integrações"
+    },
+    {
+     "label": "Tipo de integração"
+    },
+    {
+     "label": "Nome do dispositivo"
+    },
+    {
+     "label": "Número de série"
+    },
+    {
+     "label": "Unidade"
+    },
+    {
+     "label": "Provedor (slug, ex.: ifood)"
+    },
+    {
+     "label": "Nome"
+    },
+    {
+     "label": "Unidade que recebe os pedidos"
+    }
+   ],
+   "buttons": [
+    "Adicionar dispositivo",
+    "Criar integração",
+    "Excluir",
+    "Copiar chave",
+    "Copiar URL",
+    "Já guardei a chave"
+   ]
+  },
+  {
+   "href": "/intelligence",
+   "menu": [
+    {
+     "label": "RM Assistente",
+     "group": "RM INTELLIGENCE",
+     "href": "/intelligence?tab=assistant"
+    },
+    {
+     "label": "Painel clássico · Vendas",
+     "group": "RM INTELLIGENCE",
+     "href": "/intelligence?tab=sales"
+    },
+    {
+     "label": "Painel clássico · Estoque",
+     "group": "RM INTELLIGENCE",
+     "href": "/intelligence?tab=stock"
+    },
+    {
+     "label": "Diagnóstico de negócios (IA)",
+     "group": "RM INTELLIGENCE",
+     "href": "/intelligence?tab=business"
+    }
+   ],
+   "module": "intelligence",
+   "title": "RM Inteligência",
+   "subtitle": "Indicadores, previsões e alertas calculados com os dados reais do seu restaurante. Nada é inventado: quando faltar informação, o sistema informa a limitação.",
+   "tabs": [
+    "🧠 RM Assistente",
+    "📈 Inteligência de vendas",
+    "📦 Inteligência de estoque",
+    "✨ Inteligência de negócios (IA)"
+   ],
+   "fields": [
+    {
+     "label": "RM Inteligência"
+    },
+    {
+     "label": "Alertas inteligentes"
+    },
+    {
+     "label": "Assistente"
+    },
+    {
+     "label": "Hoje"
+    },
+    {
+     "label": "Ontem"
+    },
+    {
+     "label": "Mês até hoje"
+    },
+    {
+     "label": "Ticket médio do mês"
+    },
+    {
+     "label": "Meta mensal"
+    },
+    {
+     "label": "Previsão"
+    },
+    {
+     "label": "Previsão dos próximos 7 dias"
+    },
+    {
+     "label": "Resultado do mês"
+    },
+    {
+     "label": "Faturamento (pedidos concluídos)"
+    },
+    {
+     "label": "Lucro bruto estimado"
+    },
+    {
+     "label": "Despesas pagas no mês"
+    },
+    {
+     "label": "Resultado operacional",
+     "hint": "Faturamento − despesas pagas"
+    },
+    {
+     "label": "Meta de faturamento mensal (R$, 0 = sem meta)"
+    },
+    {
+     "label": "Queda de vendas que gera alerta (%)"
+    },
+    {
+     "label": "Avisar contas a pagar em (dias)"
+    },
+    {
+     "label": "Avisar vencimento de insumos em (dias)"
+    },
+    {
+     "label": "Pedido atrasado após (minutos)"
+    },
+    {
+     "label": "Margem mínima desejada (%)"
+    },
+    {
+     "label": "Insumos críticos"
+    },
+    {
+     "label": "Compra sugerida"
+    },
+    {
+     "label": "Perdas em 30 dias"
+    },
+    {
+     "label": "Sem ficha técnica"
+    },
+    {
+     "label": "Automações ativas"
+    },
+    {
+     "label": "Hora do resumo diário/semanal (0-23)"
+    },
+    {
+     "label": "Enviar cópia por e-mail para (até 5, separados por vírgula)"
+    }
+   ],
+   "buttons": [
+    "Perguntar",
+    "Salvar preferências",
+    "Salvar automações",
+    "Verificar agora"
+   ]
+  },
+  {
+   "href": "/inventory",
+   "menu": [
+    {
+     "label": "Estoque e fichas",
+     "group": "Gerenciamento de produtos",
+     "href": "/inventory"
+    }
+   ],
+   "module": "inventory",
+   "title": "Estoque e fichas técnicas",
+   "subtitle": null,
+   "tabs": [
+    "🛒 Sugestão de compra",
+    "⏳ Vencimentos",
+    "📋 Inventários"
+   ],
+   "fields": [
+    {
+     "label": "Ingrediente"
+    },
+    {
+     "label": "Unidade (kg, g, L, un.)"
+    },
+    {
+     "label": "Estoque mínimo (opcional)"
+    },
+    {
+     "label": "Estoque máximo (opcional)"
+    },
+    {
+     "label": "Categoria (opcional, usada no inventário)"
+    },
+    {
+     "label": "Quantidade"
+    },
+    {
+     "label": "Custo unitário (opcional)"
+    },
+    {
+     "label": "ADJUSTMENT"
+    },
+    {
+     "label": "WASTE"
+    },
+    {
+     "label": "Justificativa (obrigatória)"
+    },
+    {
+     "label": "Observação (opcional)"
+    },
+    {
+     "label": "Validade do lote (opcional)"
+    },
+    {
+     "label": "Rendimento da receita (porções)"
+    },
+    {
+     "label": "Observações (opcional)"
+    },
+    {
+     "label": "Quantidade para o rendimento"
+    },
+    {
+     "label": "Origem"
+    },
+    {
+     "label": "Destino"
+    },
+    {
+     "label": "Vencem em até (dias)"
+    },
+    {
+     "label": "Nome do inventário"
+    },
+    {
+     "label": "Tipo"
+    },
+    {
+     "label": "Categoria"
+    },
+    {
+     "label": "Planejamento de estoque"
+    }
+   ],
+   "buttons": [
+    "Cadastrar ingrediente",
+    "Registrar movimentação",
+    "Salvar ficha técnica",
+    "Iniciar inventário",
+    "Remover",
+    "Adicionar ingrediente",
+    "Salvar contagem",
+    "Concluir e ajustar estoque",
+    "Cancelar inventário",
+    "Transferindo...",
+    "Transferir"
+   ]
+  },
+  {
+   "href": "/kds",
+   "menu": [
+    {
+     "label": "RM KDS — Painel de Produção",
+     "group": "Operação RM",
+     "href": "/kds"
+    }
+   ],
+   "module": "kds",
+   "title": "RM KDS — Painel de Produção",
+   "subtitle": "Pedidos recebidos automaticamente, separados por setor, com cronômetro de preparo e indicador de atraso. Atualiza sozinho a cada 10 segundos.",
+   "tabs": [],
+   "fields": [
+    {
+     "label": "Recebidos",
+     "hint": "Aguardando preparo"
+    },
+    {
+     "label": "Em preparo"
+    },
+    {
+     "label": "Prontos",
+     "hint": "Aguardando entrega"
+    },
+    {
+     "label": "Atrasados (15 min+)"
+    },
+    {
+     "label": "Espera média",
+     "hint": "Itens ainda não prontos"
+    },
+    {
+     "label": "Setor"
+    },
+    {
+     "label": "Legenda de setores"
+    },
+    {
+     "label": "Remover prioridade do pedido"
+    },
+    {
+     "label": "Priorizar pedido"
+    },
+    {
+     "label": "Histórico de produção"
+    },
+    {
+     "label": "Subir"
+    },
+    {
+     "label": "Descer"
+    },
+    {
+     "label": "Remover estado"
+    }
+   ],
+   "buttons": [
+    "Dispensar",
+    "Atualizar agora"
+   ]
+  },
+  {
+   "href": "/licenses",
+   "menu": [],
+   "module": null,
+   "title": "Clientes e assinaturas",
+   "subtitle": null,
+   "tabs": [],
+   "fields": [
+    {
+     "label": "Empresa"
+    },
+    {
+     "label": "Plano comercial base"
+    },
+    {
+     "label": "Periodicidade"
+    },
+    {
+     "label": "Situação"
+    },
+    {
+     "label": "Validade (vazio = sem vencimento)"
+    },
+    {
+     "label": "Carência após o vencimento (dias)"
+    },
+    {
+     "label": "Limite de unidades"
+    },
+    {
+     "label": "Limite de usuários ativos"
+    },
+    {
+     "label": "Preço recorrente contratado (R$)"
+    },
+    {
+     "label": "Desconto (%)"
+    },
+    {
+     "label": "Taxa de ativação contratada (R$)"
+    },
+    {
+     "label": "Taxa de implantação contratada (R$)"
+    },
+    {
+     "label": "Observações"
+    },
+    {
+     "label": "Situação da assinatura"
+    },
+    {
+     "label": "Em aberto"
+    },
+    {
+     "label": "Total pago",
+     "hint": "Últimas 24 cobranças"
+    },
+    {
+     "label": "Uso"
+    },
+    {
+     "label": "Módulo"
+    },
+    {
+     "label": "Valor mensal especial (R$)"
+    },
+    {
+     "label": "Início"
+    },
+    {
+     "label": "Término (temporário)"
+    },
+    {
+     "label": "Liberar gratuitamente"
+    }
+   ],
+   "buttons": [
+    "Voltar",
+    "Suspender assinatura",
+    "Reativar assinatura",
+    "Condições",
+    "Remover",
+    "Cancelar",
+    "Gravando...",
+    "Gravar licença",
+    "Salvar condições",
+    "Adicionar módulo",
+    "Aguarde..."
+   ]
+  },
+  {
+   "href": "/login",
+   "menu": [],
+   "module": null,
+   "title": null,
+   "subtitle": null,
+   "tabs": [],
+   "fields": [
+    {
+     "label": "E-mail ou nome de usuário"
+    },
+    {
+     "label": "Senha"
+    },
+    {
+     "label": "Código de 6 dígitos"
+    },
+    {
+     "label": "Código autenticador ou de recuperação"
+    }
+   ],
+   "buttons": [
+    "Salvei os códigos e continuar",
+    "Entrando...",
+    "Entrar",
+    "Verificando...",
+    "Ativar autenticação",
+    "Verificar e entrar"
+   ]
+  },
+  {
+   "href": "/migrations",
+   "menu": [],
+   "module": null,
+   "title": "RM SMART MIGRATION",
+   "subtitle": "Central inteligente de migração de dados: leitura de arquivos e backups, mapeamento automático, conferência, execução segura e auditoria — sempre em um único restaurante por vez.",
+   "tabs": [
+    "1 · Arquivos e análise",
+    "2 · Mapeamento",
+    "3 · Pré-visualização",
+    "4 · Execução",
+    "5 · Auditoria e relatório"
+   ],
+   "fields": [
+    {
+     "label": "Restaurante de destino"
+    },
+    {
+     "label": "Identificação da migração"
+    },
+    {
+     "label": "Sistema de origem"
+    },
+    {
+     "label": "Unidade de destino (vendas, financeiro, estoque inicial)"
+    },
+    {
+     "label": "Origem desconhecida"
+    },
+    {
+     "label": "Filtrar por situação"
+    },
+    {
+     "label": "Etapas da migração"
+    }
+   ],
+   "buttons": [
+    "Criar sessão",
+    "Abrir",
+    "Próximas ›"
+   ]
+  },
+  {
+   "href": "/modules",
+   "menu": [],
+   "module": null,
+   "title": "Módulos por empresa",
+   "subtitle": "Escolha a empresa, marque os módulos e salve. Cada módulo já traz sua chave, as páginas e as rotas da API que ele libera; a validação é feita no servidor, conforme a licença do cliente.",
+   "tabs": [],
+   "fields": [
+    {
+     "label": "Empresa"
+    },
+    {
+     "label": "Situação da licença"
+    }
+   ],
+   "buttons": [
+    "Ajustar",
+    "Marcar todos",
+    "Desfazer"
+   ]
+  },
+  {
+   "href": "/monitor",
+   "menu": [
+    {
+     "label": "Pedidos",
+     "group": "Acesso rápido",
+     "href": "/monitor"
+    }
+   ],
+   "module": "pos",
+   "title": "Pedidos",
+   "subtitle": null,
+   "tabs": [
+    "Todos",
+    "Retirada / Consumo",
+    "Entrega"
+   ],
+   "fields": [
+    {
+     "label": "Nome do entregador"
+    },
+    {
+     "label": "Fechar menu"
+    },
+    {
+     "label": "Filtrar pedidos"
+    },
+    {
+     "label": "Operação de balcão"
+    },
+    {
+     "label": "Fechar"
+    },
+    {
+     "label": "Produto"
+    },
+    {
+     "label": "Quantidade"
+    },
+    {
+     "label": "Peso (kg)"
+    },
+    {
+     "label": "Observação"
+    },
+    {
+     "label": "Preço livre (R$)"
+    }
+   ],
+   "buttons": [
+    "+ Adicionar item",
+    "Cancelar",
+    "Confirmar entrega",
+    "Saiu para entrega",
+    "Finalizar",
+    "Gerar NFC-e",
+    "Ticket de retirada",
+    "Remover",
+    "Salvando…",
+    "Salvar alterações",
+    "Validando…",
+    "Liberar"
+   ]
+  },
+  {
+   "href": "/natures",
+   "menu": [
+    {
+     "label": "Naturezas de operação",
+     "group": "Fiscal / Tributos",
+     "href": "/natures"
+    }
+   ],
+   "module": "fiscal",
+   "title": "Naturezas de operação",
+   "subtitle": "Cadastre os tipos de operação (CFOP) usados nas notas de entrada e saída. Este cadastro apenas armazena parâmetros; não transmite nada à SEFAZ.",
+   "tabs": [],
+   "fields": [
+    {
+     "label": "Descrição da natureza"
+    },
+    {
+     "label": "CFOP"
+    },
+    {
+     "label": "Tipo"
+    },
+    {
+     "label": "Finalidade"
+    },
+    {
+     "label": "Observações"
+    },
+    {
+     "label": "Operação"
+    },
+    {
+     "label": "Destino"
+    },
+    {
+     "label": "UF do emitente"
+    },
+    {
+     "label": "UF do destinatário"
+    },
+    {
+     "label": "Regime tributário"
+    },
+    {
+     "label": "Regra tributária da natureza"
+    },
+    {
+     "label": "Ativa",
+     "hint": "Naturezas inativas não aparecem na entrada de notas."
+    }
+   ],
+   "buttons": [
+    "Cancelar",
+    "Buscar",
+    "Adicionar",
+    "Editar",
+    "Excluir",
+    "Salvando…",
+    "Salvar"
+   ]
+  },
+  {
+   "href": "/network",
+   "menu": [
+    {
+     "label": "Rede de unidades",
+     "group": "Cadastros",
+     "href": "/network"
+    }
+   ],
+   "module": "network",
+   "title": "Rede de unidades",
+   "subtitle": "Indicadores consolidados e comparação entre unidades, além de preços específicos por unidade. Disponível para quem não está vinculado a uma única unidade.",
+   "tabs": [],
+   "fields": [
+    {
+     "label": "De"
+    },
+    {
+     "label": "Até"
+    },
+    {
+     "label": "Faturamento consolidado"
+    },
+    {
+     "label": "Pedidos"
+    },
+    {
+     "label": "Despesas pagas"
+    },
+    {
+     "label": "Resultado"
+    },
+    {
+     "label": "Produto"
+    }
+   ],
+   "buttons": [
+    "Comparar",
+    "Salvar"
+   ]
+  },
+  {
+   "href": "/order-statuses",
+   "menu": [
+    {
+     "label": "Status dos pedidos",
+     "group": "Configurações gerais",
+     "href": "/order-statuses"
+    }
+   ],
+   "module": null,
+   "title": "Status de pedido personalizado",
+   "subtitle": "Escolha quais etapas aparecem no acompanhamento dos pedidos e renomeie os títulos exibidos. A chave interna de cada status não muda.",
+   "tabs": [
+    "Aberto agora",
+    "Fechado agora",
+    "Horários pré-definidos"
+   ],
+   "fields": [
+    {
+     "label": "Layout do menu lateral"
+    },
+    {
+     "label": "Encarregado de dados (DPO)"
+    },
+    {
+     "label": "E-mail do encarregado"
+    },
+    {
+     "label": "Arquivo de layout do menu"
+    },
+    {
+     "label": "Fuso horário"
+    },
+    {
+     "label": "Funcionamento da loja"
+    },
+    {
+     "label": "Retirada no balcão"
+    },
+    {
+     "label": "Entrega"
+    },
+    {
+     "label": "Consumo no local"
+    },
+    {
+     "label": "Pedidos do QR Code da mesa dependem de confirmação do atendente",
+     "hint": "Desligado: o pedido vai direto para a cozinha. Ligado: aparece em Mesas › Solicitações para o atendente aceitar ou recusar."
+    },
+    {
+     "label": "Exibir tempo estimado",
+     "hint": "Mostra os minutos abaixo ao cliente."
+    },
+    {
+     "label": "Retirada (minutos)"
+    },
+    {
+     "label": "Entrega (minutos)"
+    },
+    {
+     "label": "Como cobrar a taxa"
+    },
+    {
+     "label": "Taxa única (R$)"
+    },
+    {
+     "label": "Pedido mínimo para entrega (R$)"
+    },
+    {
+     "label": "Entrega grátis acima de (R$)",
+     "hint": "0 desativa."
+    },
+    {
+     "label": "Tipo de loja"
+    },
+    {
+     "label": "Permitir pedidos com a loja fechada",
+     "hint": "O cliente pode comprar fora do horário (útil junto do agendamento)."
+    },
+    {
+     "label": "Aceitar pedidos automaticamente",
+     "hint": "Desligado: cada pedido online aguarda aceite manual."
+    },
+    {
+     "label": "Controle de venda para menores",
+     "hint": "Registra que a loja vende itens restritos a maiores de idade."
+    },
+    {
+     "label": "Margem de lucro padrão (%)",
+     "hint": "Referência para sugerir preços a partir do custo do produto."
+    },
+    {
+     "label": "Custo do produto (R$)"
+    },
+    {
+     "label": "Reiniciar a numeração dos pedidos todo dia",
+     "hint": "A senha/número do pedido volta para 1 na primeira venda de cada dia. Desligado: a contagem segue sem parar."
+    },
+    {
+     "label": "Ativo"
+    },
+    {
+     "label": "Inativo"
+    },
+    {
+     "label": "Layout do PDV"
+    },
+    {
+     "label": "Lado da lista de itens"
+    },
+    {
+     "label": "Controle de mesas e comandas"
+    },
+    {
+     "label": "Status padrão dos pedidos do PDV"
+    },
+    {
+     "label": "Nome da taxa de serviço"
+    },
+    {
+     "label": "Modo pedido"
+    },
+    {
+     "label": "Modo venda"
+    },
+    {
+     "label": "Avisar cliente por WhatsApp"
+    },
+    {
+     "label": "Cadastrar cliente automaticamente"
+    },
+    {
+     "label": "Perguntar o vendedor"
+    },
+    {
+     "label": "Exigir senha de administrador em pedidos online"
+    },
+    {
+     "label": "Mostrar PIX no terminal",
+     "hint": "Depende de um provedor PIX configurado em Integrações."
+    },
+    {
+     "label": "Cotação do dólar (R$ por US$)"
+    },
+    {
+     "label": "Cotação do peso (pesos por R$ 1)"
+    },
+    {
+     "label": "Habilitar leitura de etiquetas de balança",
+     "hint": "Reconhece códigos de barras gerados por balanças etiquetadoras e lança peso ou preço. O sistema não se conecta à balança física."
+    },
+    {
+     "label": "Prefixo (1 a 2 dígitos)"
+    },
+    {
+     "label": "Dígitos do código do produto"
+    },
+    {
+     "label": "Tamanho do código de barras",
+     "hint": "EAN-13 usa 13."
+    },
+    {
+     "label": "Tipo de venda"
+    },
+    {
+     "label": "Código do produto na balança"
+    },
+    {
+     "label": "Peso (kg)"
+    },
+    {
+     "label": "Preço (R$)"
+    },
+    {
+     "label": "Venda"
+    },
+    {
+     "label": "Pedido"
+    },
+    {
+     "label": "Ticket de retirada"
+    },
+    {
+     "label": "Nos comprovantes"
+    },
+    {
+     "label": "Nas impressões de produção"
+    },
+    {
+     "label": "Nos relatórios"
+    },
+    {
+     "label": "Largura do papel"
+    },
+    {
+     "label": "Tamanho da fonte (1 a 20)"
+    },
+    {
+     "label": "Papel da promissória"
+    },
+    {
+     "label": "Imprimir promissória automaticamente"
+    },
+    {
+     "label": "Vias do recibo de venda (1 a 3)"
+    },
+    {
+     "label": "Vias do comprovante TEF"
+    },
+    {
+     "label": "Rodapé dos comprovantes"
+    }
+   ],
+   "buttons": [
+    "Exportar layout (JSON)",
+    "Copiar",
+    "Importar layout",
+    "Mostrar todos",
+    "Remover",
+    "Gerar outra",
+    "Remover senha"
+   ]
+  },
+  {
+   "href": "/orders",
+   "menu": [
+    {
+     "label": "Lançamento manual de pedido",
+     "group": "Movimento",
+     "href": "/orders"
+    }
+   ],
+   "module": "pos",
+   "title": "Pedidos e PDV",
+   "subtitle": null,
+   "tabs": [],
+   "fields": [
+    {
+     "label": "Buscar produtos"
+    },
+    {
+     "label": "Unidade"
+    },
+    {
+     "label": "Mesa"
+    },
+    {
+     "label": "Mesa / comanda"
+    },
+    {
+     "label": "Zona de entrega"
+    },
+    {
+     "label": "Cliente"
+    },
+    {
+     "label": "Telefone do cliente"
+    },
+    {
+     "label": "Cupom"
+    },
+    {
+     "label": "Cobrar taxa de serviço"
+    },
+    {
+     "label": "Cliente consentiu marketing (LGPD)"
+    },
+    {
+     "label": "Gerar promissória"
+    },
+    {
+     "label": "Responsável pela dívida"
+    },
+    {
+     "label": "Vencimento"
+    },
+    {
+     "label": "Promissória gerada"
+    }
+   ],
+   "buttons": [
+    "Imprimir",
+    "Gerar promissória",
+    "Reimprimir produção",
+    "Cancelar",
+    "Fechar",
+    "Enviando...",
+    "Criar pedido",
+    "Registrando…"
+   ]
+  },
+  {
+   "href": "/payment-methods",
+   "menu": [
+    {
+     "label": "Formas de pagamento",
+     "group": "Gerenciamento financeiro",
+     "href": "/payment-methods"
+    }
+   ],
+   "module": "financial",
+   "title": "Formas de pagamento",
+   "subtitle": "Defina os nomes exibidos no caixa, na loja e no app. A forma equivalente indica como o pagamento é registrado.",
+   "tabs": [],
+   "fields": [
+    {
+     "label": "Nome"
+    },
+    {
+     "label": "Forma equivalente"
+    },
+    {
+     "label": "Ordem de exibição"
+    },
+    {
+     "label": "Ativo"
+    },
+    {
+     "label": "Mostrar no atendimento local",
+     "hint": "Caixa, mesas e comandas."
+    },
+    {
+     "label": "Mostrar na loja",
+     "hint": "Cardápio online / loja virtual."
+    },
+    {
+     "label": "Mostrar no app"
+    },
+    {
+     "label": "Permitir troco"
+    },
+    {
+     "label": "Obrigar CPF/CNPJ"
+    }
+   ],
+   "buttons": [
+    "Cancelar",
+    "Buscar",
+    "Adicionar",
+    "Cadastrar formas padrão",
+    "Editar",
+    "Excluir",
+    "Salvando…",
+    "Salvar"
+   ]
+  },
+  {
+   "href": "/pdv",
+   "menu": [
+    {
+     "label": "PDV",
+     "group": "Acesso rápido",
+     "href": "/pdv"
+    }
+   ],
+   "module": "pos",
+   "title": "PDV",
+   "subtitle": null,
+   "tabs": [
+    "Balcão",
+    "Retirada",
+    "Entrega",
+    "Mesa",
+    "Comanda"
+   ],
+   "fields": [
+    {
+     "label": "Ações do PDV"
+    },
+    {
+     "label": "Caixa e pagamentos"
+    },
+    {
+     "label": "Imprimir último pedido"
+    },
+    {
+     "label": "Inutilizar numeração"
+    },
+    {
+     "label": "Recarregar"
+    },
+    {
+     "label": "Sair da tela cheia"
+    },
+    {
+     "label": "Tela cheia"
+    },
+    {
+     "label": "Produtos"
+    },
+    {
+     "label": "Buscar produto ou ler código de barras"
+    },
+    {
+     "label": "Categorias"
+    },
+    {
+     "label": "Resumo do pedido"
+    },
+    {
+     "label": "Canal de venda"
+    },
+    {
+     "label": "Unidade"
+    },
+    {
+     "label": "Zona de entrega"
+    },
+    {
+     "label": "Mesa"
+    },
+    {
+     "label": "Comanda (número ou nome)"
+    },
+    {
+     "label": "Itens do carrinho"
+    },
+    {
+     "label": "Vendedor"
+    },
+    {
+     "label": "Telefone ou nome"
+    },
+    {
+     "label": "Nome do novo cliente"
+    },
+    {
+     "label": "Cupom"
+    },
+    {
+     "label": "Valor do ajuste"
+    },
+    {
+     "label": "Alternar desconto/acréscimo"
+    },
+    {
+     "label": "Agendar pedido"
+    },
+    {
+     "label": "Data e hora"
+    },
+    {
+     "label": "Forma de pagamento"
+    },
+    {
+     "label": "Formas de pagamento"
+    },
+    {
+     "label": "Valor recebido"
+    },
+    {
+     "label": "Cobrança PIX no terminal"
+    },
+    {
+     "label": "Operação de balcão"
+    },
+    {
+     "label": "Provedor"
+    },
+    {
+     "label": "Forma"
+    },
+    {
+     "label": "Pagamento TEF"
+    },
+    {
+     "label": "Modelo"
+    },
+    {
+     "label": "Série"
+    },
+    {
+     "label": "Número inicial"
+    },
+    {
+     "label": "Número final"
+    }
+   ],
+   "buttons": [
+    "🖨️",
+    "Adicionar",
+    "Imprimir ticket de retirada",
+    "Adicionar ao carrinho",
+    "Fechar",
+    "Cancelar",
+    "Limpar",
+    "Trocar",
+    "Gerar venda",
+    "Voltar",
+    "Atualizar",
+    "Cancelar cobrança",
+    "Copiar código",
+    "Desfazer cobrança",
+    "SIM — EMITIR DOCUMENTO FISCAL",
+    "NÃO — REGISTRAR SEM EMISSÃO FISCAL",
+    "Validando…",
+    "Liberar",
+    "Enviando…",
+    "Inutilizar numeração"
+   ]
+  },
+  {
+   "href": "/plans",
+   "menu": [],
+   "module": null,
+   "title": "Planos comerciais",
+   "subtitle": "Monte cada plano escolhendo módulos incluídos e opcionais, limites e preços. Nomes, preços e limites ficam no banco, sem alterar código.",
+   "tabs": [],
+   "fields": [
+    {
+     "label": "Identificador interno"
+    },
+    {
+     "label": "Nome comercial"
+    },
+    {
+     "label": "Situação"
+    },
+    {
+     "label": "Destaque (ex.: Mais vendido)"
+    },
+    {
+     "label": "Texto de apresentação"
+    },
+    {
+     "label": "Ordem de exibição"
+    },
+    {
+     "label": "Dias de teste gratuito"
+    },
+    {
+     "label": "Limite de unidades (vazio = ilimitado)"
+    },
+    {
+     "label": "Limite de usuários (vazio = ilimitado)"
+    },
+    {
+     "label": "Taxa de ativação (R$)"
+    },
+    {
+     "label": "Taxa de implantação (R$)"
+    },
+    {
+     "label": "Preço original de vitrine (R$)"
+    },
+    {
+     "label": "Preço promocional de vitrine (R$)"
+    },
+    {
+     "label": "Motivo da alteração (auditoria, opcional)"
+    },
+    {
+     "label": "Prévia do plano"
+    }
+   ],
+   "buttons": [
+    "Voltar",
+    "Cancelar edição",
+    "Salvar como rascunho",
+    "Publicar",
+    "Lista",
+    "Comparar planos",
+    "Editar",
+    "Duplicar",
+    "Histórico",
+    "Desativar",
+    "Arquivar",
+    "Fechar",
+    "Aguarde..."
+   ]
+  },
+  {
+   "href": "/pricing",
+   "menu": [
+    {
+     "label": "Formação de preço e rentabilidade",
+     "group": "RM INTELLIGENCE",
+     "href": "/pricing"
+    }
+   ],
+   "module": "profit",
+   "title": "Formação de preço e rentabilidade",
+   "subtitle": "Margem sobre o custo, encargos por dentro do preço, preço mínimo e recomendado. Nenhum preço oficial muda sem a sua confirmação.",
+   "tabs": [
+    "📊 Painel de rentabilidade",
+    "⚙️ Padrões da empresa",
+    "🧮 Alteração em massa"
+   ],
+   "fields": [
+    {
+     "label": "Seções de preço"
+    },
+    {
+     "label": "ML médio (sobre o custo)"
+    },
+    {
+     "label": "MLA médio (após encargos)",
+     "hint": "Preço atual, descontando tributos, taxas e despesas"
+    },
+    {
+     "label": "Em prejuízo"
+    },
+    {
+     "label": "Margem realizada no mês"
+    },
+    {
+     "label": "Margem de lucro padrão (% sobre o custo)"
+    },
+    {
+     "label": "Tributos (% do preço)"
+    },
+    {
+     "label": "Taxa de cartão (% do preço)"
+    },
+    {
+     "label": "Comissão (% do preço)"
+    },
+    {
+     "label": "Custo operacional (% do preço)"
+    },
+    {
+     "label": "Outras despesas variáveis (% do preço)"
+    },
+    {
+     "label": "Arredondamento do preço recomendado (sempre para cima)"
+    },
+    {
+     "label": "Categoria"
+    },
+    {
+     "label": "Margem a aplicar (% sobre o custo)"
+    },
+    {
+     "label": "Preservar a margem individual dos produtos que têm margem própria"
+    },
+    {
+     "label": "Apenas aumentar preços"
+    }
+   ],
+   "buttons": [
+    "Salvar padrões",
+    "Simular"
+   ]
+  },
+  {
+   "href": "/production",
+   "menu": [
+    {
+     "label": "Setores de produção",
+     "group": "Gerenciamento de produtos",
+     "href": "/production"
+    },
+    {
+     "label": "Gerenciadores de pedidos",
+     "group": "Configurações gerais",
+     "href": "/production"
+    }
+   ],
+   "module": "kds",
+   "title": "Produção e impressão",
+   "subtitle": null,
+   "tabs": [],
+   "fields": [
+    {
+     "label": "Impressora do Windows"
+    },
+    {
+     "label": "Nome"
+    },
+    {
+     "label": "Código"
+    },
+    {
+     "label": "Cor"
+    },
+    {
+     "label": "Ordem"
+    },
+    {
+     "label": "Preparo médio (min)"
+    },
+    {
+     "label": "Descrição"
+    },
+    {
+     "label": "Impressora do setor (inclui as do Windows)"
+    },
+    {
+     "label": "Imprimir automaticamente"
+    },
+    {
+     "label": "Exibir no KDS"
+    },
+    {
+     "label": "Ativo"
+    },
+    {
+     "label": "Tipo"
+    },
+    {
+     "label": "Conexão"
+    },
+    {
+     "label": "Endereço (IP, nome compartilhado ou porta)"
+    },
+    {
+     "label": "Porta"
+    },
+    {
+     "label": "Papel"
+    },
+    {
+     "label": "Setor"
+    },
+    {
+     "label": "Principal do setor"
+    },
+    {
+     "label": "Corte automático"
+    },
+    {
+     "label": "Gaveta de dinheiro"
+    },
+    {
+     "label": "Ativa"
+    },
+    {
+     "label": "Status"
+    }
+   ],
+   "buttons": [
+    "Criar agente",
+    "Atualizar lista",
+    "Cancelar edição",
+    "Editar",
+    "Imprimir teste",
+    "Copiar token",
+    "Já guardei o token",
+    "Atualizar",
+    "Tentar novamente",
+    "Salvar setor",
+    "Adicionar setor",
+    "Salvar impressora",
+    "Adicionar impressora"
+   ]
+  },
+  {
+   "href": "/products",
+   "menu": [
+    {
+     "label": "Produtos",
+     "group": "Gerenciamento de produtos",
+     "href": "/products"
+    }
+   ],
+   "module": null,
+   "title": "Produtos e produção",
+   "subtitle": null,
+   "tabs": [
+    "Dados",
+    "Adicionais",
+    "Foto",
+    "Balança",
+    "Fiscal",
+    "Custos e margens"
+   ],
+   "fields": [
+    {
+     "label": "Começar de um modelo"
+    },
+    {
+     "label": "Seções do produto"
+    },
+    {
+     "label": "Nome"
+    },
+    {
+     "label": "Código"
+    },
+    {
+     "label": "GTIN (EAN)"
+    },
+    {
+     "label": "Tipo do produto"
+    },
+    {
+     "label": "Unidade de medida"
+    },
+    {
+     "label": "Código de barras"
+    },
+    {
+     "label": "Preço por kg (R$)"
+    },
+    {
+     "label": "Preço de venda (R$)"
+    },
+    {
+     "label": "Custo (R$)"
+    },
+    {
+     "label": "Margem que quero ganhar (%)"
+    },
+    {
+     "label": "Tempo de preparo (min)"
+    },
+    {
+     "label": "Setor de produção"
+    },
+    {
+     "label": "Categoria"
+    },
+    {
+     "label": "Favorito"
+    },
+    {
+     "label": "Permitir observações do cliente no item"
+    },
+    {
+     "label": "Sempre mostrar descrição no PDV"
+    },
+    {
+     "label": "Somente atendimento local (fora da loja virtual e do robô)"
+    },
+    {
+     "label": "Componente (não é vendido sozinho online)"
+    },
+    {
+     "label": "Vendido por peso (preço por kg)"
+    },
+    {
+     "label": "Fracionado (permite quantidades decimais)"
+    },
+    {
+     "label": "Ticket de retirada para este produto"
+    },
+    {
+     "label": "Habilitar embalagem"
+    },
+    {
+     "label": "Preço livre (UN) — permite informar o preço no PDV"
+    },
+    {
+     "label": "Controlar saldo"
+    },
+    {
+     "label": "Produto ativo"
+    },
+    {
+     "label": "Preço da embalagem (R$)"
+    },
+    {
+     "label": "Estoque inicial"
+    },
+    {
+     "label": "Estoque mínimo (opcional)"
+    },
+    {
+     "label": "Enviar para balança",
+     "hint": "Inclui o produto no arquivo de itens gerado em Arquivo para balança. Exige o código da balança."
+    },
+    {
+     "label": "Código da balança (PLU)"
+    },
+    {
+     "label": "Departamento"
+    },
+    {
+     "label": "Validade (dias)"
+    },
+    {
+     "label": "NCM"
+    },
+    {
+     "label": "CEST"
+    },
+    {
+     "label": "Regra tributária"
+    },
+    {
+     "label": "Tipo"
+    },
+    {
+     "label": "Operação"
+    },
+    {
+     "label": "Quantidade"
+    },
+    {
+     "label": "Observação (opcional)"
+    },
+    {
+     "label": "Qualidade do cardápio"
+    },
+    {
+     "label": "Pesquisar nesta página"
+    },
+    {
+     "label": "Percentual (%)"
+    },
+    {
+     "label": "Custo de aquisição (R$)"
+    },
+    {
+     "label": "Frete (R$)"
+    },
+    {
+     "label": "Outras despesas de aquisição (R$)"
+    },
+    {
+     "label": "Margem de lucro desejada (% sobre o custo)"
+    },
+    {
+     "label": "Tributos (% do preço)"
+    },
+    {
+     "label": "Taxa de cartão (% do preço)"
+    },
+    {
+     "label": "Comissão (% do preço)"
+    },
+    {
+     "label": "Custo operacional (% do preço)"
+    },
+    {
+     "label": "Outras despesas variáveis (% do preço)"
+    },
+    {
+     "label": "Custo operacional fixo por unidade (R$)"
+    },
+    {
+     "label": "Simular outro preço de venda (R$)"
+    }
+   ],
+   "buttons": [
+    "Cancelar edição",
+    "Calcular prévia",
+    "Remover foto",
+    "Editar",
+    "Anterior",
+    "Próxima",
+    "Atualizar lista",
+    "Salvar custos e margens",
+    "Salvar alterações",
+    "Adicionar produto",
+    "Salvando...",
+    "Registrar movimentação"
+   ]
+  },
+  {
+   "href": "/profit",
+   "menu": [
+    {
+     "label": "RM Controle de Lucro",
+     "group": "RM INTELLIGENCE",
+     "href": "/profit"
+    }
+   ],
+   "module": "profit",
+   "title": "RM Controle de Lucro",
+   "subtitle": "Quanto o restaurante realmente ganha: faturamento, recebimento, lucro bruto, margem de contribuição e resultado operacional, a partir dos dados registrados.",
+   "tabs": [
+    "💹 Resultado",
+    "📊 Rentabilidade",
+    "🧾 Ficha técnica e CMV",
+    "🗑️ Perdas",
+    "⚙️ Método de cálculo"
+   ],
+   "fields": [
+    {
+     "label": "De"
+    },
+    {
+     "label": "Até"
+    },
+    {
+     "label": "Controle de lucro"
+    },
+    {
+     "label": "Faturamento líquido"
+    },
+    {
+     "label": "Recebido (pagamentos)",
+     "hint": "Diferente de faturamento"
+    },
+    {
+     "label": "Margem de contribuição"
+    },
+    {
+     "label": "Resultado operacional"
+    },
+    {
+     "label": "Faturamento bruto"
+    },
+    {
+     "label": "Descontos concedidos"
+    },
+    {
+     "label": "Custo das mercadorias vendidas (CMV)"
+    },
+    {
+     "label": "Lucro bruto"
+    },
+    {
+     "label": "Taxas de cartão (estimadas)"
+    },
+    {
+     "label": "Impostos (estimados)"
+    },
+    {
+     "label": "Comissões (parte do garçom na taxa de serviço)"
+    },
+    {
+     "label": "Demais despesas variáveis pagas"
+    },
+    {
+     "label": "Despesas fixas pagas"
+    },
+    {
+     "label": "Resultado operacional estimado"
+    },
+    {
+     "label": "Perda financeira no período"
+    },
+    {
+     "label": "Lançamentos"
+    },
+    {
+     "label": "Maior causa"
+    },
+    {
+     "label": "Taxa média de cartão (%)"
+    },
+    {
+     "label": "Impostos sobre o faturamento (%)"
+    },
+    {
+     "label": "Categorias de despesas FIXAS (separadas por vírgula)"
+    },
+    {
+     "label": "Descontar comissões de garçom (parte da taxa de serviço)"
+    }
+   ],
+   "buttons": [
+    "Salvar método",
+    "Voltar",
+    "Exportar CSV",
+    "Atualizar",
+    "Simular",
+    "Aplicar custo ao produto",
+    "Aguarde..."
+   ]
+  },
+  {
+   "href": "/promotions",
+   "menu": [
+    {
+     "label": "Promoções",
+     "group": "Gerenciamento de produtos",
+     "href": "/promotions"
+    }
+   ],
+   "module": "marketing",
+   "title": "Promoções",
+   "subtitle": "Descontos por produto com vigência. O preço promocional aparece no cardápio das mesas e é aplicado automaticamente ao criar pedidos.",
+   "tabs": [
+    "Todas",
+    "Ativas",
+    "Inativas",
+    "Expiradas"
+   ],
+   "fields": [
+    {
+     "label": "Nome"
+    },
+    {
+     "label": "Tipo de desconto"
+    },
+    {
+     "label": "PERCENT"
+    },
+    {
+     "label": "Desconto (%)"
+    },
+    {
+     "label": "Desconto (R$)"
+    },
+    {
+     "label": "Início"
+    },
+    {
+     "label": "Fim (opcional)"
+    },
+    {
+     "label": "Promoção ativa"
+    },
+    {
+     "label": "Buscar produtos"
+    },
+    {
+     "label": "Produtos da promoção"
+    },
+    {
+     "label": "Situação das promoções"
+    },
+    {
+     "label": "Buscar por nome"
+    }
+   ],
+   "buttons": [
+    "Nova promoção",
+    "Buscar",
+    "Cancelar",
+    "Editar",
+    "Excluir",
+    "Salvando...",
+    "Salvar promoção"
+   ]
+  },
+  {
+   "href": "/provisioning",
+   "menu": [],
+   "module": null,
+   "title": "Monitor de provisionamento",
+   "subtitle": null,
+   "tabs": [],
+   "fields": [],
+   "buttons": [
+    "Atualizar"
+   ]
+  },
+  {
+   "href": "/purchasing",
+   "menu": [
+    {
+     "label": "Fornecedores",
+     "group": "Cadastros",
+     "href": "/purchasing"
+    }
+   ],
+   "module": "inventory",
+   "title": "Compras e fornecedores",
+   "subtitle": null,
+   "tabs": [],
+   "fields": [
+    {
+     "label": "Nome"
+    },
+    {
+     "label": "CNPJ/CPF"
+    },
+    {
+     "label": "Telefone"
+    },
+    {
+     "label": "E-mail"
+    },
+    {
+     "label": "Fornecedor"
+    },
+    {
+     "label": "Vencimento (opcional)"
+    },
+    {
+     "label": "Observações"
+    },
+    {
+     "label": "Ingrediente"
+    },
+    {
+     "label": "Quantidade"
+    },
+    {
+     "label": "Custo unitário (R$)"
+    },
+    {
+     "label": "Custo unitário"
+    },
+    {
+     "label": "Observação do inventário"
+    },
+    {
+     "label": "Nota do fornecedor (XML importado, opcional)"
+    },
+    {
+     "label": "Observação do recebimento"
+    }
+   ],
+   "buttons": [
+    "Adicionar",
+    "Criar pedido de compra",
+    "Voltar",
+    "Remover",
+    "Receber",
+    "Cancelar",
+    "Concluir",
+    "Recebendo…",
+    "Confirmar recebimento"
+   ]
+  },
+  {
+   "href": "/received-invoices",
+   "menu": [
+    {
+     "label": "NFC-es de recebimento",
+     "group": "Gerenciamento financeiro",
+     "href": "/received-invoices"
+    },
+    {
+     "label": "Notas recebidas",
+     "group": "Fiscal / Tributos",
+     "href": "/received-invoices"
+    },
+    {
+     "label": "Entrada de NF-e",
+     "group": "Fiscal / Tributos",
+     "href": "/received-invoices?tab=entry"
+    }
+   ],
+   "module": "fiscal",
+   "title": null,
+   "subtitle": null,
+   "tabs": [
+    "Notas recebidas",
+    "Entrada de NF-e"
+   ],
+   "fields": [
+    {
+     "label": "Notas de entrada"
+    },
+    {
+     "label": "Chave de acesso (44 dígitos)"
+    },
+    {
+     "label": "Número"
+    },
+    {
+     "label": "Série"
+    },
+    {
+     "label": "Fornecedor (emitente)"
+    },
+    {
+     "label": "CNPJ/CPF do emitente"
+    },
+    {
+     "label": "Data de emissão"
+    },
+    {
+     "label": "Valor total (R$)"
+    },
+    {
+     "label": "Natureza de operação (entrada)"
+    },
+    {
+     "label": "Buscar"
+    },
+    {
+     "label": "Situação"
+    }
+   ],
+   "buttons": [
+    "Limpar",
+    "Buscar",
+    "Registrar nota",
+    "XML",
+    "Lançar entrada",
+    "Cancelar",
+    "Registrando..."
+   ]
+  },
+  {
+   "href": "/reconciliation",
+   "menu": [
+    {
+     "label": "Conciliação tributária",
+     "group": "Fiscal / Tributos",
+     "href": "/reconciliation"
+    }
+   ],
+   "module": "fiscal",
+   "title": "Conciliação tributária",
+   "subtitle": "Confronta os pedidos concluídos com os documentos fiscais autorizados no período e aponta o que ficou sem nota. É uma conferência gerencial; não substitui a apuração do contador.",
+   "tabs": [],
+   "fields": [
+    {
+     "label": "De"
+    },
+    {
+     "label": "Até"
+    },
+    {
+     "label": "Pedidos concluídos"
+    },
+    {
+     "label": "Com documento autorizado"
+    },
+    {
+     "label": "Sem documento autorizado"
+    },
+    {
+     "label": "Documentos no período"
+    }
+   ],
+   "buttons": [
+    "Conciliar"
+   ]
+  },
+  {
+   "href": "/releases",
+   "menu": [
+    {
+     "label": "Liberações por senha",
+     "group": "Movimento",
+     "href": "/releases"
+    }
+   ],
+   "module": "pos",
+   "title": "Liberações por senha",
+   "subtitle": "Histórico de ações autorizadas com a senha de administrador (cancelamentos, descontos, sangrias…). A senha em si nunca é registrada.",
+   "tabs": [],
+   "fields": [
+    {
+     "label": "De"
+    },
+    {
+     "label": "Até"
+    }
+   ],
+   "buttons": [
+    "Filtrar",
+    "Limpar",
+    "Próxima ›"
+   ]
+  },
+  {
+   "href": "/reports",
+   "menu": [
+    {
+     "label": "Central de relatórios",
+     "group": "Relatórios",
+     "href": "/reports"
+    },
+    {
+     "label": "Vendas",
+     "group": "Relatórios",
+     "href": "/reports?r=sales"
+    },
+    {
+     "label": "Taxa de serviço",
+     "group": "Relatórios",
+     "href": "/reports?r=service-fee"
+    },
+    {
+     "label": "Couvert artístico",
+     "group": "Relatórios",
+     "href": "/reports?r=couvert"
+    },
+    {
+     "label": "DRE simplificado",
+     "group": "Relatórios",
+     "href": "/reports?r=dre"
+    },
+    {
+     "label": "Análise de cancelamentos",
+     "group": "Relatórios",
+     "href": "/reports?r=cancellations"
+    },
+    {
+     "label": "Classificação de produtos",
+     "group": "Relatórios",
+     "href": "/reports?r=product-classification"
+    },
+    {
+     "label": "Vendas agendadas",
+     "group": "Relatórios",
+     "href": "/reports?r=scheduled-sales"
+    },
+    {
+     "label": "Produtos vendidos",
+     "group": "Relatórios",
+     "href": "/reports?r=products-sold"
+    },
+    {
+     "label": "Margem de lucro dos produtos",
+     "group": "Relatórios",
+     "href": "/reports?r=profit-margin"
+    },
+    {
+     "label": "Vendas por forma de pagamento",
+     "group": "Relatórios",
+     "href": "/reports?r=sales-by-payment"
+    },
+    {
+     "label": "Relatório de contas a pagar",
+     "group": "Relatórios",
+     "href": "/reports?r=payables"
+    },
+    {
+     "label": "Relatório de contas a receber",
+     "group": "Relatórios",
+     "href": "/reports?r=receivables"
+    },
+    {
+     "label": "Conferência de fechamentos",
+     "group": "Relatórios",
+     "href": "/reports?r=cash-closings"
+    },
+    {
+     "label": "Zonas de entrega",
+     "group": "Relatórios",
+     "href": "/reports?r=delivery-zones"
+    },
+    {
+     "label": "Clientes fiéis",
+     "group": "Relatórios",
+     "href": "/reports?r=loyal-customers"
+    },
+    {
+     "label": "Produtos em promoção",
+     "group": "Relatórios",
+     "href": "/reports?r=promoted-products"
+    },
+    {
+     "label": "Controle de disponibilidade",
+     "group": "Relatórios",
+     "href": "/reports?r=availability"
+    },
+    {
+     "label": "Atendimentos via robô",
+     "group": "Relatórios",
+     "href": "/reports?r=bot-conversations"
+    }
+   ],
+   "module": "reports",
+   "title": "Central de relatórios",
+   "subtitle": null,
+   "tabs": [],
+   "fields": [
+    {
+     "label": "Filtros"
+    },
+    {
+     "label": "De"
+    },
+    {
+     "label": "Até"
+    },
+    {
+     "label": "Atalhos de período"
+    },
+    {
+     "label": "Relatório"
+    },
+    {
+     "label": "Relatórios"
+    }
+   ],
+   "buttons": [
+    "Carregando…",
+    "Atualizar",
+    "Aplicar período"
+   ]
+  },
+  {
+   "href": "/reservations",
+   "menu": [
+    {
+     "label": "Reservas",
+     "group": "Para seus clientes",
+     "href": "/reservations"
+    }
+   ],
+   "module": "tables",
+   "title": "Reservas",
+   "subtitle": null,
+   "tabs": [],
+   "fields": [
+    {
+     "label": "Unidade"
+    },
+    {
+     "label": "Mesa (opcional)"
+    },
+    {
+     "label": "Nome do cliente"
+    },
+    {
+     "label": "Telefone"
+    },
+    {
+     "label": "Pessoas"
+    },
+    {
+     "label": "Data e hora"
+    },
+    {
+     "label": "Observações"
+    },
+    {
+     "label": "Data"
+    }
+   ],
+   "buttons": [
+    "Reservar",
+    "Limpar filtro"
+   ]
+  },
+  {
+   "href": "/reset-password",
+   "menu": [],
+   "module": null,
+   "title": null,
+   "subtitle": null,
+   "tabs": [],
+   "fields": [
+    {
+     "label": "Nova senha"
+    },
+    {
+     "label": "Confirmar nova senha"
+    }
+   ],
+   "buttons": [
+    "Salvando...",
+    "Redefinir senha"
+   ]
+  },
+  {
+   "href": "/scale-file",
+   "menu": [
+    {
+     "label": "Arquivo para balança",
+     "group": "Gerenciamento de produtos",
+     "href": "/scale-file"
+    }
+   ],
+   "module": "pos",
+   "title": "Arquivo para balança",
+   "subtitle": "Gera o arquivo de itens (.txt) com os produtos marcados como “Enviar para balança”, para importar na balança de etiquetas.",
+   "tabs": [],
+   "fields": [
+    {
+     "label": "Marca da balança"
+    }
+   ],
+   "buttons": []
+  },
+  {
+   "href": "/schedule-settings",
+   "menu": [
+    {
+     "label": "Agendamento de pedidos",
+     "group": "Configurações gerais",
+     "href": "/schedule-settings"
+    }
+   ],
+   "module": null,
+   "title": "Agendamento de pedidos",
+   "subtitle": "Permita que clientes e atendentes marquem pedidos para outro dia ou horário. O pedido só entra na produção na antecedência definida abaixo.",
+   "tabs": [
+    "Aberto agora",
+    "Fechado agora",
+    "Horários pré-definidos"
+   ],
+   "fields": [
+    {
+     "label": "Regras gerais",
+     "hint": "Desligado: nenhum pedido pode ser agendado."
+    },
+    {
+     "label": "Habilitar agendamento de pedidos",
+     "hint": "Desligado: nenhum pedido pode ser agendado."
+    },
+    {
+     "label": "Agendar com até quantos dias de antecedência"
+    },
+    {
+     "label": "Entrar na produção com antecedência de (HH:mm)"
+    },
+    {
+     "label": "De"
+    },
+    {
+     "label": "Até"
+    },
+    {
+     "label": "Horários disponíveis"
+    },
+    {
+     "label": "Layout do menu lateral"
+    },
+    {
+     "label": "Encarregado de dados (DPO)"
+    },
+    {
+     "label": "E-mail do encarregado"
+    },
+    {
+     "label": "Arquivo de layout do menu"
+    },
+    {
+     "label": "Fuso horário"
+    },
+    {
+     "label": "Funcionamento da loja"
+    },
+    {
+     "label": "Retirada no balcão"
+    },
+    {
+     "label": "Entrega"
+    },
+    {
+     "label": "Consumo no local"
+    },
+    {
+     "label": "Pedidos do QR Code da mesa dependem de confirmação do atendente",
+     "hint": "Desligado: o pedido vai direto para a cozinha. Ligado: aparece em Mesas › Solicitações para o atendente aceitar ou recusar."
+    },
+    {
+     "label": "Exibir tempo estimado",
+     "hint": "Mostra os minutos abaixo ao cliente."
+    },
+    {
+     "label": "Retirada (minutos)"
+    },
+    {
+     "label": "Entrega (minutos)"
+    },
+    {
+     "label": "Como cobrar a taxa"
+    },
+    {
+     "label": "Taxa única (R$)"
+    },
+    {
+     "label": "Pedido mínimo para entrega (R$)"
+    },
+    {
+     "label": "Entrega grátis acima de (R$)",
+     "hint": "0 desativa."
+    },
+    {
+     "label": "Tipo de loja"
+    },
+    {
+     "label": "Permitir pedidos com a loja fechada",
+     "hint": "O cliente pode comprar fora do horário (útil junto do agendamento)."
+    },
+    {
+     "label": "Aceitar pedidos automaticamente",
+     "hint": "Desligado: cada pedido online aguarda aceite manual."
+    },
+    {
+     "label": "Controle de venda para menores",
+     "hint": "Registra que a loja vende itens restritos a maiores de idade."
+    },
+    {
+     "label": "Margem de lucro padrão (%)",
+     "hint": "Referência para sugerir preços a partir do custo do produto."
+    },
+    {
+     "label": "Custo do produto (R$)"
+    },
+    {
+     "label": "Reiniciar a numeração dos pedidos todo dia",
+     "hint": "A senha/número do pedido volta para 1 na primeira venda de cada dia. Desligado: a contagem segue sem parar."
+    },
+    {
+     "label": "Ativo"
+    },
+    {
+     "label": "Inativo"
+    },
+    {
+     "label": "Layout do PDV"
+    },
+    {
+     "label": "Lado da lista de itens"
+    },
+    {
+     "label": "Controle de mesas e comandas"
+    },
+    {
+     "label": "Status padrão dos pedidos do PDV"
+    },
+    {
+     "label": "Nome da taxa de serviço"
+    },
+    {
+     "label": "Modo pedido"
+    },
+    {
+     "label": "Modo venda"
+    },
+    {
+     "label": "Avisar cliente por WhatsApp"
+    },
+    {
+     "label": "Cadastrar cliente automaticamente"
+    },
+    {
+     "label": "Perguntar o vendedor"
+    },
+    {
+     "label": "Exigir senha de administrador em pedidos online"
+    },
+    {
+     "label": "Mostrar PIX no terminal",
+     "hint": "Depende de um provedor PIX configurado em Integrações."
+    },
+    {
+     "label": "Cotação do dólar (R$ por US$)"
+    },
+    {
+     "label": "Cotação do peso (pesos por R$ 1)"
+    },
+    {
+     "label": "Habilitar leitura de etiquetas de balança",
+     "hint": "Reconhece códigos de barras gerados por balanças etiquetadoras e lança peso ou preço. O sistema não se conecta à balança física."
+    },
+    {
+     "label": "Prefixo (1 a 2 dígitos)"
+    },
+    {
+     "label": "Dígitos do código do produto"
+    },
+    {
+     "label": "Tamanho do código de barras",
+     "hint": "EAN-13 usa 13."
+    },
+    {
+     "label": "Tipo de venda"
+    },
+    {
+     "label": "Código do produto na balança"
+    },
+    {
+     "label": "Peso (kg)"
+    },
+    {
+     "label": "Preço (R$)"
+    },
+    {
+     "label": "Venda"
+    },
+    {
+     "label": "Pedido"
+    },
+    {
+     "label": "Ticket de retirada"
+    },
+    {
+     "label": "Nos comprovantes"
+    },
+    {
+     "label": "Nas impressões de produção"
+    },
+    {
+     "label": "Nos relatórios"
+    },
+    {
+     "label": "Largura do papel"
+    },
+    {
+     "label": "Tamanho da fonte (1 a 20)"
+    },
+    {
+     "label": "Papel da promissória"
+    },
+    {
+     "label": "Imprimir promissória automaticamente"
+    },
+    {
+     "label": "Vias do recibo de venda (1 a 3)"
+    },
+    {
+     "label": "Vias do comprovante TEF"
+    },
+    {
+     "label": "Rodapé dos comprovantes"
+    }
+   ],
+   "buttons": [
+    "Exportar layout (JSON)",
+    "Copiar",
+    "Importar layout",
+    "Mostrar todos",
+    "Remover",
+    "Gerar outra",
+    "Remover senha"
+   ]
+  },
+  {
+   "href": "/scheduled",
+   "menu": [
+    {
+     "label": "Vendas agendadas",
+     "group": "Movimento",
+     "href": "/scheduled"
+    }
+   ],
+   "module": "pos",
+   "title": "Vendas agendadas",
+   "subtitle": null,
+   "tabs": [],
+   "fields": [
+    {
+     "label": "Buscar"
+    },
+    {
+     "label": "De"
+    },
+    {
+     "label": "Até"
+    },
+    {
+     "label": "Operação de balcão"
+    }
+   ],
+   "buttons": [
+    "Filtrar",
+    "Cancelar",
+    "Liberar agora",
+    "Salvar",
+    "Voltar",
+    "Reagendar",
+    "Próxima ›",
+    "Validando…",
+    "Liberar"
+   ]
+  },
+  {
+   "href": "/settings",
+   "menu": [
+    {
+     "label": "Zonas não mapeadas",
+     "group": "Controle de entrega",
+     "href": "/settings?tab=fulfillment"
+    },
+    {
+     "label": "Integração Pixel",
+     "group": "Integração",
+     "href": "/settings?tab=store"
+    },
+    {
+     "label": "Configurações fiscais",
+     "group": "Fiscal / Tributos",
+     "href": "/settings?tab=fiscal"
+    },
+    {
+     "label": "Empresa",
+     "group": "Configurações gerais",
+     "href": "/settings"
+    },
+    {
+     "label": "Aparência e personalização",
+     "group": "Configurações gerais",
+     "href": "/settings?tab=appearance"
+    }
+   ],
+   "module": null,
+   "title": "Configurações da empresa",
+   "subtitle": "Preferências gerais do restaurante. Cada aba é salva separadamente; algumas preferências só têm efeito nos módulos que as utilizam.",
+   "tabs": [
+    "Painel",
+    "Aparência e personalização",
+    "Personalização do sistema",
+    "Horário de funcionamento",
+    "Controle de entrega/retirada",
+    "Loja",
+    "Produtos",
+    "Pré-venda",
+    "PDV",
+    "Balança",
+    "Impressão",
+    "Ticket de retirada",
+    "Status dos pedidos",
+    "Financeiro",
+    "Fiscais",
+    "Aberto agora",
+    "Fechado agora",
+    "Horários pré-definidos",
+    "Ambiente",
+    "Empresa / emitente",
+    "Estabelecimentos",
+    "Certificado digital",
+    "Conexão SEFAZ",
+    "NF-e (55)",
+    "NFC-e (65) e CSC",
+    "Série e numeração",
+    "CFOP e tributação padrão",
+    "Naturezas de operação",
+    "Regras tributárias (NCM, CST, alíquotas)",
+    "Comportamento no PDV",
+    "Regras",
+    "Alíquotas ICMS e redução",
+    "PIS/COFINS",
+    "IBS/CBS/IS (Reforma)",
+    "Produtos vinculados"
+   ],
+   "fields": [
+    {
+     "label": "Layout do menu lateral"
+    },
+    {
+     "label": "Encarregado de dados (DPO)"
+    },
+    {
+     "label": "E-mail do encarregado"
+    },
+    {
+     "label": "Arquivo de layout do menu"
+    },
+    {
+     "label": "Fuso horário"
+    },
+    {
+     "label": "Funcionamento da loja"
+    },
+    {
+     "label": "Retirada no balcão"
+    },
+    {
+     "label": "Entrega"
+    },
+    {
+     "label": "Consumo no local"
+    },
+    {
+     "label": "Pedidos do QR Code da mesa dependem de confirmação do atendente",
+     "hint": "Desligado: o pedido vai direto para a cozinha. Ligado: aparece em Mesas › Solicitações para o atendente aceitar ou recusar."
+    },
+    {
+     "label": "Exibir tempo estimado",
+     "hint": "Mostra os minutos abaixo ao cliente."
+    },
+    {
+     "label": "Retirada (minutos)"
+    },
+    {
+     "label": "Entrega (minutos)"
+    },
+    {
+     "label": "Como cobrar a taxa"
+    },
+    {
+     "label": "Taxa única (R$)"
+    },
+    {
+     "label": "Pedido mínimo para entrega (R$)"
+    },
+    {
+     "label": "Entrega grátis acima de (R$)",
+     "hint": "0 desativa."
+    },
+    {
+     "label": "Tipo de loja"
+    },
+    {
+     "label": "Permitir pedidos com a loja fechada",
+     "hint": "O cliente pode comprar fora do horário (útil junto do agendamento)."
+    },
+    {
+     "label": "Aceitar pedidos automaticamente",
+     "hint": "Desligado: cada pedido online aguarda aceite manual."
+    },
+    {
+     "label": "Controle de venda para menores",
+     "hint": "Registra que a loja vende itens restritos a maiores de idade."
+    },
+    {
+     "label": "Margem de lucro padrão (%)",
+     "hint": "Referência para sugerir preços a partir do custo do produto."
+    },
+    {
+     "label": "Custo do produto (R$)"
+    },
+    {
+     "label": "Reiniciar a numeração dos pedidos todo dia",
+     "hint": "A senha/número do pedido volta para 1 na primeira venda de cada dia. Desligado: a contagem segue sem parar."
+    },
+    {
+     "label": "Ativo"
+    },
+    {
+     "label": "Inativo"
+    },
+    {
+     "label": "Layout do PDV"
+    },
+    {
+     "label": "Lado da lista de itens"
+    },
+    {
+     "label": "Controle de mesas e comandas"
+    },
+    {
+     "label": "Status padrão dos pedidos do PDV"
+    },
+    {
+     "label": "Nome da taxa de serviço"
+    },
+    {
+     "label": "Modo pedido"
+    },
+    {
+     "label": "Modo venda"
+    },
+    {
+     "label": "Avisar cliente por WhatsApp"
+    },
+    {
+     "label": "Cadastrar cliente automaticamente"
+    },
+    {
+     "label": "Perguntar o vendedor"
+    },
+    {
+     "label": "Exigir senha de administrador em pedidos online"
+    },
+    {
+     "label": "Mostrar PIX no terminal",
+     "hint": "Depende de um provedor PIX configurado em Integrações."
+    },
+    {
+     "label": "Cotação do dólar (R$ por US$)"
+    },
+    {
+     "label": "Cotação do peso (pesos por R$ 1)"
+    },
+    {
+     "label": "Habilitar leitura de etiquetas de balança",
+     "hint": "Reconhece códigos de barras gerados por balanças etiquetadoras e lança peso ou preço. O sistema não se conecta à balança física."
+    },
+    {
+     "label": "Prefixo (1 a 2 dígitos)"
+    },
+    {
+     "label": "Dígitos do código do produto"
+    },
+    {
+     "label": "Tamanho do código de barras",
+     "hint": "EAN-13 usa 13."
+    },
+    {
+     "label": "Tipo de venda"
+    },
+    {
+     "label": "Código do produto na balança"
+    },
+    {
+     "label": "Peso (kg)"
+    },
+    {
+     "label": "Preço (R$)"
+    },
+    {
+     "label": "Venda"
+    },
+    {
+     "label": "Pedido"
+    },
+    {
+     "label": "Ticket de retirada"
+    },
+    {
+     "label": "Nos comprovantes"
+    },
+    {
+     "label": "Nas impressões de produção"
+    },
+    {
+     "label": "Nos relatórios"
+    },
+    {
+     "label": "Largura do papel"
+    },
+    {
+     "label": "Tamanho da fonte (1 a 20)"
+    },
+    {
+     "label": "Papel da promissória"
+    },
+    {
+     "label": "Imprimir promissória automaticamente"
+    },
+    {
+     "label": "Vias do recibo de venda (1 a 3)"
+    },
+    {
+     "label": "Vias do comprovante TEF"
+    },
+    {
+     "label": "Rodapé dos comprovantes"
+    },
+    {
+     "label": "Pré-visualização"
+    },
+    {
+     "label": "Escopo da aparência"
+    },
+    {
+     "label": "Minha preferência"
+    },
+    {
+     "label": "Padrão do restaurante"
+    },
+    {
+     "label": "Permitir que cada usuário tenha sua própria aparência"
+    },
+    {
+     "label": "Natureza da operação"
+    },
+    {
+     "label": "Tipo de emissão"
+    },
+    {
+     "label": "Finalidade"
+    },
+    {
+     "label": "CFOP padrão"
+    },
+    {
+     "label": "Razão social"
+    },
+    {
+     "label": "Nome fantasia"
+    },
+    {
+     "label": "CNPJ"
+    },
+    {
+     "label": "Inscrição estadual (IE)"
+    },
+    {
+     "label": "Inscrição municipal (IM)"
+    },
+    {
+     "label": "CNAE"
+    },
+    {
+     "label": "Regime tributário"
+    },
+    {
+     "label": "Logradouro"
+    },
+    {
+     "label": "Número"
+    },
+    {
+     "label": "Complemento"
+    },
+    {
+     "label": "Bairro"
+    },
+    {
+     "label": "Município"
+    },
+    {
+     "label": "Código IBGE do município"
+    },
+    {
+     "label": "UF"
+    },
+    {
+     "label": "CEP"
+    },
+    {
+     "label": "País"
+    },
+    {
+     "label": "Código do país (BACEN)"
+    },
+    {
+     "label": "Telefone"
+    },
+    {
+     "label": "Indicador de contribuinte (IE)"
+    },
+    {
+     "label": "Senha do certificado"
+    },
+    {
+     "label": "Provedor fiscal"
+    },
+    {
+     "label": "Token da API do provedor"
+    },
+    {
+     "label": "CSC ID (identificador do token)"
+    },
+    {
+     "label": "CSC (código de segurança do contribuinte)"
+    },
+    {
+     "label": "Regra tributária padrão"
+    },
+    {
+     "label": "Série"
+    },
+    {
+     "label": "Próximo número"
+    },
+    {
+     "label": "Unidade"
+    },
+    {
+     "label": "Seções fiscais"
+    },
+    {
+     "label": "Descrição da natureza"
+    },
+    {
+     "label": "CFOP"
+    },
+    {
+     "label": "Tipo"
+    },
+    {
+     "label": "Observações"
+    },
+    {
+     "label": "Operação"
+    },
+    {
+     "label": "Destino"
+    },
+    {
+     "label": "UF do emitente"
+    },
+    {
+     "label": "UF do destinatário"
+    },
+    {
+     "label": "Regra tributária da natureza"
+    },
+    {
+     "label": "Ativa",
+     "hint": "Naturezas inativas não aparecem na entrada de notas."
+    },
+    {
+     "label": "Nome da regra"
+    },
+    {
+     "label": "NCM (8 dígitos)"
+    },
+    {
+     "label": "CEST (7 dígitos)"
+    },
+    {
+     "label": "Origem da mercadoria"
+    },
+    {
+     "label": "CFOP dentro do estado (4 dígitos)"
+    },
+    {
+     "label": "CFOP interestadual (NF-e)"
+    },
+    {
+     "label": "CST/CSOSN do ICMS"
+    },
+    {
+     "label": "Alíquota do ICMS (%)"
+    },
+    {
+     "label": "Redução da base do ICMS (%)"
+    },
+    {
+     "label": "cBenef (código de benefício)"
+    },
+    {
+     "label": "CST do PIS"
+    },
+    {
+     "label": "Alíquota do PIS (%)"
+    },
+    {
+     "label": "CST da COFINS"
+    },
+    {
+     "label": "Alíquota da COFINS (%)"
+    },
+    {
+     "label": "Vigência — início"
+    },
+    {
+     "label": "Vigência — fim"
+    },
+    {
+     "label": "Regra tributária"
+    },
+    {
+     "label": "Produtos vinculados"
+    },
+    {
+     "label": "Vincular produtos"
+    },
+    {
+     "label": "Filtrar produtos"
+    }
+   ],
+   "buttons": [
+    "Exportar layout (JSON)",
+    "Cancelar",
+    "Buscar",
+    "Copiar",
+    "Importar layout",
+    "Mostrar todos",
+    "Remover",
+    "Gerar outra",
+    "Remover senha",
+    "Restaurar padrão original RM",
+    "Usar o padrão do restaurante",
+    "Adicionar",
+    "Editar",
+    "Excluir",
+    "Desvincular",
+    "Limpar",
+    "Salvando…",
+    "Salvar"
+   ]
+  },
+  {
+   "href": "/shifts",
+   "menu": [
+    {
+     "label": "Escalas",
+     "group": "Cadastros",
+     "href": "/shifts"
+    }
+   ],
+   "module": "employees",
+   "title": "Escalas",
+   "subtitle": null,
+   "tabs": [],
+   "fields": [
+    {
+     "label": "Funcionário"
+    },
+    {
+     "label": "Unidade"
+    },
+    {
+     "label": "Cargo / função"
+    },
+    {
+     "label": "Início"
+    },
+    {
+     "label": "Fim (máx. 16 h)"
+    },
+    {
+     "label": "Observações"
+    }
+   ],
+   "buttons": [
+    "Cancelar",
+    "Esta semana",
+    "Próxima →",
+    "Editar",
+    "Excluir",
+    "Salvar escala",
+    "Criar escala"
+   ]
+  },
+  {
+   "href": "/store",
+   "menu": [
+    {
+     "label": "Link da loja virtual",
+     "group": "Para seus clientes",
+     "href": "/store"
+    }
+   ],
+   "module": null,
+   "title": "Link da loja virtual",
+   "subtitle": "Compartilhe o endereço abaixo (ou o QR Code) para que seus clientes façam pedidos de retirada e entrega sem instalar nada.",
+   "tabs": [],
+   "fields": [
+    {
+     "label": "Endereço da loja"
+    },
+    {
+     "label": "Status da loja"
+    },
+    {
+     "label": "Resumo das configurações"
+    },
+    {
+     "label": "QR Code da loja"
+    }
+   ],
+   "buttons": [
+    "Abrir loja",
+    "Fechar loja",
+    "Seguir horário de funcionamento"
+   ]
+  },
+  {
+   "href": "/support",
+   "menu": [
+    {
+     "label": "Suporte e chamados",
+     "group": "Configurações gerais",
+     "href": "/support"
+    }
+   ],
+   "module": null,
+   "title": null,
+   "subtitle": null,
+   "tabs": [
+    "🎧 Chamados",
+    "📞 Interessados"
+   ],
+   "fields": [
+    {
+     "label": "Conversa"
+    },
+    {
+     "label": "Prioridade"
+    },
+    {
+     "label": "Situação"
+    },
+    {
+     "label": "Mensagem"
+    },
+    {
+     "label": "Alterar situação ao enviar"
+    },
+    {
+     "label": "Suporte"
+    },
+    {
+     "label": "Assunto"
+    },
+    {
+     "label": "Categoria"
+    },
+    {
+     "label": "Buscar assunto ou cliente"
+    },
+    {
+     "label": "Filtrar situação"
+    },
+    {
+     "label": "Situação do interessado"
+    },
+    {
+     "label": "Observações"
+    }
+   ],
+   "buttons": [
+    "Enviar",
+    "Abrir chamado",
+    "Voltar",
+    "Fechar",
+    "Abrir",
+    "Aguarde..."
+   ]
+  },
+  {
+   "href": "/tables",
+   "menu": [
+    {
+     "label": "QR Code na mesa",
+     "group": "Para seus clientes",
+     "href": "/tables"
+    },
+    {
+     "label": "Mesas",
+     "group": "Comandas",
+     "href": "/tables"
+    }
+   ],
+   "module": "tables",
+   "title": "Mesas e QR Code",
+   "subtitle": null,
+   "tabs": [],
+   "fields": [
+    {
+     "label": "Identificação"
+    },
+    {
+     "label": "Lugares"
+    },
+    {
+     "label": "Unidade"
+    },
+    {
+     "label": "Mesa ativa"
+    },
+    {
+     "label": "Solicitações das mesas"
+    }
+   ],
+   "buttons": [
+    "Cancelar",
+    "Imprimir QR",
+    "Fechar",
+    "Ver QR Code",
+    "Editar",
+    "Girar QR",
+    "Aceitar e enviar à cozinha",
+    "Recusar",
+    "Atendido",
+    "Salvar",
+    "Adicionar mesa"
+   ]
+  },
+  {
+   "href": "/tax-rules",
+   "menu": [
+    {
+     "label": "Correlação de tributos",
+     "group": "Fiscal / Tributos",
+     "href": "/tax-rules"
+    },
+    {
+     "label": "Alíquotas e redução de ICMS",
+     "group": "Fiscal / Tributos",
+     "href": "/tax-rules?tab=icms"
+    },
+    {
+     "label": "Percentual PIS/COFINS",
+     "group": "Fiscal / Tributos",
+     "href": "/tax-rules?tab=pis"
+    }
+   ],
+   "module": "fiscal",
+   "title": "Fiscal / Tributos",
+   "subtitle": "Regras tributárias por grupo de produtos (NCM, CFOP, CST e alíquotas).",
+   "tabs": [
+    "Regras",
+    "Alíquotas ICMS e redução",
+    "PIS/COFINS",
+    "IBS/CBS/IS (Reforma)",
+    "Produtos vinculados"
+   ],
+   "fields": [
+    {
+     "label": "Seções fiscais"
+    },
+    {
+     "label": "Nome da regra"
+    },
+    {
+     "label": "NCM (8 dígitos)"
+    },
+    {
+     "label": "CEST (7 dígitos)"
+    },
+    {
+     "label": "Origem da mercadoria"
+    },
+    {
+     "label": "CFOP dentro do estado (4 dígitos)"
+    },
+    {
+     "label": "CFOP interestadual (NF-e)"
+    },
+    {
+     "label": "CST/CSOSN do ICMS"
+    },
+    {
+     "label": "Alíquota do ICMS (%)"
+    },
+    {
+     "label": "Redução da base do ICMS (%)"
+    },
+    {
+     "label": "cBenef (código de benefício)"
+    },
+    {
+     "label": "CST do PIS"
+    },
+    {
+     "label": "Alíquota do PIS (%)"
+    },
+    {
+     "label": "CST da COFINS"
+    },
+    {
+     "label": "Alíquota da COFINS (%)"
+    },
+    {
+     "label": "Vigência — início"
+    },
+    {
+     "label": "Vigência — fim"
+    },
+    {
+     "label": "Ativo",
+     "hint": "Somente regras ativas aceitam novos produtos."
+    },
+    {
+     "label": "Regra tributária"
+    },
+    {
+     "label": "Produtos vinculados"
+    },
+    {
+     "label": "Vincular produtos"
+    },
+    {
+     "label": "Filtrar produtos"
+    }
+   ],
+   "buttons": [
+    "Cancelar",
+    "Buscar",
+    "Editar",
+    "Excluir",
+    "Adicionar",
+    "Desvincular",
+    "Limpar",
+    "Salvando…",
+    "Salvar"
+   ]
+  },
+  {
+   "href": "/units",
+   "menu": [
+    {
+     "label": "Unidades",
+     "group": "Cadastros",
+     "href": "/units"
+    }
+   ],
+   "module": null,
+   "title": "Unidades",
+   "subtitle": null,
+   "tabs": [],
+   "fields": [
+    {
+     "label": "Nome"
+    },
+    {
+     "label": "Código"
+    },
+    {
+     "label": "Endereço"
+    },
+    {
+     "label": "De"
+    },
+    {
+     "label": "Até"
+    },
+    {
+     "label": "Faturamento consolidado"
+    },
+    {
+     "label": "Ticket médio da rede"
+    },
+    {
+     "label": "Despesas baixadas"
+    },
+    {
+     "label": "Resultado consolidado",
+     "hint": "Vendas concluídas menos despesas baixadas"
+    }
+   ],
+   "buttons": [
+    "Adicionar unidade",
+    "Salvar taxas",
+    "Atualizar"
+   ]
+  },
+  {
+   "href": "/users",
+   "menu": [
+    {
+     "label": "Usuários e permissões",
+     "group": "Cadastros",
+     "href": "/users"
+    },
+    {
+     "label": "Cadastros de usuários",
+     "group": "Configurações gerais",
+     "href": "/users"
+    }
+   ],
+   "module": null,
+   "title": "Usuários e permissões",
+   "subtitle": null,
+   "tabs": [],
+   "fields": [
+    {
+     "label": "Nome"
+    },
+    {
+     "label": "Nome de usuário (opcional)"
+    },
+    {
+     "label": "E-mail"
+    },
+    {
+     "label": "Nova senha (deixe em branco para manter)"
+    },
+    {
+     "label": "Senha (mín. 10 caracteres)"
+    },
+    {
+     "label": "Perfil"
+    },
+    {
+     "label": "Unidade"
+    },
+    {
+     "label": "Funcionário vinculado (opcional)"
+    },
+    {
+     "label": "Comissão (%)"
+    },
+    {
+     "label": "Situação"
+    }
+   ],
+   "buttons": [
+    "Cancelar edição",
+    "Anterior",
+    "Próxima",
+    "Editar",
+    "Salvar usuário",
+    "Criar usuário"
+   ]
+  },
+  {
+   "href": "/whatsapp",
+   "menu": [
+    {
+     "label": "Integração WhatsApp Business",
+     "group": "Integração",
+     "href": "/whatsapp"
+    }
+   ],
+   "module": "whatsapp",
+   "title": "WhatsApp e robô de atendimento",
+   "subtitle": "Conecte o número do restaurante, acompanhe as conversas, ajuste as mensagens automáticas e ensine o robô.",
+   "tabs": [
+    "Conexão",
+    "Conversas",
+    "Mensagens automáticas",
+    "Robô e conhecimento",
+    "Testar robô",
+    "Caixa de saída"
+   ],
+   "fields": [
+    {
+     "label": "Conversas"
+    },
+    {
+     "label": "Recebidas hoje"
+    },
+    {
+     "label": "Respostas do robô hoje"
+    },
+    {
+     "label": "Aguardando atendente"
+    },
+    {
+     "label": "Sem resposta",
+     "hint": "perguntas que o robô não soube"
+    },
+    {
+     "label": "Na fila de envio"
+    },
+    {
+     "label": "Versão do serviço",
+     "hint": "API usada pelo robô de atendimento"
+    },
+    {
+     "label": "Seções do WhatsApp"
+    }
+   ],
+   "buttons": []
+  }
+ ],
+ "reports": [
+  {
+   "href": "/reports?r=sales",
+   "label": "Vendas"
+  },
+  {
+   "href": "/reports?r=service-fee",
+   "label": "Taxa de serviço"
+  },
+  {
+   "href": "/reports?r=couvert",
+   "label": "Couvert artístico"
+  },
+  {
+   "href": "/reports?r=dre",
+   "label": "DRE simplificado"
+  },
+  {
+   "href": "/reports?r=cancellations",
+   "label": "Análise de cancelamentos"
+  },
+  {
+   "href": "/reports?r=product-classification",
+   "label": "Classificação de produtos"
+  },
+  {
+   "href": "/reports?r=scheduled-sales",
+   "label": "Vendas agendadas"
+  },
+  {
+   "href": "/reports?r=products-sold",
+   "label": "Produtos vendidos"
+  },
+  {
+   "href": "/reports?r=profit-margin",
+   "label": "Margem de lucro dos produtos"
+  },
+  {
+   "href": "/reports?r=sales-by-payment",
+   "label": "Vendas por forma de pagamento"
+  },
+  {
+   "href": "/reports?r=payables",
+   "label": "Relatório de contas a pagar"
+  },
+  {
+   "href": "/reports?r=receivables",
+   "label": "Relatório de contas a receber"
+  },
+  {
+   "href": "/reports?r=cash-closings",
+   "label": "Conferência de fechamentos"
+  },
+  {
+   "href": "/reports?r=delivery-zones",
+   "label": "Zonas de entrega"
+  },
+  {
+   "href": "/reports?r=loyal-customers",
+   "label": "Clientes fiéis"
+  },
+  {
+   "href": "/reports?r=promoted-products",
+   "label": "Produtos em promoção"
+  },
+  {
+   "href": "/reports?r=availability",
+   "label": "Controle de disponibilidade"
+  },
+  {
+   "href": "/reports?r=bot-conversations",
+   "label": "Atendimentos via robô"
+  }
+ ],
+ "flows": [
+  {
+   "title": "Fluxo de vendas",
+   "hrefs": [
+    "/tables",
+    "/pdv",
+    "/monitor",
+    "/kds",
+    "/production",
+    "/delivery",
+    "/cash"
+   ]
+  },
+  {
+   "title": "Cardápio e estoque",
+   "hrefs": [
+    "/products",
+    "/categories",
+    "/promotions",
+    "/scale-file",
+    "/catalog",
+    "/inventory",
+    "/purchasing"
+   ]
+  },
+  {
+   "title": "Equipe",
+   "hrefs": [
+    "/employees",
+    "/users",
+    "/shifts",
+    "/commissions"
+   ]
+  },
+  {
+   "title": "Resultado financeiro",
+   "hrefs": [
+    "/cash",
+    "/financial",
+    "/bank-reconciliation",
+    "/reports",
+    "/fiscal",
+    "/reconciliation"
+   ]
+  },
+  {
+   "title": "Relacionamento",
+   "hrefs": [
+    "/customers",
+    "/coupons",
+    "/reservations",
+    "/whatsapp"
+   ]
+  },
+  {
+   "title": "Plataforma",
+   "hrefs": [
+    "/units",
+    "/network",
+    "/integrations",
+    "/audit"
+   ]
+  }
+ ]
+}

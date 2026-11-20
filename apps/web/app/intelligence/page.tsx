@@ -7,6 +7,7 @@ import { AppShell, buttonClass, Field, Notice, panelClass } from '../../componen
 import { Badge, DataTable, EmptyState, PageHeader, StatCard, Tabs, Toggle } from '../../components/ui';
 import { BusinessPanel, SalesOpportunities, StockPanel } from '../../components/intelligence-panels';
 import { AutomationsPanel } from '../../components/automations-panel';
+import { askGuide } from '../../lib/guide';
 import { Suspense } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 
@@ -57,6 +58,9 @@ function IntelligenceContent({ initial }: { initial: Tab }) {
     if (content.length < 3 || asking) return;
     setMessages(current => [...current, { role: 'user', text: content }]); setQuestion(''); setAsking(true);
     try {
+      // Questions about how to use the system are taught by the guide; everything else goes to the data assistant.
+      const guide = await askGuide(content, '/intelligence');
+      if (guide) { setMessages(current => [...current, { role: 'assistant', text: guide.answer, notes: [guide.notice] }]); return; }
       const result = await api<{ answer: string; limitations: string[] }>('/intelligence/ask', { method: 'POST', body: JSON.stringify({ question: content }) });
       setMessages(current => [...current, { role: 'assistant', text: result.answer, notes: result.limitations }]);
     } catch (cause) { setMessages(current => [...current, { role: 'assistant', text: errorMessage(cause, 'Não foi possível responder agora.') }]); } finally { setAsking(false); }
@@ -87,7 +91,7 @@ function IntelligenceContent({ initial }: { initial: Tab }) {
         <section className={`${panelClass} flex flex-col`} aria-label="Assistente">
           <h2 className="text-base font-bold">🧠 Assistente do proprietário</h2>
           <div className="my-3 h-72 space-y-3 overflow-y-auto rounded-xl bg-slate-50 p-3" role="log" aria-live="polite">
-            {messages.map((message, index) => <div key={index} className={`max-w-[90%] rounded-2xl px-3 py-2 text-sm ${message.role === 'user' ? 'ml-auto bg-neutral-950 text-white' : 'border border-slate-200 bg-white text-slate-800'}`}>
+            {messages.map((message, index) => <div key={index} className={`max-w-[90%] whitespace-pre-line rounded-2xl px-3 py-2 text-sm ${message.role === 'user' ? 'ml-auto bg-neutral-950 text-white' : 'border border-slate-200 bg-white text-slate-800'}`}>
               {message.text}{message.notes?.map((note, noteIndex) => <p key={noteIndex} className="mt-1 text-xs text-slate-500">ℹ {note}</p>)}
             </div>)}
             {asking && <p className="text-xs text-slate-500">Consultando os dados…</p>}
