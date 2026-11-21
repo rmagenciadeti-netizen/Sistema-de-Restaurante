@@ -64,7 +64,7 @@ export async function consumeOrderProductStock(tx: Prisma.TransactionClient, ord
   }
 }
 
-export async function reverseOrderProductStock(tx: Prisma.TransactionClient, order: { id: string; code: string; tenantId: string }, actorUserId: string): Promise<void> {
+export async function reverseOrderProductStock(tx: Prisma.TransactionClient, order: { id: string; code: string; tenantId: string }, actorUserId: string | null): Promise<void> {
   const movements = await tx.productStockMovement.findMany({
     where: { tenantId: order.tenantId, reference: order.id, type: { in: [ProductStockMovementType.ORDER_CONSUMPTION, ProductStockMovementType.ORDER_REVERSAL] } },
   });
@@ -96,7 +96,7 @@ export class OrderInventoryError extends Error {
 export async function consumeOrderInventory(
   tx: Prisma.TransactionClient,
   order: RecipeOrder,
-  actorUserId: string,
+  actorUserId: string | null,
 ): Promise<void> {
   const requiredByIngredient = new Map<string, { ingredient: Ingredient; quantity: Prisma.Decimal }>();
 
@@ -189,7 +189,7 @@ export function canTransitionOrder(from: OrderStatus, to: OrderStatus): boolean 
 }
 
 // Returns to stock what the order consumed when it started preparing. Safe to call once per cancelled order.
-export async function reverseOrderInventory(tx: Prisma.TransactionClient, order: { id: string; code: string; tenantId: string }, actorUserId: string): Promise<void> {
+export async function reverseOrderInventory(tx: Prisma.TransactionClient, order: { id: string; code: string; tenantId: string }, actorUserId: string | null): Promise<void> {
   const consumed = await tx.stockMovement.findMany({ where: { tenantId: order.tenantId, reference: order.id, type: { in: [StockMovementType.ORDER_CONSUMPTION, StockMovementType.ORDER_REVERSAL] } } });
   const net = new Map<string, { quantity: Prisma.Decimal; unitId: string | null }>();
   for (const movement of consumed) {

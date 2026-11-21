@@ -44,8 +44,9 @@ export default function PlatformServicesPage() {
   async function test() {
     setBusy(true); setNotice(null);
     try {
-      const result = await api<{ ok: boolean; latencyMs: number }>('/platform/ai/test', { method: 'POST' });
-      setNotice({ text: `Conexão validada em ${result.latencyMs} ms.`, kind: 'success' });
+      const result = await api<{ ok: boolean; latencyMs: number; toolCalling?: 'ok' | 'unsupported' | 'failed' }>('/platform/ai/test', { method: 'POST' });
+      const tools = result.toolCalling === 'ok' ? ' O modelo também executa chamadas de ferramentas: o atendente de IA do WhatsApp pode usá-lo.' : ' Atenção: este modelo não executou a chamada de ferramentas do teste; o atendente de IA do WhatsApp precisa de um modelo com essa capacidade (ex.: GPT-4o/4.1, Claude, Gemini) e, sem ela, o robô clássico atende.';
+      setNotice({ text: `Conexão validada em ${result.latencyMs} ms.${tools}`, kind: result.toolCalling === 'ok' ? 'success' : 'error' });
     } catch (cause) { fail(cause, 'O teste falhou'); } finally { setBusy(false); await load(); }
   }
   async function remove() {

@@ -1,6 +1,8 @@
 // Mirrors apps/api/src/lib/settings.ts (SETTINGS_SECTIONS). Values returned by GET /settings are always complete (defaults applied).
 export type Slot = { day: number; start: string; end: string };
 
+export type AgentTone = 'FRIENDLY' | 'FORMAL' | 'CASUAL' | 'CONCISE';
+export type WhatsappAgentSettings = { enabled: boolean; assistantName: string; tone: AgentTone; emojis: boolean; instructions: string; allowReservations: boolean; allowOrders: boolean; allowOrderChanges: boolean; autoConfirmReservations: boolean; maxPartySize: number; maxOrderTotal: number; orderChangeWindowMinutes: number };
 export type TenantSettings = {
   company: { legalName: string; tradeName: string; document: string; activity: string; slogan: string; phone: string; whatsapp: string; zip: string; state: string; city: string; district: string; address: string; number: string; email: string; responsibleName: string; dpoName: string; dpoEmail: string; sidebarLayout: 'CLASSIC' | 'COMPACT' };
   hours: { timezone: string; mode: 'OPEN' | 'CLOSED' | 'SCHEDULE'; weekly: Slot[] };
@@ -16,7 +18,7 @@ export type TenantSettings = {
   orders: { resetCounterDaily: boolean };
   appearance: { mode: 'LIGHT' | 'DARK' | 'AUTO'; primary: 'GOLD' | 'BLUE' | 'GREEN' | 'RED' | 'YELLOW' | 'PURPLE' | 'ORANGE'; sidebar: 'BLACK' | 'WHITE' | 'GRAY' | 'GRAPHITE' | 'NAVY' | 'FOREST'; allowUserOverride: boolean };
   menuLayout: { hidden: string[] };
-  whatsapp: { botEnabled: boolean; autoMessagesEnabled: boolean; greetingCooldownHours: number; handoffMinutes: number; replyOutsideHours: boolean; aiFallback: boolean; replyDelaySeconds: number; humanizeTyping: boolean; menuFooter: string };
+  whatsapp: { botEnabled: boolean; autoMessagesEnabled: boolean; greetingCooldownHours: number; handoffMinutes: number; replyOutsideHours: boolean; aiFallback: boolean; replyDelaySeconds: number; humanizeTyping: boolean; menuFooter: string; agent: WhatsappAgentSettings };
   orderStatuses: { items: { key: string; title: string; active: boolean }[] };
 };
 export type SettingsSectionName = keyof TenantSettings;

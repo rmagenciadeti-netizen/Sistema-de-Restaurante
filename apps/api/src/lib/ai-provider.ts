@@ -1,11 +1,13 @@
 import type { PrismaClient } from '@prisma/client';
 import { openWith, sealWith } from './secret-box';
+import { learnQuirks, parseAnthropicResponse, parseOpenAiResponse, quirksFor, toAnthropicMessages, toAnthropicTools, toOpenAiMessages, toOpenAiTools, type ChatRequest, type ChatResponse } from './ai/chat';
 
 export type AiRequest = { system: string; question: string; model?: string; maxTokens?: number };
 export type AiAnswer = { text: string; model: string; inputTokens: number | null; outputTokens: number | null };
 // Implemented by a concrete LLM adapter. answerDetailed also reports the provider's own token counts (null when the provider does not return them)
 // so consumption is measured, not guessed.
-export interface AiProvider { readonly name: string; answer(request: AiRequest): Promise<string | null>; answerDetailed?(request: AiRequest): Promise<AiAnswer | null> }
+// `chat` is the conversational entry point with tool calling (used by the WhatsApp attendant); providers without it can still answer single questions.
+export interface AiProvider { readonly name: string; answer(request: AiRequest): Promise<string | null>; answerDetailed?(request: AiRequest): Promise<AiAnswer | null>; chat?(request: ChatRequest): Promise<ChatResponse> }
 
 type Config = { apiKey: string; model: string; baseUrl: string; fetchImpl?: typeof fetch; timeoutMs?: number };
 
@@ -41,6 +43,28 @@ export class OpenAiCompatibleProvider implements AiProvider {
     const text = body.choices?.[0]?.message?.content?.trim();
     return text ? { text: text.slice(0, 1600), model: model ?? this.config.model, inputTokens: body.usage?.prompt_tokens ?? null, outputTokens: body.usage?.completion_tokens ?? null } : null;
   }
+
+  async chat(request: ChatRequest): Promise<ChatResponse> {
+    const model = request.model ?? this.config.model;
+    const baseUrl = this.config.baseUrl.replace(/\/$/, '');
+    for (let attempt = 0; attempt < 3; attempt += 1) {
+      const quirk = quirksFor(baseUrl, model);
+      const response = await (this.config.fetchImpl ?? fetch)(`${baseUrl}/chat/completions`, {
+        method: 'POST',
+        headers: { authorization: `Bearer ${this.config.apiKey}`, 'content-type': 'application/json' },
+        body: JSON.stringify({
+          model, [quirk.tokenParam]: request.maxTokens ?? 700, ...(quirk.temperature ? { temperature: request.temperature ?? 0.3 } : {}),
+          messages: toOpenAiMessages(request.system, request.messages),
+          ...(request.tools?.length ? { tools: toOpenAiTools(request.tools), tool_choice: 'auto' } : {}),
+        }),
+        signal: AbortSignal.timeout(request.timeoutMs ?? this.config.timeoutMs ?? 30_000),
+      });
+      if (response.status === 400 && attempt < 2 && learnQuirks(baseUrl, model, await response.text().catch(() => ''))) continue;
+      if (!response.ok) throw new Error(`AI provider error ${response.status}`);
+      return parseOpenAiResponse(await response.json().catch(() => ({})), model);
+    }
+    throw new Error('AI provider error 400');
+  }
 }
 
 export class AnthropicProvider implements AiProvider {
@@ -60,6 +84,21 @@ export class AnthropicProvider implements AiProvider {
     const body = await response.json().catch(() => ({})) as { content?: Array<{ type?: string; text?: string }>; usage?: { input_tokens?: number; output_tokens?: number } };
     const text = body.content?.filter(part => part.type === 'text').map(part => part.text ?? '').join('').trim();
     return text ? { text: text.slice(0, 1600), model: model ?? this.config.model, inputTokens: body.usage?.input_tokens ?? null, outputTokens: body.usage?.output_tokens ?? null } : null;
+  }
+
+  async chat(request: ChatRequest): Promise<ChatResponse> {
+    const model = request.model ?? this.config.model;
+    const response = await (this.config.fetchImpl ?? fetch)(`${this.config.baseUrl.replace(/\/$/, '')}/v1/messages`, {
+      method: 'POST',
+      headers: { 'x-api-key': this.config.apiKey, 'anthropic-version': '2023-06-01', 'content-type': 'application/json' },
+      body: JSON.stringify({
+        model, max_tokens: request.maxTokens ?? 700, temperature: request.temperature ?? 0.3, system: request.system, messages: toAnthropicMessages(request.messages),
+        ...(request.tools?.length ? { tools: toAnthropicTools(request.tools) } : {}),
+      }),
+      signal: AbortSignal.timeout(request.timeoutMs ?? this.config.timeoutMs ?? 30_000),
+    });
+    if (!response.ok) throw new Error(`AI provider error ${response.status}`);
+    return parseAnthropicResponse(await response.json().catch(() => ({})), model);
   }
 }
 

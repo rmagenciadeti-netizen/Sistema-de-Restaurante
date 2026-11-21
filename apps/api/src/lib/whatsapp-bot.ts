@@ -51,7 +51,7 @@ export async function loadBotEnv(db: Db, tenantId: string, now = new Date()): Pr
 
 export const menuText = (env: BotEnv) => MENU_ITEMS.map((label, index) => `${NUMBER_EMOJI[index]} ${label}`).join('\n') + (env.settings.whatsapp.menuFooter ? `\n\n${env.settings.whatsapp.menuFooter}` : '');
 
-function hoursText(env: BotEnv): string {
+export function hoursText(env: BotEnv): string {
   const { hours } = env.settings;
   if (hours.mode === 'OPEN') return env.open ? 'Estamos abertos agora. ✅' : '';
   if (hours.mode === 'CLOSED') return 'Estamos fechados no momento. 🔒';

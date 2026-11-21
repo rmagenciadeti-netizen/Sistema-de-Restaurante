@@ -11,6 +11,26 @@ export const APPEARANCE_PRIMARIES = ['GOLD', 'BLUE', 'GREEN', 'RED', 'YELLOW', '
 export const APPEARANCE_SIDEBARS = ['BLACK', 'WHITE', 'GRAY', 'GRAPHITE', 'NAVY', 'FOREST'] as const;
 export const appearancePreferenceSchema = z.object({ mode: z.enum(APPEARANCE_MODES), primary: z.enum(APPEARANCE_PRIMARIES), sidebar: z.enum(APPEARANCE_SIDEBARS) });
 
+// Autonomous WhatsApp attendant (lib/whatsapp-agent). It only runs when the bot is on, the company consented to external AI and the platform has a provider;
+// otherwise the classic keyword bot keeps answering. Every capability can be switched off; the limits are hard rules enforced by the backend, not by the prompt.
+export const AGENT_TONES = ['FRIENDLY', 'FORMAL', 'CASUAL', 'CONCISE'] as const;
+const whatsappAgentSection = z.object({
+  enabled: z.boolean().default(true),
+  assistantName: z.string().trim().max(40).default(''),
+  tone: z.enum(AGENT_TONES).default('FRIENDLY'),
+  emojis: z.boolean().default(true),
+  // Free instructions of the restaurant (style, policies, upsell, local expressions). They never override the safety rules.
+  instructions: z.string().max(2000).default(''),
+  allowReservations: z.boolean().default(true), allowOrders: z.boolean().default(true), allowOrderChanges: z.boolean().default(true),
+  // Reservations are created as PENDING (the team confirms) unless this is on and a free table was found.
+  autoConfirmReservations: z.boolean().default(false),
+  maxPartySize: z.number().int().min(1).max(100).default(12),
+  // Orders above this total (R$) are never placed by the attendant: it hands the customer to a person. 0 = no cap.
+  maxOrderTotal: z.number().min(0).max(99999).default(500),
+  // Customers may change or cancel an order by themselves only while it is still open and this recent (minutes).
+  orderChangeWindowMinutes: z.number().int().min(0).max(240).default(10),
+});
+
 export const SETTINGS_SECTIONS = {
   company: z.object({
     legalName: z.string().max(160).default(''), tradeName: z.string().max(160).default(''), document: z.string().max(20).default(''), activity: z.string().max(80).default(''),
@@ -77,7 +97,7 @@ export const SETTINGS_SECTIONS = {
   // SUPER IA RM Intelligence. External model calls are opt-in per company; the deterministic analyses always work without them.
   ai: z.object({
     externalConsent: z.boolean().default(false), externalEnabled: z.boolean().default(true),
-    limits: z.object({ llmCallsPerTenantDay: z.number().int().min(0).max(100_000).default(100), llmCallsPerUserDay: z.number().int().min(0).max(10_000).default(30), llmCallsPerModuleDay: z.number().int().min(0).max(10_000).default(50), llmCallsPerUnitDay: z.number().int().min(0).max(50_000).default(60), maxSpecialistsPerQuestion: z.number().int().min(1).max(5).default(3), maxInputChars: z.number().int().min(500).max(20_000).default(6000) }).default({ llmCallsPerTenantDay: 100, llmCallsPerUserDay: 30, llmCallsPerModuleDay: 50, llmCallsPerUnitDay: 60, maxSpecialistsPerQuestion: 3, maxInputChars: 6000 }),
+    limits: z.object({ llmCallsPerTenantDay: z.number().int().min(0).max(100_000).default(100), llmCallsPerUserDay: z.number().int().min(0).max(10_000).default(30), llmCallsPerModuleDay: z.number().int().min(0).max(10_000).default(50), llmCallsPerUnitDay: z.number().int().min(0).max(50_000).default(60), llmCallsWhatsappDay: z.number().int().min(0).max(100_000).default(2000), maxSpecialistsPerQuestion: z.number().int().min(1).max(5).default(3), maxInputChars: z.number().int().min(500).max(20_000).default(6000) }).default({ llmCallsPerTenantDay: 100, llmCallsPerUserDay: 30, llmCallsPerModuleDay: 50, llmCallsPerUnitDay: 60, llmCallsWhatsappDay: 2000, maxSpecialistsPerQuestion: 3, maxInputChars: 6000 }),
     cacheTtlSeconds: z.number().int().min(0).max(3600).default(300), historyRetentionDays: z.number().int().min(1).max(730).default(90),
   }),
   orders: z.object({ resetCounterDaily: z.boolean().default(false) }),
@@ -132,6 +152,7 @@ export const SETTINGS_SECTIONS = {
     greetingCooldownHours: z.number().int().min(1).max(168).default(12), handoffMinutes: z.number().int().min(5).max(1440).default(120),
     replyOutsideHours: z.boolean().default(true), aiFallback: z.boolean().default(false),
     replyDelaySeconds: z.number().int().min(0).max(10).default(2), humanizeTyping: z.boolean().default(true), menuFooter: z.string().max(200).default(''),
+    agent: whatsappAgentSection.default(whatsappAgentSection.parse({})),
   }),
   kdsStages: kdsStagesSection,
   orderStatuses: z.object({

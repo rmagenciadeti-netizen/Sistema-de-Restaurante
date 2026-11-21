@@ -86,6 +86,7 @@ model Tenant {
   fiscalEvents          FiscalEvent[]
   whatsappSession       WhatsappSession?
   whatsappConversations WhatsappConversation[]
+  whatsappAgentActions  WhatsappAgentAction[]
   whatsappAutoMessages  WhatsappAutoMessage[]
   whatsappKnowledge     WhatsappKnowledge[]
   whatsappUnanswered    WhatsappUnanswered[]
@@ -1932,11 +1933,14 @@ model WhatsappConversation {
   unread         Int                   @default(0)
   state          String?
   stateData      Json?
+  // Memory of the AI attendant (profile, reservation/order drafts, pending confirmations, summary). Kept apart from `stateData`, which belongs to the classic bot.
+  agentMemory    Json?
   lastGreetingAt DateTime?
   lastMessageAt  DateTime              @default(now())
   createdAt      DateTime              @default(now())
   tenant         Tenant                @relation(fields: [tenantId], references: [id], onDelete: Cascade)
   messages       WhatsappChatMessage[]
+  agentActions   WhatsappAgentAction[]
 
   @@unique([tenantId, jid])
   @@index([tenantId, lastMessageAt])
@@ -1965,6 +1969,30 @@ model WhatsappAutoMessage {
   tenant   Tenant  @relation(fields: [tenantId], references: [id], onDelete: Cascade)
 
   @@id([tenantId, key])
+}
+
+// What the AI attendant did for a customer: every tool call, with its arguments and outcome. Operations (WRITE) carry a dedupe key, so the same
+// customer message can never run the same operation twice (retries, redelivery, a model that repeats itself).
+model WhatsappAgentAction {
+  id             String               @id @default(uuid())
+  tenantId       String
+  conversationId String
+  messageId      String?
+  tool           String
+  kind           String
+  ok             Boolean
+  args           Json?
+  result         Json?
+  summary        String?
+  dedupeKey      String?
+  durationMs     Int                  @default(0)
+  createdAt      DateTime             @default(now())
+  tenant         Tenant               @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  conversation   WhatsappConversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+
+  @@unique([tenantId, conversationId, dedupeKey])
+  @@index([tenantId, createdAt])
+  @@index([conversationId, createdAt])
 }
 
 model WhatsappKnowledge {

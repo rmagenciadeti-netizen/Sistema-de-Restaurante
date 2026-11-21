@@ -16,9 +16,10 @@ type OrderForEffects = {
 };
 
 // Cross-module reactions to order status changes, executed in the same transaction as the status update.
-export async function applyStatusSideEffects(tx: Prisma.TransactionClient, order: OrderForEffects, status: OrderStatus, actorUserId?: string) {
+// `actorUserId` null = a system action (for example the WhatsApp attendant); undefined = the caller does not touch stock.
+export async function applyStatusSideEffects(tx: Prisma.TransactionClient, order: OrderForEffects, status: OrderStatus, actorUserId?: string | null, options: { notifyCustomer?: boolean } = {}) {
   const notice = { [OrderStatus.PREPARING]: 'order_preparing', [OrderStatus.READY]: 'order_ready', [OrderStatus.COMPLETED]: 'order_completed', [OrderStatus.CANCELLED]: 'order_cancelled' }[status as string];
-  if (notice && order.customer) {
+  if (notice && order.customer && options.notifyCustomer !== false) {
     // Payload keeps the Cloud API template keys (orderCode, customerName) next to the variables of the editable texts.
     await enqueueAutoMessage(tx, { tenantId: order.tenantId, key: notice, phone: order.customer.phone, orderId: order.id, vars: { orderCode: order.code, customerName: order.customer.name, nome: order.customer.name.split(' ')[0], pedido: orderLabel(order), total: brl(order.total) } });
   }
@@ -28,7 +29,7 @@ export async function applyStatusSideEffects(tx: Prisma.TransactionClient, order
   }
   if (status === OrderStatus.CANCELLED) {
     if (order.customerId) await reverseForOrder(tx, { id: order.id, tenantId: order.tenantId, customerId: order.customerId });
-    if (actorUserId) {
+    if (actorUserId !== undefined) {
       await reverseOrderInventory(tx, order, actorUserId);
       await reverseOrderProductStock(tx, order, actorUserId);
     }

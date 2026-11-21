@@ -6,7 +6,9 @@ import { requireAuth, requireTenant } from '../middleware/auth';
 import { CASH_ROLES, MANAGEMENT_ROLES, requireRoles } from '../lib/permissions';
 import { loadSettings } from '../lib/settings';
 import { MANAGER_STALE_MS } from '../lib/whatsapp-sessions';
-import { currentAiProvider } from '../lib/ai-provider';
+import { aiSource, currentAiProvider } from '../lib/ai-provider';
+import { AGENT_MODULE, llmCalls } from '../lib/ai/usage';
+import { agentGate, loadMemory, simulateAgentTurn, simulationSessionSchema } from '../lib/whatsapp-agent';
 import { AUTO_MESSAGES, autoMessageDef } from '../lib/whatsapp-messages';
 import { loadBotEnv, respond } from '../lib/whatsapp-bot';
 
@@ -226,5 +228,75 @@ whatsappRoutes.post('/bot/simulate', async (req, res, next) => {
     const user = await prisma.user.findUnique({ where: { id: req.auth!.userId }, select: { name: true } });
     const result = await respond(prisma, env, { text: parsed.data.text, phone: null, name: user?.name ?? 'Cliente', state: parsed.data.state ?? null, greetDue: !parsed.data.state && /^(oi|ola|olá|bom dia|boa tarde|boa noite)\b/i.test(parsed.data.text) }, { dryRun: true });
     return res.json({ replies: result.replies, state: result.state, intent: result.intent, handoff: result.handoff });
+  } catch (error) { return next(error); }
+});
+
+// ---------------------------------------------------------------------------------------------------------------------
+// AI attendant: status, simulator (real data, nothing written), what it did, and what it remembers about a customer.
+// ---------------------------------------------------------------------------------------------------------------------
+whatsappRoutes.get('/agent/status', async (req, res, next) => {
+  try {
+    const tenantId = req.auth!.tenantId!;
+    const env = await loadBotEnv(prisma, tenantId);
+    const gate = await agentGate(env);
+    const source = aiSource(); const today = new Date(new Date().setHours(0, 0, 0, 0));
+    const [calls, operationsToday, handoffOpen] = await Promise.all([
+      llmCalls(tenantId, { module: AGENT_MODULE }),
+      prisma.whatsappAgentAction.count({ where: { tenantId, kind: 'WRITE', ok: true, createdAt: { gte: today } } }),
+      prisma.whatsappConversation.count({ where: { tenantId, handoff: true, OR: [{ handoffUntil: null }, { handoffUntil: { gt: new Date() } }] } }),
+    ]);
+    const ai = env.settings.ai;
+    return res.json({
+      enabled: env.settings.whatsapp.agent.enabled, botEnabled: env.settings.whatsapp.botEnabled, available: gate.available, reason: gate.available ? null : gate.reason,
+      provider: source.provider, model: source.model, providerConfigured: source.source !== 'none', toolCalling: Boolean(currentAiProvider()?.chat), consent: ai.externalConsent, externalEnabled: ai.externalEnabled,
+      usage: { callsToday: calls, dailyLimit: ai.limits.llmCallsWhatsappDay }, operationsToday, handoffOpen,
+      mode: gate.available && env.settings.whatsapp.botEnabled ? 'AI' : env.settings.whatsapp.botEnabled ? 'CLASSIC' : 'OFF',
+    });
+  } catch (error) { return next(error); }
+});
+
+whatsappRoutes.post('/agent/simulate', async (req, res, next) => {
+  try {
+    const parsed = z.object({ text: z.string().trim().min(1).max(1000), session: simulationSessionSchema.optional(), phone: z.string().max(20).optional() }).safeParse(req.body); if (!parsed.success) return res.status(400).json({ message: 'Validation failed', errors: parsed.error.flatten() });
+    const tenantId = req.auth!.tenantId!;
+    const env = await loadBotEnv(prisma, tenantId);
+    const user = await prisma.user.findUnique({ where: { id: req.auth!.userId }, select: { name: true } });
+    const phone = parsed.data.phone?.replace(/\D/g, '') || null;
+    return res.json(await simulateAgentTurn(prisma, env, { text: parsed.data.text, session: parsed.data.session, phone: phone && phone.length >= 8 ? phone : null, name: user?.name ?? 'Cliente' }));
+  } catch (error) { return next(error); }
+});
+
+whatsappRoutes.get('/agent/actions', async (req, res, next) => {
+  try {
+    const tenantId = req.auth!.tenantId!;
+    const only = req.query.kind === 'ALL' ? {} : { kind: 'WRITE' };
+    const conversationId = typeof req.query.conversationId === 'string' ? req.query.conversationId : undefined;
+    const rows = await prisma.whatsappAgentAction.findMany({ where: { tenantId, ...only, ...(conversationId ? { conversationId } : {}) }, orderBy: { createdAt: 'desc' }, take: 100, select: { id: true, tool: true, kind: true, ok: true, summary: true, createdAt: true, durationMs: true, conversation: { select: { id: true, name: true, phone: true } } } });
+    return res.json({ items: rows.map(row => ({ id: row.id, tool: row.tool, kind: row.kind, ok: row.ok, summary: row.summary, at: row.createdAt, durationMs: row.durationMs, conversationId: row.conversation.id, customer: row.conversation.name ?? row.conversation.phone })), total: rows.length });
+  } catch (error) { return next(error); }
+});
+
+whatsappRoutes.get('/conversations/:id/agent', async (req, res, next) => {
+  try {
+    const tenantId = req.auth!.tenantId!;
+    const conversation = await prisma.whatsappConversation.findFirst({ where: { id: req.params.id, tenantId }, select: { id: true, agentMemory: true } });
+    if (!conversation) return res.status(404).json({ message: 'Conversation not found' });
+    const memory = loadMemory(conversation.agentMemory);
+    const actions = await prisma.whatsappAgentAction.findMany({ where: { tenantId, conversationId: conversation.id, kind: { not: 'READ' } }, orderBy: { createdAt: 'desc' }, take: 15, select: { id: true, tool: true, kind: true, ok: true, summary: true, createdAt: true } });
+    return res.json({
+      profile: { name: memory.profile.name ?? null, addresses: memory.profile.addresses, preferences: memory.profile.preferences }, facts: memory.facts,
+      reservation: memory.reservation, order: { items: memory.order.items.map(item => ({ name: item.name, quantity: item.quantity, options: item.optionNames })), fulfillment: memory.order.fulfillment ?? null, lastOrderNumber: memory.order.lastOrderNumber ?? null },
+      delivery: memory.delivery, payment: memory.payment, pending: memory.pending.map(item => ({ action: item.action, summary: item.summary, expiresAt: item.expiresAt })), handoff: memory.support.handoff ?? null, summary: memory.summary ?? null, turns: memory.turns, actions,
+    });
+  } catch (error) { return next(error); }
+});
+
+whatsappRoutes.post('/conversations/:id/agent/reset', manage, async (req, res, next) => {
+  try {
+    const tenantId = req.auth!.tenantId!;
+    const updated = await prisma.whatsappConversation.updateMany({ where: { id: req.params.id, tenantId }, data: { agentMemory: Prisma.JsonNull } });
+    if (updated.count !== 1) return res.status(404).json({ message: 'Conversation not found' });
+    await prisma.auditLog.create({ data: { tenantId, actorUserId: req.auth!.userId, action: 'WHATSAPP_AGENT_MEMORY_RESET', entityType: 'WhatsappConversation', entityId: req.params.id } });
+    return res.status(204).end();
   } catch (error) { return next(error); }
 });
