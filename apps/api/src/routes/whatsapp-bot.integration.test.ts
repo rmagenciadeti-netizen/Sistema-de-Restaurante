@@ -166,11 +166,11 @@ test('WhatsApp bot, QR session manager and panel API', { skip: !enabled }, async
 
   await t.test('QR session manager connects, answers customers and sends queued automatic messages', async () => {
     const transports: FakeTransport[] = [];
-    const manager = new WhatsappSessionManager(prisma, { factory: () => { const fake = new FakeTransport(); transports.push(fake); return fake; }, sleep: async () => undefined, log: () => undefined });
+    const manager = new WhatsappSessionManager(prisma, { tenantIds: [tenant.id], factory: () => { const fake = new FakeTransport(); transports.push(fake); return fake; }, sleep: async () => undefined, log: () => undefined });
     t.after(() => manager.stop());
     await saveSettingsSection(prisma, tenant.id, 'whatsapp', { botEnabled: true, replyDelaySeconds: 0, humanizeTyping: false });
 
-    await prisma.whatsappManager.deleteMany();
+    await prisma.whatsappManager.deleteMany({ where: { id: 'default' } });
     assert.equal((await call('GET', '/whatsapp/session', admin)).body.managerOnline, false);
     assert.equal((await call('GET', '/whatsapp/session', waiter)).status, 403); // waiters have no access to the panel
     assert.equal((await call('POST', '/whatsapp/session/connect', cashier)).status, 403);
@@ -216,7 +216,7 @@ test('WhatsApp bot, QR session manager and panel API', { skip: !enabled }, async
 
   await t.test('stale queued messages expire instead of being sent days later', async () => {
     const fake = new FakeTransport();
-    const manager = new WhatsappSessionManager(prisma, { factory: () => fake, sleep: async () => undefined, log: () => undefined });
+    const manager = new WhatsappSessionManager(prisma, { tenantIds: [tenant.id], factory: () => fake, sleep: async () => undefined, log: () => undefined });
     t.after(() => manager.stop());
     await prisma.whatsappSession.update({ where: { tenantId: tenant.id }, data: { desired: 'CONNECTED' } });
     await manager.tick(); fake.handlers.onOpen({ phone: '5566900001111', name: 'Cantina' }); await new Promise(resolve => setTimeout(resolve, 50));

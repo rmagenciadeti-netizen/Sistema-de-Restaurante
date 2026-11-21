@@ -213,6 +213,19 @@ const licenseSchema = z.object({
   reason: z.string().max(300).optional(),
   modules: z.array(z.string().min(1).max(80)).max(100),
 });
+// Master monitoring of every restaurant's WhatsApp (QR) session: status, number, last error and whether a session manager is alive. No credentials are exposed.
+tenantRoutes.get('/whatsapp/sessions', async (_req, res, next) => {
+  try {
+    const [rows, manager] = await Promise.all([
+      prisma.whatsappSession.findMany({ select: { tenantId: true, status: true, desired: true, phone: true, lastError: true, connectedAt: true, updatedAt: true, tenant: { select: { name: true, slug: true } } }, orderBy: { updatedAt: 'desc' }, take: 500 }),
+      prisma.whatsappManager.findUnique({ where: { id: 'default' } }),
+    ]);
+    const online = Boolean(manager && Date.now() - manager.heartbeatAt.getTime() < 20_000);
+    const count = (status: string) => rows.filter(row => row.status === status).length;
+    return res.json({ managerOnline: online, managerHost: manager?.host ?? null, summary: { total: rows.length, connected: count('CONNECTED'), waitingQr: count('QR_READY'), connecting: count('CONNECTING'), problems: rows.filter(row => row.lastError && row.status !== 'CONNECTED').length }, items: rows.map(row => ({ tenantId: row.tenantId, name: row.tenant.name, slug: row.tenant.slug, status: row.status, desired: row.desired, phone: row.phone ? `${row.phone.slice(0, 4)}…${row.phone.slice(-2)}` : null, lastError: row.lastError, connectedAt: row.connectedAt, updatedAt: row.updatedAt })) });
+  } catch (error) { return next(error); }
+});
+
 // Modules that can be granted to a contract: catalogued, not archived and linked to a real feature.
 tenantRoutes.get('/modules/catalog', async (_req, res, next) => {
   try {

@@ -4,7 +4,7 @@ import { prisma } from '../lib/prisma';
 import { requireAuth, requireTenant } from '../middleware/auth';
 import { FINANCE_ROLES, MANAGEMENT_ROLES, requireRoles } from '../lib/permissions';
 import { loadSettings, saveSettingsSection } from '../lib/settings';
-import { currentAiProvider } from '../lib/ai-provider';
+import { aiSource, currentAiProvider } from '../lib/ai-provider';
 import { accessFor, ask, parsePeriod, routeQuestion, runTool } from '../lib/ai/orchestrator';
 import { specialistCsv } from '../lib/ai/export';
 import { estimateCall, estimateTokens, modelAvailability } from '../lib/ai/gateway';
@@ -100,7 +100,7 @@ aiRoutes.get('/usage', requireRoles(...MANAGEMENT_ROLES), guard(async (req, res)
   const days = Math.min(90, Math.max(1, Number(req.query.days) || 30)); const tenantId = req.auth!.tenantId!;
   const settings = await loadSettings(prisma, tenantId);
   const [summary, limits] = await Promise.all([usageSummary(tenantId, days), limitStatus(tenantId, req.auth!.userId, 'central', settings.ai.limits)]);
-  return res.json({ ...summary, limits, settings: settings.ai, provider: { configured: Boolean(currentAiProvider()), name: currentAiProvider()?.name ?? null, model: process.env.AI_MODEL ?? null, simpleModel: process.env.AI_MODEL_SIMPLE ?? null },
+  return res.json({ ...summary, limits, settings: settings.ai, provider: { configured: Boolean(currentAiProvider()), name: currentAiProvider()?.name ?? null, model: aiSource().model, simpleModel: process.env.AI_MODEL_SIMPLE ?? null },
     notes: ['Tokens vêm do provedor quando ele os informa; caso contrário são estimados (marcado). Custo em moeda depende da tabela de preços do provedor e não é inventado aqui.', 'A taxa de reaproveitamento mede análises servidas por cache/deduplicação; não é uma economia percentual de custo.'] });
 }));
 // Before/after consumption: the last N days against the N before. Real and estimated tokens are never summed together.

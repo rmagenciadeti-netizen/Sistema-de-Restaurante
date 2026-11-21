@@ -24,7 +24,7 @@ export function effectiveLimits(settings: TenantSettingsData) {
 
 export async function modelGate(ctx: ModelCtx, settings: TenantSettingsData, module: string, operation = 'narrative') {
   const provider = currentAiProvider();
-  if (!provider) return { ok: false as const, reason: 'IA generativa não configurada neste ambiente (AI_API_KEY/AI_MODEL). As análises determinísticas continuam disponíveis.' };
+  if (!provider) return { ok: false as const, reason: 'IA generativa não configurada: o administrador da plataforma precisa informar o provedor, o modelo e a chave (RM Painel Admin › Provedor de IA). As análises determinísticas continuam disponíveis.' };
   if (!settings.ai.externalConsent) return { ok: false as const, reason: 'A empresa ainda não autorizou o envio de dados a um provedor externo de IA (consentimento em Configurações da IA).' };
   if (!settings.ai.externalEnabled) return { ok: false as const, reason: 'A IA externa está desativada para este estabelecimento.' };
   if (Date.now() < breaker.openUntil) return { ok: false as const, reason: 'O provedor de IA está temporariamente indisponível (proteção contra falhas repetidas); tente em instantes.' };

@@ -35,7 +35,7 @@ export function BusinessPanel() {
       </ul>
       {data.ai && <div className="mt-4 rounded-xl border border-brand-400 bg-brand-50 p-4"><p className="mb-1 text-xs font-bold uppercase tracking-wider text-brand-700">Análise da IA (narrativa gerada a partir dos números acima)</p><p className="whitespace-pre-line text-sm text-slate-900">{data.ai.text}</p></div>}
       {data.aiNote && <p role="status" className="mt-3 text-xs text-amber-800">ℹ {data.aiNote}</p>}
-      <p className="mt-3 text-xs text-slate-500">{data.source} {data.aiAvailable ? `Análises com IA restantes hoje: ${data.aiRemainingToday}.` : 'A IA generativa é opcional e só é ativada com AI_API_KEY e AI_MODEL no servidor; sem ela o diagnóstico continua funcionando.'}</p>
+      <p className="mt-3 text-xs text-slate-500">{data.source} {data.aiAvailable ? `Análises com IA restantes hoje: ${data.aiRemainingToday}.` : 'A IA generativa é opcional e é ativada pelo administrador da plataforma (RM Painel Admin › Provedor de IA); sem ela o diagnóstico continua funcionando.'}</p>
     </>}
   </GoldCard>;
 }

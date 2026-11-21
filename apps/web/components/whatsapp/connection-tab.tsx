@@ -55,7 +55,7 @@ export function ConnectionTab({ session, loadError, onSession }: { session: What
       <h2 className="text-lg font-semibold text-slate-900">Conexão do número</h2>
       {loadError && <p role="alert" className="mt-3 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-800">{loadError}</p>}
       {flash && <div className="mt-3"><Notice message={flash.text} kind={flash.kind} /></div>}
-      {managerOffline && <p role="alert" className="mt-3 rounded-xl border border-amber-300 bg-amber-50 px-4 py-3 text-sm text-amber-900"><strong>O serviço de sessões do WhatsApp não está rodando no servidor</strong> (<code>npm run worker --workspace apps/api</code>, ou defina <code>WHATSAPP_SESSIONS_MODE=api</code>). Sem ele não é possível conectar por QR Code.</p>}
+      {managerOffline && <p role="alert" className="mt-3 rounded-xl border border-amber-300 bg-amber-50 px-4 py-3 text-sm text-amber-900"><strong>O serviço de sessões do WhatsApp está iniciando ou indisponível no servidor.</strong> Ele volta sozinho em instantes; se persistir, avise o suporte do RM. O QR Code aparece assim que o serviço responder.</p>}
       {!session && !loadError && <p className="mt-3 text-sm text-slate-500">Carregando…</p>}
       {session && <>
         <div className="mt-4 flex flex-wrap items-center gap-3"><Badge tone={info.tone}>{info.label}</Badge>{session.cloudConfigured && <Badge tone="gold">Cloud API configurada</Badge>}</div>
@@ -66,7 +66,8 @@ export function ConnectionTab({ session, loadError, onSession }: { session: What
         </dl>}
         {session.lastError && status !== 'CONNECTED' && <p className="mt-4 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-800">Último erro: {session.lastError}</p>}
         <div className="mt-5 flex flex-wrap gap-2">
-          {canConnect && <button type="button" className={`${buttonClass} min-h-11`} disabled={busy || managerOffline} onClick={() => void run('/whatsapp/session/connect', undefined, 'Iniciando conexão…')}>Conectar</button>}
+          {canConnect && <button type="button" className={`${buttonClass} min-h-11`} disabled={busy} onClick={() => void run('/whatsapp/session/connect', undefined, 'Iniciando conexão…')}>Conectar</button>}
+          {(pending || status === 'ERROR') && <button type="button" className={`${secondaryButtonClass} min-h-11`} disabled={busy} onClick={() => void run('/whatsapp/session/renew', undefined, 'Gerando um novo QR Code…')}>Renovar QR Code</button>}
           {pending && <button type="button" className={`${secondaryButtonClass} min-h-11`} disabled={busy} onClick={() => void run('/whatsapp/session/disconnect', { logout: false }, 'Conexão cancelada.')}>Cancelar</button>}
           {status === 'CONNECTED' && <button type="button" className={`${secondaryButtonClass} min-h-11`} disabled={busy} onClick={() => void run('/whatsapp/session/disconnect', { logout: false }, 'Desconectado. O login continua salvo.')}>Desconectar (mantém o login)</button>}
           {(status === 'CONNECTED' || status === 'ERROR') && <button type="button" className={`${dangerButtonClass} min-h-11`} disabled={busy} onClick={logout}>Sair do WhatsApp</button>}
@@ -83,12 +84,12 @@ export function ConnectionTab({ session, loadError, onSession }: { session: What
           {/* eslint-disable-next-line @next/next/no-img-element -- data URL generated locally */}
           <img src={qrImage} alt="QR Code para conectar o WhatsApp" className="h-72 w-72 max-w-full rounded-2xl border border-slate-200 bg-white p-2 shadow-sm" />
         </> : <p className="text-sm text-slate-500">Gerando QR Code…</p>}
-        <p className="mt-2 text-xs text-slate-500">O código é renovado automaticamente a cada ~20 segundos.</p>
+        <p className="mt-2 text-xs text-slate-500">O código é renovado automaticamente enquanto esta tela estiver aberta. Se não ler a tempo, use “Renovar QR Code”.</p>
       </div> : <p className="mt-4 rounded-xl border border-dashed border-slate-300 px-4 py-10 text-center text-sm text-slate-500">
         {status === 'CONNECTED' ? 'WhatsApp conectado. Não é preciso ler um QR Code.' : status === 'CONNECTING' ? 'Preparando a conexão… o QR Code aparece aqui em instantes.' : 'Clique em “Conectar” para gerar um QR Code.'}
       </p>}
       <ol className="mt-5 list-decimal space-y-1 pl-5 text-sm text-slate-700">
-        <li>Clique em <strong>Conectar</strong> e aguarde o QR Code aparecer.</li>
+        <li>Abra esta tela: o QR Code aparece sozinho (ou clique em <strong>Conectar</strong>).</li>
         <li>No celular: <strong>WhatsApp › Aparelhos conectados › Conectar um aparelho</strong>.</li>
         <li>Escaneie o QR Code exibido nesta tela.</li>
         <li>Pronto: o status muda para “Conectado”.</li>

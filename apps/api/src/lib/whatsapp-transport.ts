@@ -1,5 +1,5 @@
-import path from 'node:path';
-import fs from 'node:fs';
+import type { PrismaClient } from '@prisma/client';
+import { authStoreFor, type AuthStore } from './whatsapp-auth-store';
 
 export type InboundMessage = { jid: string; phone: string | null; name: string | null; text: string; id: string | null; timestamp: number | null };
 export type TransportHandlers = {
@@ -18,9 +18,6 @@ export interface WaTransport {
 }
 export type TransportFactory = (tenantId: string) => WaTransport;
 
-export const sessionsDir = () => path.resolve(process.env.WHATSAPP_SESSION_DIR || path.join(process.cwd(), '.whatsapp-sessions'));
-export const authDirFor = (tenantId: string) => path.join(sessionsDir(), tenantId.replace(/[^a-zA-Z0-9-]/g, ''));
-export const wipeAuth = (tenantId: string) => fs.rmSync(authDirFor(tenantId), { recursive: true, force: true });
 
 const digitsOf = (jid: string | null | undefined) => (jid && jid.endsWith('@s.whatsapp.net') ? jid.split('@')[0].split(':')[0].replace(/\D/g, '') : null);
 
@@ -32,17 +29,16 @@ export function extractText(message: BaileysMessage['message']): string {
   return inner.conversation ?? inner.extendedTextMessage?.text ?? inner.buttonsResponseMessage?.selectedDisplayText ?? inner.listResponseMessage?.title ?? inner.templateButtonReplyMessage?.selectedDisplayText ?? '';
 }
 
-// Unofficial WhatsApp Web client (Baileys). Credentials live on disk in `authDirFor(tenantId)`; treat that folder like a password.
+// Unofficial WhatsApp Web client (Baileys). Credentials come from the AuthStore (encrypted in the database by default); treat them like a password.
 export class BaileysTransport implements WaTransport {
   private sock: any = null;
-  constructor(private readonly authDir: string) {}
+  constructor(private readonly auth: AuthStore) {}
 
   async start(handlers: TransportHandlers): Promise<void> {
     const baileys: any = await import('@whiskeysockets/baileys');
     const makeSocket = baileys.default?.default ?? baileys.default ?? baileys.makeWASocket;
     const pino = (await import('pino')).default;
-    fs.mkdirSync(this.authDir, { recursive: true, mode: 0o700 });
-    const { state, saveCreds } = await baileys.useMultiFileAuthState(this.authDir);
+    const { state, saveCreds } = await this.auth.load(baileys);
     const latest = await baileys.fetchLatestBaileysVersion().catch(() => ({ version: undefined }));
     const sock = makeSocket({ version: latest.version, auth: state, logger: pino({ level: 'silent' }), printQRInTerminal: false, browser: ['RM Restaurant', 'Chrome', '1.0.0'], markOnlineOnConnect: false, syncFullHistory: false });
     this.sock = sock;
@@ -96,4 +92,4 @@ export class BaileysTransport implements WaTransport {
   }
 }
 
-export const defaultTransportFactory: TransportFactory = tenantId => new BaileysTransport(authDirFor(tenantId));
+export const defaultTransportFactory = (prisma: PrismaClient): TransportFactory => tenantId => new BaileysTransport(authStoreFor(prisma, tenantId));

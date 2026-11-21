@@ -28,6 +28,7 @@ const UNIT_PRICES = '20261121170000_unit_prices';
 const RECON_CLOSINGS = '20261121180000_reconciliation_closings';
 const KDS_STAGES = '20261121190000_kds_stages';
 const MODULE_NETWORK = '20261122000000_module_network';
+const WHATSAPP_DB_AUTH = '20261122010000_whatsapp_db_auth_ai_config';
 const NEW_FOUR = ['20261119120000_smart_migration', '20261119180000_migration_finance_scope', '20261119230000_pricing_costs', '20261120120000_migration_backup'];
 const id = randomBytes(4).toString('hex');
 const q = (identifier: string) => `"${identifier.replace(/"/g, '""')}"`;
@@ -118,7 +119,7 @@ test('schema migrations: ordering, clean database, upgrade with legacy data, fin
     assert.deepEqual([...allMigrations], [...allMigrations].sort(), 'chronological order');
     assert.equal(new Set(allMigrations.map(name => name.slice(0, 14))).size, allMigrations.length, 'no duplicate timestamps');
     for (const name of NEW_FOUR) assert.ok(allMigrations.includes(name), name);
-    assert.deepEqual(allMigrations.slice(allMigrations.indexOf(NEW_FOUR[0])), [...NEW_FOUR.slice(0, 3), '20261120120000_migration_backup', TEF_CORE, SUPER_AI, PRINT_DEDUP, MIGRATION_UNIT, CRM_LOYALTY, STOCK_INTELLIGENCE, SERVICE_FLOW, AUTOMATIONS, COMMISSION_RULES, UNIT_PRICES, RECON_CLOSINGS, KDS_STAGES, MODULE_NETWORK], 'audited migrations, then the TEF core, the AI tables, the print dedup, the migration unit, the loyalty ledger, the stock intelligence and the service flow, in this order');
+    assert.deepEqual(allMigrations.slice(allMigrations.indexOf(NEW_FOUR[0])), [...NEW_FOUR.slice(0, 3), '20261120120000_migration_backup', TEF_CORE, SUPER_AI, PRINT_DEDUP, MIGRATION_UNIT, CRM_LOYALTY, STOCK_INTELLIGENCE, SERVICE_FLOW, AUTOMATIONS, COMMISSION_RULES, UNIT_PRICES, RECON_CLOSINGS, KDS_STAGES, MODULE_NETWORK, WHATSAPP_DB_AUTH], 'audited migrations, then the TEF core, the AI tables, the print dedup, the migration unit, the loyalty ledger, the stock intelligence and the service flow, in this order');
     const sqlOf = (name: string) => spawnSync('cat', [join(dbPackage, 'prisma/migrations', name, 'migration.sql')], { encoding: 'utf8' }).stdout;
     const destructive: string[] = [];
     for (const name of allMigrations) for (const line of sqlOf(name).split('\n')) if (/\b(DROP\s+(TABLE|COLUMN|SCHEMA|TYPE)|TRUNCATE|DELETE\s+FROM|RENAME\b|CREATE\s+EXTENSION)/i.test(line) || /^\s*DROP\s+INDEX/i.test(line) || /ALTER\s+COLUMN/i.test(line)) destructive.push(`${name}: ${line.trim()}`);
@@ -306,7 +307,7 @@ test('schema migrations: ordering, clean database, upgrade with legacy data, fin
     const tenantRows = Number((await db.client.$queryRawUnsafe<{ n: number }[]>(`SELECT count(*)::int AS n FROM "Tenant"`))[0].n);
     const realSql = spawnSync('cat', [join(dbPackage, 'prisma/migrations', SMART, 'migration.sql')], { encoding: 'utf8' }).stdout;
     // Same migration with a fault injected after most of its statements ran (simulates a crash in the middle of the file).
-    const faulty = staged(allMigrations.filter(name => (!NEW_FOUR.includes(name) && name !== TEF_CORE && name !== SUPER_AI && name !== PRINT_DEDUP && name !== MIGRATION_UNIT && name !== CRM_LOYALTY && name !== STOCK_INTELLIGENCE && name !== SERVICE_FLOW && name !== AUTOMATIONS && name !== COMMISSION_RULES && name !== UNIT_PRICES && name !== RECON_CLOSINGS && name !== KDS_STAGES && name !== MODULE_NETWORK) || name === SMART), { [SMART]: `${realSql}\nINSERT INTO "TabelaQueNaoExiste" VALUES (1);\n` });
+    const faulty = staged(allMigrations.filter(name => (!NEW_FOUR.includes(name) && name !== TEF_CORE && name !== SUPER_AI && name !== PRINT_DEDUP && name !== MIGRATION_UNIT && name !== CRM_LOYALTY && name !== STOCK_INTELLIGENCE && name !== SERVICE_FLOW && name !== AUTOMATIONS && name !== COMMISSION_RULES && name !== UNIT_PRICES && name !== RECON_CLOSINGS && name !== KDS_STAGES && name !== MODULE_NETWORK && name !== WHATSAPP_DB_AUTH) || name === SMART), { [SMART]: `${realSql}\nINSERT INTO "TabelaQueNaoExiste" VALUES (1);\n` });
     const failed = deploy(db.url, faulty.schema);
     assert.notEqual(failed.status, 0, 'deploy must fail');
     assert.match(failed.out, new RegExp(SMART));

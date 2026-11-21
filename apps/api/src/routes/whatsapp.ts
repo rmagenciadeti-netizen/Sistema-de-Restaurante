@@ -43,12 +43,34 @@ const sessionView = async (tenantId: string) => {
     prisma.whatsappManager.findUnique({ where: { id: 'default' } }),
   ]);
   return {
-    status: row.status, desired: row.desired === 'CONNECTED' ? 'CONNECTED' : 'DISCONNECTED', qr: row.status === 'QR_READY' ? row.qr : null, phone: row.phone, pushName: row.pushName,
+    status: row.status, desired: row.desired === 'CONNECTED' || row.desired === 'RENEW' ? 'CONNECTED' : 'DISCONNECTED', qr: row.status === 'QR_READY' ? row.qr : null, phone: row.phone, pushName: row.pushName,
     lastError: row.lastError, connectedAt: row.connectedAt, managerOnline: Boolean(manager && Date.now() - manager.heartbeatAt.getTime() < MANAGER_STALE_MS),
     cloudConfigured: Boolean(process.env.WHATSAPP_TOKEN && process.env.WHATSAPP_PHONE_NUMBER_ID), aiConfigured: currentAiProvider() !== null,
   };
 };
-whatsappRoutes.get('/session', async (req, res, next) => { try { return res.json(await sessionView(req.auth!.tenantId!)); } catch (error) { return next(error); } });
+// Opening the connection screen marks the session as "being watched" (the manager then keeps renewing expired QR Codes). With ?autoConnect=1 and a number
+// that was never paired, a manager/admin also starts the connection by itself, so the QR Code appears without pressing anything.
+whatsappRoutes.get('/session', async (req, res, next) => {
+  try {
+    const tenantId = req.auth!.tenantId!;
+    const current = await prisma.whatsappSession.upsert({ where: { tenantId }, create: { tenantId }, update: { viewedAt: new Date() } });
+    const canManage = MANAGEMENT_ROLES.includes(req.auth!.role);
+    if (req.query.autoConnect === '1' && canManage && !current.phone && current.desired !== 'CONNECTED' && current.desired !== 'RENEW') {
+      await prisma.whatsappSession.update({ where: { tenantId }, data: { desired: 'CONNECTED', status: 'CONNECTING', qr: null, lastError: null, viewedAt: new Date() } });
+      await prisma.auditLog.create({ data: { tenantId, actorUserId: req.auth!.userId, action: 'WHATSAPP_SESSION_CONNECT', entityType: 'WhatsappSession', entityId: tenantId, metadata: { auto: true } } });
+    }
+    return res.json(await sessionView(tenantId));
+  } catch (error) { return next(error); }
+});
+// "Renovar": restarts the connection (a fresh QR Code when the number is not paired). Works while connecting, waiting for the scan or after an error.
+whatsappRoutes.post('/session/renew', manage, async (req, res, next) => {
+  try {
+    const tenantId = req.auth!.tenantId!;
+    await prisma.whatsappSession.upsert({ where: { tenantId }, create: { tenantId, desired: 'RENEW', status: 'CONNECTING' }, update: { desired: 'RENEW', status: 'CONNECTING', qr: null, lastError: null, viewedAt: new Date() } });
+    await prisma.auditLog.create({ data: { tenantId, actorUserId: req.auth!.userId, action: 'WHATSAPP_SESSION_RENEW', entityType: 'WhatsappSession', entityId: tenantId } });
+    return res.status(202).json(await sessionView(tenantId));
+  } catch (error) { return next(error); }
+});
 whatsappRoutes.post('/session/connect', manage, async (req, res, next) => {
   try {
     const tenantId = req.auth!.tenantId!;

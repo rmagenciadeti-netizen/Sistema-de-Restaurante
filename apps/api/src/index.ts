@@ -1,6 +1,7 @@
 import './lib/env';
 import { assertProductionEnv } from './lib/env-check';
 import { ensureModuleCatalogOnce } from './lib/module-catalog';
+import { startAiConfigRefresh } from './lib/ai-provider';
 import express from 'express';
 import cors from 'cors';
 import helmet from 'helmet';
@@ -8,7 +9,7 @@ import { rateLimit } from 'express-rate-limit';
 import { sessionRateKey } from './middleware/auth';
 import { authRoutes } from './routes/auth';
 import { prisma } from './lib/prisma';
-import { WhatsappSessionManager, whatsappSessionsMode } from './lib/whatsapp-sessions';
+import { WhatsappSessionManager, runsInApi } from './lib/whatsapp-sessions';
 import { scaleRoutes } from './routes/scale';
 import { migrationRoutes } from './routes/migrations';
 import { promotionRoutes } from './routes/promotions';
@@ -57,6 +58,7 @@ import { notificationRoutes } from './routes/notifications';
 import { commissionRoutes } from './routes/commissions';
 import { networkRoutes } from './routes/network';
 import { guideRoutes } from './routes/guide';
+import { platformAiRoutes } from './routes/platform-ai';
 import { bankReconciliationRoutes } from './routes/bank-reconciliation';
 import { publicRoutes } from './routes/public';
 import { customerRoutes } from './routes/customers';
@@ -149,6 +151,7 @@ app.use('/api/v1/notifications', notificationRoutes);
 app.use('/api/v1/commissions', commissionRoutes);
 app.use('/api/v1/network', networkRoutes);
 app.use('/api/v1/guide', guideRoutes);
+app.use('/api/v1/platform/ai', platformAiRoutes);
 app.use('/api/v1/bank-reconciliation', bankReconciliationRoutes);
 app.use('/api/v1/public/leads', leadPublicRoutes);
 app.use('/api/v1/public/store', storeRoutes);
@@ -196,9 +199,10 @@ if (require.main === module) {
   assertProductionEnv();
   const port = Number(process.env.PORT || 4000);
   const server = app.listen(port, () => console.log(`RM Restaurant API listening on port ${port}`));
+  startAiConfigRefresh(prisma);
   ensureModuleCatalogOnce().then(created => { if (created) console.log(`module catalog: ${created} module(s) added automatically`); }).catch(error => console.error('module catalog sync failed:', error instanceof Error ? error.message : error));
   // In 'api' mode (default outside production) this process also owns the WhatsApp Web sessions and releases scheduled orders.
-  if (whatsappSessionsMode() === 'api') {
+  if (runsInApi()) {
     const manager = new WhatsappSessionManager(prisma);
     manager.start().catch(error => console.error('WhatsApp session manager not started:', error instanceof Error ? error.message : error));
     server.on('close', () => { void manager.stop(); });
