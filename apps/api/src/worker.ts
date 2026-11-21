@@ -4,18 +4,17 @@ import { prisma } from './lib/prisma';
 import { assertWorkerEnv } from './lib/env-check';
 import { emailProviders } from './lib/providers';
 import { smtpEmailProviderFromEnv } from './lib/smtp-email';
-import { processWhatsappOutbox } from './lib/whatsapp-worker';
 import { whatsappProviderFromEnv } from './lib/whatsapp-cloud';
-import { releaseDueOrders } from './lib/scheduling';
 import { WhatsappSessionManager, runsInWorker, whatsappSessionsMode } from './lib/whatsapp-sessions';
-import { runAutomationsForAllTenants } from './lib/automations';
 import { startAiConfigRefresh } from './lib/ai-provider';
-import { WorkerMonitor, describeError, writeHeartbeat, writeStopped, type TaskName } from './lib/worker-health';
+import { createWorkerRuntime } from './lib/worker-runtime';
+import { WorkerMonitor, describeError } from './lib/worker-health';
 
 // Run as a single process: `npm run start:worker --workspace apps/api` (compiled) or `npm run worker --workspace apps/api` (tsx).
 // Every cycle it releases scheduled orders that are due; every AUTOMATIONS_INTERVAL_MS it runs the automations of each active restaurant; it sends the
 // WhatsApp Cloud API outbox when that channel is configured, and keeps the WhatsApp Web (QR) sessions alive (leader election in the database, shared with the API).
 // Everything it does is counted by a WorkerMonitor and saved as a heartbeat (lib/worker-health.ts), served at GET /api/v1/health/worker.
+// The same loops can run inside the API process when the host has no separate worker (lib/worker-runtime.ts, "embedded" mode); a running dedicated worker always wins.
 const log = (message: string) => console.log(`[worker] ${message}`);
 const monitorRef: { current: WorkerMonitor | null } = { current: null };
 let stopping = false;
@@ -72,69 +71,15 @@ async function main() {
 
   const manager = runsInWorker(sessionsMode) ? new WhatsappSessionManager(prisma) : null;
   const stopAiRefresh = startAiConfigRefresh(prisma);
-
-  // Independent of the task loop, so a long task never makes a healthy worker look dead. Failing to save it never stops the work itself.
-  let beating = false; let beatFailures = 0;
-  const beat = async () => {
-    if (beating) return;
-    beating = true; monitor.whatsapp.leader = manager?.isLeader() ?? false;
-    try {
-      await writeHeartbeat(prisma, monitor);
-      if (beatFailures > 0) log(`heartbeat saved again after ${beatFailures} failure(s)`);
-      beatFailures = 0;
-    } catch (error) {
-      monitor.heartbeatFailures += 1; beatFailures += 1;
-      if (beatFailures === 1 || beatFailures % 30 === 0) console.error(`[worker] heartbeat could not be saved (is the latest database migration applied?): ${describeError(error)}`);
-    } finally { beating = false; }
-  };
-  await beat();
-  const beatTimer = setInterval(() => void beat(), beatMs);
+  const runtime = createWorkerRuntime({ prisma, monitor, manager, cloud, intervalMs, automationsEveryMs, summaryEveryMs, beatMs, log });
+  await runtime.start();
   void manager?.start().catch(error => console.error(`[worker] WhatsApp session manager not started: ${describeError(error)}`));
 
-  // A failing task is recorded and retried next cycle; one task never blocks the others. Repeated identical failures are logged sparingly.
-  const task = async (name: TaskName, run: () => Promise<number>) => {
-    try {
-      const recovered = monitor.success(name, await run());
-      if (recovered > 0) log(`${name} recovered after ${recovered} failed run(s)`);
-    } catch (error) {
-      const streak = monitor.failure(name, error);
-      if (streak === 1 || streak % 30 === 0) console.error(`[worker] ${name} error (${streak} in a row):`, error);
-    }
-  };
+  while (!stopping) await sleep(60_000);
 
-  let lastAutomations = 0; let lastSummary = Date.now(); let automationsPass: Promise<void> = Promise.resolve(); let automationsRunning = false;
-  while (!stopping) {
-    monitor.cycles += 1;
-    await task('scheduling', async () => {
-      const released = await releaseDueOrders(prisma);
-      if (released) log(`scheduled orders released=${released}`);
-      return released;
-    });
-    // Runs beside the loop: with many restaurants the pass takes a while and must not delay the release of scheduled orders.
-    if (!automationsRunning && Date.now() - lastAutomations >= automationsEveryMs) {
-      lastAutomations = Date.now(); automationsRunning = true;
-      automationsPass = task('automations', async () => {
-        const created = await runAutomationsForAllTenants(prisma);
-        if (created) log(`automation notifications created=${created}`);
-        return created;
-      }).finally(() => { automationsRunning = false; });
-    }
-    if (cloud) {
-      await task('outbox', async () => {
-        const qrTenants = (await prisma.whatsappSession.findMany({ where: { desired: 'CONNECTED' }, select: { tenantId: true } })).map(row => row.tenantId);
-        const result = await processWhatsappOutbox(prisma, cloud, 20, { excludeTenantIds: qrTenants });
-        if (result.sent || result.failed) log(`outbox: sent=${result.sent} failed=${result.failed}`);
-        return result.sent + result.failed;
-      });
-    }
-    if (Date.now() - lastSummary >= summaryEveryMs) { lastSummary = Date.now(); log(monitor.summary()); }
-    await sleep(intervalMs);
-  }
-
-  clearInterval(beatTimer); stopAiRefresh();
-  await Promise.race([automationsPass, new Promise(resolve => setTimeout(resolve, 8_000))]);
+  stopAiRefresh();
+  await runtime.stop();
   await manager?.stop().catch(error => console.error(`[worker] WhatsApp session manager did not stop cleanly: ${describeError(error)}`));
-  await writeStopped(prisma, monitor).catch(() => undefined);
   await prisma.$disconnect();
   log(`stopped. ${monitor.summary()}`);
 }
