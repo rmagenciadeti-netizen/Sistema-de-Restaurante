@@ -133,6 +133,11 @@ test('classic conversation: free subject changes, several questions at once, res
     await say(eva, 'reservar'); assert.match(joined(await say(eva, '2')), /^(?!.*Faça seu pedido)[\s\S]*(Anotei|dia e horário)/, 'while asked, a number is the party size');
     assert.match(joined(await say(eva, 'cancelar')), /não vou registrar essa reserva/);
     assert.equal((await reservations(eva)).length, 0);
+    // Giving up and asking something else in the same message: the draft is dropped and the question is answered (nothing is lost).
+    await say(eva, 'quero reservar uma mesa');
+    const both = joined(await say(eva, 'não, quero ver o cardápio'));
+    assert.match(both, /não vou registrar essa reserva/); assert.match(both, /Cardápio Cantina Livre/);
+    assert.doesNotMatch(joined(await say(eva, '2')), /Para quantas pessoas|Anotei/, 'the draft really is gone');
   });
 
   await t.test('5. impossible, past or closed times are explained and the customer keeps going', async () => {

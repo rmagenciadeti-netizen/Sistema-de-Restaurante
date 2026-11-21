@@ -140,7 +140,7 @@ export async function respond(db: Db, env: BotEnv, input: BotInput, options: Bot
   const tz = env.settings.hours.timezone;
   const name = input.name?.split(' ')[0] ?? null;
   const state = freshState(input.state, now);
-  const flow = state.step;
+  let flow = state.step;
   const closedNote = !env.open && env.settings.whatsapp.replyOutsideHours && env.templates('out_of_hours').enabled && env.settings.whatsapp.autoMessagesEnabled
     ? renderTemplate(env.templates('out_of_hours').body, { restaurante: env.restaurant, horario: hoursText(env) }) : null;
   const handoffText = () => renderTemplate(env.templates('handoff').body, { nome: name ?? 'cliente', restaurante: env.restaurant });
@@ -185,7 +185,15 @@ export async function respond(db: Db, env: BotEnv, input: BotInput, options: Bot
   let progressed = false; let flowText: string | null = null; let finished = false; let understood = false;
   const carriesData = Boolean(flow) && (parsePeople(c, false) !== null || Boolean(extractWhen(text).day || extractWhen(text).time));
   const stop = Boolean(flow) && (wantsToStop(c) || (isNo(c) && !carriesData));
-  if (stop) return done(['reserve_cancel'], ['Tudo bem, não vou registrar essa reserva. 👍 Posso ajudar em algo mais?', menuText(env)], { menu: true });
+  // "não, quero ver o cardápio": the booking is dropped AND what was asked is answered, in the same message.
+  const answerable = topics.some(topic => !['thanks', 'reserve', 'cancel_existing', 'handoff'].includes(topic));
+  let cancelledNote: string | null = null;
+  if (stop && !answerable) return done(['reserve_cancel'], ['Tudo bem, não vou registrar essa reserva. 👍 Posso ajudar em algo mais?', menuText(env)], { menu: true });
+  if (stop) {
+    cancelledNote = 'Tudo bem, não vou registrar essa reserva. 👍';
+    for (const field of ['step', 'people', 'day', 'time', 'at', 'nudges', 'paused'] as const) delete next[field];
+    draft.people = undefined; draft.day = undefined; draft.time = undefined; draft.at = undefined; flow = undefined;
+  }
 
   const startsReservation = !flow && topics.includes('reserve');
   if (flow || startsReservation) {
@@ -264,6 +272,7 @@ export async function respond(db: Db, env: BotEnv, input: BotInput, options: Bot
     }
   }
   for (const answer of answers.sort((a, b) => a.at - b.at)) { blocks.push(answer.text); intents.push(answer.intent); }
+  if (cancelledNote) blocks.unshift(cancelledNote);
 
   // ---- greeting ----
   let greeted = false; let menuShown = false;
