@@ -1,6 +1,6 @@
 import { ReservationStatus } from '@prisma/client';
 import { z } from 'zod';
-import { findFreeTable, RESERVATION_WINDOW_MS, ACTIVE_RESERVATION_STATUSES, unitHasTables } from '../../reservations';
+import { findFreeTable, openingHoursCheck, RESERVATION_WINDOW_MS, ACTIVE_RESERVATION_STATUSES, unitHasTables } from '../../reservations';
 import { localParts } from '../../scheduling';
 import { serializable } from '../../serializable';
 import { last8 } from '../../whatsapp-auto';
@@ -13,17 +13,7 @@ import { dateField, describeInstant, fail, needPhone, ok, timeField, toInstant, 
 const MIN_LEAD_MS = 30 * 60_000; const MAX_AHEAD_MS = 90 * 86_400_000;
 type Instant = ReturnType<typeof describeInstant>;
 
-// Is the restaurant open at this local day/time? (Only the weekly schedule mode restricts reservations.)
-function withinHours(ctx: ToolContext, at: Date): { ok: true } | { ok: false; code: 'CLOSED' | 'OUTSIDE_HOURS'; message: string } {
-  const { hours } = ctx.env.settings;
-  if (hours.mode === 'CLOSED') return { ok: false, code: 'CLOSED', message: 'O restaurante está temporariamente fechado e não está aceitando reservas agora.' };
-  if (hours.mode === 'OPEN') return { ok: true };
-  const p = localParts(at, hours.timezone);
-  const slots = hours.weekly.filter(slot => slot.day === p.weekday);
-  const mins = (v: string) => Number(v.slice(0, 2)) * 60 + Number(v.slice(3, 5));
-  if (slots.some(slot => p.minutes >= mins(slot.start) && p.minutes <= mins(slot.end))) return { ok: true };
-  return { ok: false, code: 'OUTSIDE_HOURS', message: slots.length ? `Nesse dia (${WEEKDAYS[p.weekday]}) o restaurante funciona ${slots.map(slot => `das ${slot.start} às ${slot.end}`).join(' e ')}.` : `O restaurante não abre ${WEEKDAYS[p.weekday]}.` };
-}
+const withinHours = (ctx: ToolContext, at: Date) => openingHoursCheck(ctx.env.settings.hours, at);
 
 export type SlotResult =
   | { ok: true; at: Date; table: { id: string; label: string; seats: number } | null; needsStaff: boolean }

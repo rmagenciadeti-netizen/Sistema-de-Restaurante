@@ -1,21 +1,18 @@
 import { DiscountType, OrderStatus, Prisma, PrismaClient } from '@prisma/client';
 import { autoMessageDef, renderTemplate } from './whatsapp-messages';
-import { chunkMessage, distinctiveWords, formatLocal, hasAny, matchScore, normalizeText, parseWhen, samePhone } from './whatsapp-text';
+import { distinctiveWords, formatLocal, matchScore, normalizeText, samePhone } from './whatsapp-text';
 import { isStoreOpen } from './scheduling';
 import { hiddenCategoryIds } from './menu-visibility';
 import { effectiveUnitPrice, type ActivePromotion } from './promotions';
 import { loadSettings, type TenantSettingsData } from './settings';
 import { callModel } from './ai/gateway';
 import { currentAiProvider } from './ai-provider';
+import { ACTIVE_RESERVATION_STATUSES } from './reservations';
+import { weekdaysIn } from './whatsapp-intents';
 
 type Db = PrismaClient | Prisma.TransactionClient;
 
-export type BotState = { step: 'RESERVE_PEOPLE' | 'RESERVE_WHEN' | 'RESERVE_CONFIRM'; people?: number; at?: string } | null;
-export type BotInput = { text: string; phone: string | null; name: string | null; state: BotState; firstContact?: boolean; greetDue?: boolean };
-export type BotResult = { replies: string[]; state: BotState; intent: string; handoff: boolean; optOut?: boolean; optIn?: boolean; greeted?: boolean };
-export type BotOptions = { dryRun?: boolean; now?: Date };
-
-const money = (value: Prisma.Decimal | number | string) => `R$ ${Number(value).toFixed(2).replace('.', ',')}`;
+export const money = (value: Prisma.Decimal | number | string) => `R$ ${Number(value).toFixed(2).replace('.', ',')}`;
 const DAYS = ['Domingo', 'Segunda', 'Terça', 'Quarta', 'Quinta', 'Sexta', 'Sábado'];
 const NUMBER_EMOJI = ['1️⃣', '2️⃣', '3️⃣', '4️⃣', '5️⃣', '6️⃣', '7️⃣', '8️⃣'];
 const MENU_ITEMS = ['Cardápio', 'Fazer pedido', 'Status do pedido', 'Horários e endereço', 'Entrega e taxas', 'Formas de pagamento', 'Reservas', 'Falar com atendente'];
@@ -61,9 +58,25 @@ export function hoursText(env: BotEnv): string {
   return `${env.open ? 'Estamos abertos agora. ✅' : 'Estamos fechados agora. 🔒'}\n*Horários de funcionamento*\n${lines.join('\n') || 'Horários ainda não informados.'}`;
 }
 
-type MenuData = { categories: { id: string | null; name: string; products: { id: string; name: string; description: string | null; price: Prisma.Decimal; promo: Prisma.Decimal | null; byWeight: boolean }[] }[]; flat: { name: string; description: string | null; price: Prisma.Decimal; promo: Prisma.Decimal | null; byWeight: boolean; category: string }[] };
+// "abre domingo?" is answered with that day only; any other question about hours gets the whole week.
+export function hoursInfo(env: BotEnv, canonicalText = ''): string {
+  const { hours } = env.settings;
+  const days = weekdaysIn(canonicalText);
+  if (hours.mode !== 'SCHEDULE' || days.length === 0) return hoursText(env);
+  const lines = days.map(day => {
+    const slots = hours.weekly.filter(slot => slot.day === day).sort((a, b) => a.start.localeCompare(b.start));
+    return `• ${DAYS[day]}: ${slots.length ? slots.map(slot => `${slot.start} às ${slot.end}`).join(' e ') : 'fechado'}`;
+  });
+  return `${env.open ? 'Estamos abertos agora. ✅' : 'Estamos fechados agora. 🔒'}\n*Horário*\n${lines.join('\n')}`;
+}
 
-async function loadMenu(db: Db, env: BotEnv, now: Date): Promise<MenuData> {
+export type MenuData = {
+  categories: { id: string | null; name: string; products: { id: string; name: string; description: string | null; price: Prisma.Decimal; promo: Prisma.Decimal | null; byWeight: boolean }[] }[];
+  flat: { name: string; description: string | null; price: Prisma.Decimal; promo: Prisma.Decimal | null; byWeight: boolean; category: string }[];
+  promotions: { name: string; type: DiscountType; value: Prisma.Decimal; endsAt: Date | null }[];
+};
+
+export async function loadMenu(db: Db, env: BotEnv, now: Date): Promise<MenuData> {
   const [products, hidden, promoRows] = await Promise.all([
     db.product.findMany({ where: { tenantId: env.tenantId, active: true, localOnly: false, isComponent: false, ...(env.unitId ? { OR: [{ unitId: env.unitId }, { unitId: null }] } : {}) }, select: { id: true, name: true, description: true, price: true, soldByWeight: true, category: { select: { id: true, name: true } } }, orderBy: { name: 'asc' }, take: 400 }),
     hiddenCategoryIds(db, env.tenantId, now),
@@ -82,19 +95,19 @@ async function loadMenu(db: Db, env: BotEnv, now: Date): Promise<MenuData> {
     groups.set(key, group);
     flat.push({ name: product.name, description: product.description, price: product.price, promo, byWeight: product.soldByWeight, category: group.name });
   }
-  return { categories: [...groups.values()].sort((a, b) => a.name.localeCompare(b.name)), flat };
+  return { categories: [...groups.values()].sort((a, b) => a.name.localeCompare(b.name)), flat, promotions: promoRows.map(row => ({ name: row.name, type: row.type as DiscountType, value: row.value, endsAt: row.endsAt })) };
 }
 
-const priceLabel = (item: { price: Prisma.Decimal; promo: Prisma.Decimal | null; byWeight: boolean }) =>
+export const priceLabel = (item: { price: Prisma.Decimal; promo: Prisma.Decimal | null; byWeight: boolean }) =>
   `${item.promo ? `~${money(item.price)}~ *${money(item.promo)}*` : money(item.price)}${item.byWeight ? '/kg' : ''}`;
 
-const welcome = (env: BotEnv, name: string | null) => renderTemplate(env.templates('welcome').body, { nome: name ?? 'cliente', restaurante: env.restaurant, menu: menuText(env) });
+export const welcome = (env: BotEnv, name: string | null) => renderTemplate(env.templates('welcome').body, { nome: name ?? 'cliente', restaurante: env.restaurant, menu: menuText(env) });
 
 function orderStatusTitle(env: BotEnv, key: string, fallback: string): string {
   return env.settings.orderStatuses.items.find(item => item.key === key)?.title ?? fallback;
 }
 
-async function orderStatusReply(db: Db, env: BotEnv, text: string, phone: string | null, now: Date): Promise<string> {
+export async function orderStatusReply(db: Db, env: BotEnv, text: string, phone: string | null, now: Date): Promise<string> {
   if (!phone) return 'Não consegui identificar o seu número para localizar pedidos. Digite *atendente* e uma pessoa ajuda você. 🙋';
   const code = text.match(/\bp-[a-z0-9]{4,}\b/i)?.[0]?.toUpperCase();
   const number = text.match(/(?:#|pedido|numero|n[ºo°]?)\s*(\d{1,9})\b/i)?.[1] ?? text.match(/^\s*#?(\d{1,9})\s*$/)?.[1];
@@ -114,15 +127,32 @@ async function orderStatusReply(db: Db, env: BotEnv, text: string, phone: string
   return `📦 Pedido *${label}*\nStatus: *${title}*\nTotal: ${money(order.total)}${order.deliveryJob?.courierName && order.deliveryJob.status === 'PICKED_UP' ? `\nEntregador: ${order.deliveryJob.courierName}` : ''}`;
 }
 
-async function deliveryText(db: Db, env: BotEnv): Promise<string> {
+const squash = (value: string) => ` ${normalizeText(value).replace(/[#:/.,-]/g, ' ').replace(/\s+/g, ' ').trim()} `;
+
+// "taxa pro Jardim Norte" is answered with that zone; a general question lists every zone.
+const RESERVATION_STATUS_TEXT: Record<string, string> = { PENDING: 'aguardando a confirmação da equipe', CONFIRMED: 'confirmada ✅', SEATED: 'em atendimento' };
+
+// Reservations are only disclosed to the phone that made them (same rule as orders).
+export async function reservationStatusReply(db: Db, env: BotEnv, phone: string | null, now: Date): Promise<string> {
+  if (!phone) return 'Não consegui identificar o seu número para localizar reservas. Digite *atendente* e uma pessoa ajuda você. 🙋';
+  const rows = await db.reservation.findMany({ where: { tenantId: env.tenantId, phone: { endsWith: phone.replace(/\D/g, '').slice(-8) }, status: { in: ACTIVE_RESERVATION_STATUSES }, reservedAt: { gte: new Date(now.getTime() - 3 * 3_600_000) } }, orderBy: { reservedAt: 'asc' }, take: 10 });
+  const mine = rows.filter(row => samePhone(row.phone, phone)).slice(0, 3);
+  if (mine.length === 0) return 'Não encontrei reservas ativas neste número. Se você reservou com outro telefone, digite *atendente*. 🔎';
+  return `🪑 *Sua reserva*\n${mine.map(row => `• ${row.partySize} pessoa(s) em ${formatLocal(row.reservedAt, env.settings.hours.timezone)} — ${RESERVATION_STATUS_TEXT[row.status] ?? row.status}`).join('\n')}`;
+}
+
+export async function deliveryInfo(db: Db, env: BotEnv, canonicalText = ''): Promise<string> {
   const f = env.settings.fulfillment;
   const zones = await db.deliveryZone.findMany({ where: { tenantId: env.tenantId, active: true, ...(env.unitId ? { OR: [{ unitId: env.unitId }, { unitId: null }] } : {}) }, orderBy: { name: 'asc' }, take: 40 });
+  const asked = squash(canonicalText);
+  const named = zones.filter(zone => [zone.name, ...zone.neighborhoods].some(place => { const p = squash(place).trim(); return p.length >= 3 && asked.includes(` ${p} `); }));
+  const shown = named.length ? named : zones;
   const lines: string[] = [];
   if (!f.allowDelivery) lines.push('No momento não fazemos entregas.');
   else {
     lines.push('🛵 *Entrega*');
     if (f.deliveryFeeMode === 'SINGLE') lines.push(`Taxa única: ${money(f.singleFee)}`);
-    else if (zones.length) lines.push(...zones.map(zone => `• ${zone.name}: ${money(zone.fee)}${zone.minOrder ? ` (pedido mínimo ${money(zone.minOrder)})` : ''}`));
+    else if (zones.length) lines.push(...shown.map(zone => `• ${zone.name}: ${money(zone.fee)}${zone.minOrder ? ` (pedido mínimo ${money(zone.minOrder)})` : ''}`));
     else lines.push('A taxa depende do seu endereço.');
     if (f.minDelivery > 0) lines.push(`Pedido mínimo para entrega: ${money(f.minDelivery)}`);
     if (f.freeDeliveryMin > 0) lines.push(`Entrega grátis acima de ${money(f.freeDeliveryMin)}`);
@@ -132,28 +162,48 @@ async function deliveryText(db: Db, env: BotEnv): Promise<string> {
   return lines.join('\n');
 }
 
-async function paymentText(db: Db, env: BotEnv): Promise<string> {
+const PAYMENT_WORDS: { re: RegExp; equivalents: string[]; label: string }[] = [
+  { re: /\bpix\b/, equivalents: ['PIX'], label: 'PIX' },
+  { re: /\bdinheiro\b/, equivalents: ['CASH'], label: 'dinheiro' },
+  { re: /\bcredito\b/, equivalents: ['CREDIT_CARD'], label: 'cartão de crédito' },
+  { re: /\bdebito\b/, equivalents: ['DEBIT_CARD'], label: 'cartão de débito' },
+  { re: /\b(cartao|cartoes)\b/, equivalents: ['CREDIT_CARD', 'DEBIT_CARD'], label: 'cartão' },
+  { re: /\b(vale (refeicao|alimentacao)|ticket)\b/, equivalents: ['VOUCHER'], label: 'vale' },
+];
+
+// "aceitam pix?" gets a direct yes or no based on what the restaurant really has registered, followed by the full list.
+export const mentionsPaymentMethod = (canonicalText: string) => PAYMENT_WORDS.some(word => word.re.test(canonicalText));
+export async function paymentInfo(db: Db, env: BotEnv, canonicalText = ''): Promise<string> {
   const rows = await db.paymentMethodConfig.findMany({ where: { tenantId: env.tenantId, active: true }, orderBy: [{ sortOrder: 'asc' }, { name: 'asc' }] });
   const names = rows.length ? rows.map(row => row.name) : ['Dinheiro', 'PIX', 'Cartão de crédito', 'Cartão de débito', 'Vale'];
-  return `💳 *Formas de pagamento*\n${names.map(name => `• ${name}`).join('\n')}`;
+  const asked = PAYMENT_WORDS.find(word => word.re.test(canonicalText));
+  const direct = asked && rows.length ? (rows.some(row => asked.equivalents.includes(row.equivalent)) ? `Sim, aceitamos *${asked.label}*. ✅\n\n` : `No momento não aceitamos *${asked.label}*.\n\n`) : '';
+  return `${direct}💳 *Formas de pagamento*\n${names.map(name => `• ${name}`).join('\n')}`;
 }
 
-async function knowledgeMatch(db: Db, tenantId: string, text: string) {
+export function promoInfo(env: BotEnv, menu: MenuData): string {
+  const items = menu.flat.filter(item => item.promo);
+  if (items.length === 0) return `🏷️ No momento não temos promoções ativas por aqui.${menu.flat.length ? ' Quer ver o *cardápio*?' : ''}`;
+  return `🏷️ *Promoções de hoje*\n${items.slice(0, 15).map(item => `• *${item.name}* — ${priceLabel(item)}`).join('\n')}${env.storeUrl ? `\n\n🛒 Peça em: ${env.storeUrl}` : ''}`;
+}
+
+// Every active entry the message touches, best first. `hits` are the keywords that matched, so the built-in answers they replace are not repeated.
+export async function knowledgeMatches(db: Db, tenantId: string, text: string, max = 3) {
   const entries = await db.whatsappKnowledge.findMany({ where: { tenantId, active: true }, take: 300 });
-  const padded = ` ${normalizeText(text).replace(/[#:/.,-]/g, ' ')} `;
-  let best: { entry: typeof entries[number]; score: number } | null = null;
+  const padded = squash(text);
+  const found: { entry: typeof entries[number]; score: number; hits: string[] }[] = [];
   for (const entry of entries) {
-    let score = 0;
+    let score = 0; const hits: string[] = [];
     for (const keyword of entry.keywords) {
       const k = normalizeText(keyword).replace(/[#:/.,-]/g, ' ').trim();
-      if (k && (padded.includes(` ${k} `) || (k.length >= 5 && padded.includes(k)))) score += 1 + k.split(' ').length * 0.5;
+      if (k && (padded.includes(` ${k} `) || (k.length >= 5 && padded.includes(k)))) { score += 1 + k.split(' ').length * 0.5; hits.push(k); }
     }
-    if (score > 0 && (!best || score > best.score)) best = { entry, score };
+    if (score > 0) found.push({ entry, score, hits });
   }
-  return best?.entry ?? null;
+  return found.sort((a, b) => b.score - a.score).slice(0, max);
 }
 
-async function aiAnswer(db: Db, env: BotEnv, question: string, menu: MenuData): Promise<string | null> {
+export async function aiAnswer(db: Db, env: BotEnv, question: string, menu: MenuData): Promise<string | null> {
   if (!currentAiProvider()) return null;
   const knowledge = await db.whatsappKnowledge.findMany({ where: { tenantId: env.tenantId, active: true }, take: 60 });
   const system = [
@@ -170,123 +220,8 @@ async function aiAnswer(db: Db, env: BotEnv, question: string, menu: MenuData): 
   return result.ok ? result.text : null;
 }
 
-async function recordUnanswered(db: Db, tenantId: string, text: string, now: Date) {
+export async function recordUnanswered(db: Db, tenantId: string, text: string, now: Date) {
   const key = normalizeText(text).slice(0, 200);
   if (key.length < 3) return;
   await db.whatsappUnanswered.upsert({ where: { tenantId_text: { tenantId, text: key } }, create: { tenantId, text: key, lastAskedAt: now }, update: { count: { increment: 1 }, lastAskedAt: now } });
-}
-
-const GREETING_TOKENS = new Set(['oi', 'ola', 'oie', 'eae', 'hey', 'hello', 'bom', 'boa', 'dia', 'tarde', 'noite', 'tudo', 'bem', 'td', 'menu', 'inicio', 'opcoes', 'ajuda', 'ai', 'ae', 'galera', 'pessoal', 'gente', 'tudo bem']);
-// A greeting counts as "just a greeting" only when nothing else is asked, so "oi, qual o cardápio?" is answered as a question.
-const isGreetingOnly = (normalized: string) => normalized.replace(/[#:/.,-]/g, ' ').split(' ').filter(Boolean).every(word => GREETING_TOKENS.has(word));
-const RESERVE_WORDS = ['reserva', 'reservar', 'reservas', 'agendar mesa'];
-const HANDOFF_WORDS = ['atendente', 'humano', 'gerente', 'responsavel', 'falar com alguem', 'falar com uma pessoa', 'falar com pessoa', 'reclamacao', 'reclamar'];
-
-// Decides the reply to one customer message using real tenant data. With `dryRun` nothing is written (used by the simulator).
-export async function respond(db: Db, env: BotEnv, input: BotInput, options: BotOptions = {}): Promise<BotResult> {
-  const now = options.now ?? new Date();
-  const text = input.text.trim().slice(0, 1000);
-  const normalized = normalizeText(text);
-  const result = (intent: string, replies: string[], state: BotState = null, extra: Partial<BotResult> = {}): BotResult => ({ replies: replies.flatMap(reply => chunkMessage(reply)), state, intent, handoff: false, ...extra });
-  const name = input.name?.split(' ')[0] ?? null;
-  const closedNote = !env.open && env.settings.whatsapp.replyOutsideHours && env.templates('out_of_hours').enabled && env.settings.whatsapp.autoMessagesEnabled
-    ? renderTemplate(env.templates('out_of_hours').body, { restaurante: env.restaurant, horario: hoursText(env) }) : null;
-
-  if (!input.state && hasAny(normalized, ['parar', 'sair', 'stop', 'cancelar mensagens', 'nao quero receber'])) return result('opt_out', ['Tudo bem! Você não receberá mais mensagens automáticas. Para voltar a receber, envie *voltar*.'], null, { optOut: true });
-  if (/^(voltar|iniciar|retomar)$/.test(normalized)) return result('opt_in', ['Pronto! Voltaremos a enviar avisos dos seus pedidos. 😊', menuText(env)], null, { optIn: true });
-
-  // Guided reservation flow keeps its own state until finished or cancelled.
-  if (input.state) {
-    if (/^(cancelar|sair|menu|voltar|desistir)/.test(normalized)) return result('reserve_cancel', ['Reserva cancelada. Posso ajudar em algo mais?', menuText(env)]);
-    if (input.state.step === 'RESERVE_PEOPLE') {
-      const people = Number(normalized.match(/\d{1,3}/)?.[0]);
-      if (!people || people < 1) return result('reserve', ['Para quantas pessoas? Responda só com o número (ex.: 4).'], input.state);
-      if (people > 20) return result('handoff', ['Para grupos acima de 20 pessoas um atendente precisa ajudar. Já estou chamando! 🙋'], null, { handoff: true });
-      return result('reserve', ['Perfeito! Para qual dia e horário? (ex.: *25/12 20:00*, *amanhã 19h30* ou *sábado 21h*)'], { step: 'RESERVE_WHEN', people });
-    }
-    if (input.state.step === 'RESERVE_WHEN') {
-      const parsed = parseWhen(text, env.settings.hours.timezone, now);
-      if ('error' in parsed) {
-        const hint = { NO_TIME: 'Não entendi o horário.', NO_DATE: 'Não entendi o dia.', INVALID: 'Data ou horário inválido.', PAST: 'Esse horário já passou ou é muito próximo (mínimo 30 minutos).', TOO_FAR: 'Só aceitamos reservas para os próximos 90 dias.' }[parsed.error];
-        return result('reserve', [`${hint} Envie no formato *dia/mês hora:minuto*, por exemplo *25/12 20:00*.`], input.state);
-      }
-      return result('reserve', [`Confirma a reserva para *${input.state.people} pessoa(s)* em *${formatLocal(parsed.at, env.settings.hours.timezone)}*?\nResponda *sim* para confirmar ou *cancelar*.`], { step: 'RESERVE_CONFIRM', people: input.state.people, at: parsed.at.toISOString() });
-    }
-    if (input.state.step === 'RESERVE_CONFIRM') {
-      if (!/^(s|sim|confirmo|confirmar|ok|isso|pode|claro)\b/.test(normalized)) return result('reserve', ['Responda *sim* para confirmar ou *cancelar* para desistir.'], input.state);
-      if (!env.unitId || !input.state.at || !input.state.people) return result('handoff', ['Não consegui registrar sua reserva automaticamente. Já chamei um atendente. 🙋'], null, { handoff: true });
-      if (!options.dryRun) await db.reservation.create({ data: { tenantId: env.tenantId, unitId: env.unitId, customerName: input.name ?? 'Cliente WhatsApp', phone: input.phone, partySize: input.state.people, reservedAt: new Date(input.state.at), notes: 'Solicitada pelo WhatsApp' } });
-      return result('reserve_done', [`✅ Pedido de reserva recebido para ${input.state.people} pessoa(s) em ${formatLocal(new Date(input.state.at), env.settings.hours.timezone)}. Você receberá a confirmação por aqui assim que a equipe validar.${options.dryRun ? '\n(simulação: nenhuma reserva foi criada)' : ''}`]);
-    }
-  }
-
-  if (hasAny(normalized, HANDOFF_WORDS) || normalized === '8') {
-    return result('handoff', [renderTemplate(env.templates('handoff').body, { nome: name ?? 'cliente', restaurante: env.restaurant })], null, { handoff: true });
-  }
-
-  const greeting = isGreetingOnly(normalized);
-  if (input.greetDue && greeting) {
-    const replies: string[] = [];
-    if (env.settings.whatsapp.autoMessagesEnabled && env.templates('welcome').enabled) replies.push(welcome(env, name));
-    else replies.push(menuText(env));
-    if (closedNote) replies.push(closedNote);
-    return result('welcome', replies, null, { greeted: true });
-  }
-  if (greeting) return result('menu', [`Como posso ajudar, ${name ?? 'cliente'}?\n${menuText(env)}`], null, { greeted: true });
-
-  const custom = await knowledgeMatch(db, env.tenantId, text);
-  if (custom) {
-    if (!options.dryRun) await db.whatsappKnowledge.update({ where: { id: custom.id }, data: { hits: { increment: 1 } } });
-    return result('knowledge', [custom.answer]);
-  }
-
-  if (hasAny(normalized, ['obrigado', 'obrigada', 'valeu', 'agradeco', 'brigado']) && normalized.split(' ').length <= 5) return result('thanks', [`Por nada! Qualquer dúvida é só chamar. 💛`]);
-
-  const orderLookup = /\b(status|acompanhar|andamento|cade|onde esta|ja saiu|demora|chegou)\b/.test(normalized) || /\bmeu pedido\b/.test(normalized) || normalized === '3' || /\bp-[a-z0-9]{4,}\b/.test(normalized) || /^#\d+$/.test(normalized) || /\bpedido\s*#?\d+\b/.test(normalized);
-  if (orderLookup) return result('order_status', [await orderStatusReply(db, env, text, input.phone, now)]);
-
-  if (hasAny(normalized, RESERVE_WORDS) || normalized === '7') return result('reserve', [`🪑 Vamos reservar! Para quantas pessoas?`], { step: 'RESERVE_PEOPLE' });
-
-  if (/\b(fazer|fazendo|realizar|efetuar)\b.*\bpedido\b/.test(normalized) || hasAny(normalized, ['fazer pedido', 'quero pedir', 'pedir', 'pedido online', 'link', 'site', 'loja virtual', 'cardapio digital', 'encomendar']) || normalized === '2') {
-    return result('order_link', [env.storeUrl ? `🛒 Faça seu pedido online por aqui:\n${env.storeUrl}\n\nSe preferir, me diga o que deseja e chamo um atendente.` : 'Para fazer seu pedido, digite *atendente* e vamos anotar por aqui. 🙋']);
-  }
-
-  if (hasAny(normalized, ['endereco', 'onde fica', 'localizacao', 'como chegar', 'onde voces ficam', 'mapa'])) return result('address', [env.address ? `📍 *Endereço*\n${env.address}${env.settings.company.phone ? `\n📞 ${env.settings.company.phone}` : ''}` : 'Ainda não temos o endereço cadastrado por aqui. Digite *atendente* que informamos. 🙋']);
-  if (hasAny(normalized, ['horario', 'horarios', 'abre', 'fecha', 'funcionamento', 'funciona', 'aberto', 'aberta', 'abertos', 'ate que horas', 'abrem', 'fecham']) || normalized === '4') {
-    return result('hours', [[hoursText(env), env.address ? `📍 ${env.address}` : ''].filter(Boolean).join('\n\n')]);
-  }
-  if (hasAny(normalized, ['entrega', 'entregam', 'delivery', 'taxa', 'frete', 'entregador', 'retirada', 'retirar']) || normalized === '5') return result('delivery', [await deliveryText(db, env)]);
-  if (hasAny(normalized, ['pagamento', 'pagar', 'pix', 'cartao', 'dinheiro', 'aceita', 'aceitam', 'credito', 'debito']) || normalized === '6') return result('payment', [await paymentText(db, env)]);
-
-  const menu = await loadMenu(db, env, now);
-  const wantsMenu = hasAny(normalized, ['cardapio', 'o que tem', 'que tem', 'opcoes de comida', 'pratos', 'lanches', 'categorias', 'o que voces tem', 'carta']) || normalized === '1';
-  const categoryHit = menu.categories.find(category => normalizeText(category.name).length >= 3 && matchScore(text, category.name) >= 1.5 && distinctiveWords(text).length <= 3);
-  if (categoryHit && !wantsMenu) {
-    const lines = categoryHit.products.map(item => `• *${item.name}* — ${priceLabel(item)}${item.description ? `\n  _${item.description.slice(0, 90)}_` : ''}`);
-    return result('category', [`🍽️ *${categoryHit.name}*\n${lines.join('\n')}${env.storeUrl ? `\n\nPeça em: ${env.storeUrl}` : ''}`]);
-  }
-  if (wantsMenu) {
-    if (menu.categories.length === 0) return result('menu_items', ['Ainda não temos itens cadastrados no cardápio por aqui. Digite *atendente*. 🙋']);
-    const blocks = menu.categories.map(category => `*${category.name}*\n${category.products.map(item => `• ${item.name} — ${priceLabel(item)}`).join('\n')}`);
-    return result('menu_items', [`📋 *Cardápio ${env.restaurant}*\n\n${blocks.join('\n\n')}${env.storeUrl ? `\n\n🛒 Peça online: ${env.storeUrl}` : ''}`]);
-  }
-
-  const scored = menu.flat.map(item => ({ item, score: matchScore(text, item.name) })).filter(entry => entry.score >= 1).sort((a, b) => b.score - a.score);
-  if (scored.length > 0 && (distinctiveWords(text).length > 0)) {
-    const top = scored.filter(entry => entry.score >= scored[0].score - 0.01).slice(0, 5);
-    const lines = top.map(({ item }) => `• *${item.name}* — ${priceLabel(item)}${item.description ? `\n  _${item.description.slice(0, 120)}_` : ''}`);
-    return result('product', [`${top.length === 1 ? 'Sim, temos!' : 'Encontrei estas opções:'}\n${lines.join('\n')}${env.storeUrl ? `\n\n🛒 ${env.storeUrl}` : ''}`]);
-  }
-
-  if (env.settings.whatsapp.aiFallback) {
-    const answer = await aiAnswer(db, env, text, menu);
-    if (answer) {
-      const handoff = answer.includes('[ATENDENTE]');
-      const clean = answer.replace(/\[ATENDENTE\]/g, '').trim();
-      return result('ai', [clean || renderTemplate(env.templates('handoff').body, { nome: name ?? 'cliente', restaurante: env.restaurant })], null, { handoff });
-    }
-  }
-
-  if (!options.dryRun) await recordUnanswered(db, env.tenantId, text, now);
-  return result('fallback', [renderTemplate(env.templates('fallback').body, { nome: name ?? 'cliente', menu: menuText(env) })]);
 }
