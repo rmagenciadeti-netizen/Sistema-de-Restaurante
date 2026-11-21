@@ -114,7 +114,8 @@ app.use('/api/v1/public', rateLimit({ windowMs: 15 * 60 * 1000, limit: 1000, sta
 app.use('/api/v1/payments/webhook', express.raw({ type: () => true, limit: '256kb' }), paymentWebhookRoutes);
 app.use(express.json({ limit: '1mb' }));
 registerProviders();
-app.get('/api/v1/health', (_req, res) => res.json({ status: 'ok', service: 'rm-restaurant-api', version: '1.0.0' }));
+// `commit` lets a deploy be proven from outside: it is the release the Render instance is actually running.
+app.get('/api/v1/health', (_req, res) => res.json({ status: 'ok', service: 'rm-restaurant-api', version: '1.0.0', commit: process.env.RENDER_GIT_COMMIT?.slice(0, 7) ?? null }));
 // Tells a worker that is really processing (fresh heartbeat, every task succeeding) from one that is merely "Live" on the host: 200 only when it is up.
 // Kept apart from the health check above, which the host uses to restart the API and must not depend on the worker or the database.
 app.get('/api/v1/health/worker', async (_req, res) => {
