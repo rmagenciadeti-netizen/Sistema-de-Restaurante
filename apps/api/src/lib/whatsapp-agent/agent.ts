@@ -8,7 +8,7 @@ import type { BotEnv } from '../whatsapp-bot';
 import { chunkMessage, matchScore, normalizeText } from '../whatsapp-text';
 import { pruneMemory, type AgentMemory } from './memory';
 import { buildSystemPrompt } from './prompt';
-import { cleanReply, receiptFor, unbackedClaims, type Executed } from './safety';
+import { cleanReply, collectAmounts, receiptFor, repeatsLastReply, unbackedAmounts, unbackedClaims, type Executed } from './safety';
 import { fail } from './tools/common';
 import { toolsFor, toSpec } from './tools';
 import type { ToolContext, ToolKind, ToolOutput } from './types';
@@ -68,9 +68,19 @@ export async function runAgentTurn(args: AgentTurnArgs): Promise<AgentTurnResult
 
   const messages: ChatMessage[] = [...args.history];
   let handoff: { reason: string; summary: string } | null = null; let optOut: boolean | undefined;
-  let totalCalls = 0; let corrected = false; let emptyRetries = 0; let finalText: string | null = null; let model: string | null = null; let steps = 0;
+  let totalCalls = 0; const corrected = { claims: false, amounts: false, repeated: false }; let emptyRetries = 0; let finalText: string | null = null; let model: string | null = null; let steps = 0;
   let failure: { code: string; reason: string } | null = null;
   const deadline = Date.now() + TURN_BUDGET_MS;
+
+  // Money the attendant may state: what the restaurant data in the prompt says, what was said in this conversation and what the tools return during this turn.
+  const moneyPool = new Set<number>();
+  collectAmounts(system, moneyPool);
+  for (const message of args.history) collectAmounts(message.role === 'assistant' || message.role === 'user' ? message.content : null, moneyPool);
+  collectAmounts(args.text, moneyPool);
+  // Last thing said to the customer and what it answered, to notice a reply that merely repeats it.
+  const lastAssistant = args.history.map((message, index) => ({ message, index })).filter(item => item.message.role === 'assistant' && typeof item.message.content === 'string').at(-1);
+  const lastReply = lastAssistant?.message.role === 'assistant' ? lastAssistant.message.content ?? undefined : undefined;
+  const lastQuestion = lastAssistant ? args.history.slice(0, lastAssistant.index).reverse().find(message => message.role === 'user') : undefined;
 
   async function runTool(call: ToolCall): Promise<ToolOutput> {
     const started = Date.now();
@@ -97,6 +107,7 @@ export async function runAgentTurn(args: AgentTurnArgs): Promise<AgentTurnResult
       }
     }
     const result = out;
+    collectAmounts(result.data, moneyPool); collectAmounts(result.summary, moneyPool);
     if (tool && tool.kind !== 'READ' && !args.dryRun && !result.duplicate) await persist();
     if (result.handoff) handoff = result.handoff;
     if (result.optOut !== undefined) optOut = result.optOut;
@@ -129,15 +140,26 @@ export async function runAgentTurn(args: AgentTurnArgs): Promise<AgentTurnResult
     // An order or reservation made earlier in this conversation (and remembered) is real: talking about it again is not an invention.
     const recent = (stamp: string | undefined) => Boolean(stamp && now.getTime() - Date.parse(stamp) < 24 * 3_600_000);
     const claims = unbackedClaims(text, executed, { order: recent(memory.order.lastOrderAt), reservation: Boolean(memory.reservation.lastReservationId) });
-    if (claims.length === 0) { finalText = text; break; }
-    if (!corrected) {
-      corrected = true;
+    const amounts = unbackedAmounts(text, moneyPool);
+    const repeated = repeatsLastReply(text, lastReply, args.text, lastQuestion?.content);
+    if (claims.length === 0 && amounts.length === 0 && !repeated) { finalText = text; break; }
+    // Each kind of mistake gets one chance to be fixed by the model.
+    const fresh = { claims: claims.length > 0 && !corrected.claims, amounts: amounts.length > 0 && !corrected.amounts, repeated: repeated && !corrected.repeated };
+    if (fresh.claims || fresh.amounts || fresh.repeated) {
+      const reasons = [
+        fresh.claims ? `Sua resposta afirma que algo foi concluído (${claims.join(', ')}), mas nenhuma ferramenta confirmou isso nesta conversa. Se ainda não foi feito, execute a ferramenta correta (ou peça o que falta / a confirmação do cliente). Se já foi feito antes, consulte os dados reais.` : '',
+        fresh.amounts ? `Sua resposta cita valores (${amounts.map(cents => `R$ ${(cents / 100).toFixed(2).replace('.', ',')}`).join(', ')}) que nenhuma ferramenta nem os dados do restaurante confirmaram. Nunca invente, estime nem arredonde valores: consulte os dados reais (cardápio, entrega, pedido) e use somente valores confirmados; se não houver o valor, diga que vai confirmar.` : '',
+        fresh.repeated ? 'Sua resposta repete quase palavra por palavra a anterior, mas o cliente escreveu algo novo. Responda ao que ele perguntou AGORA, usando as ferramentas se precisar.' : '',
+      ].filter(Boolean).join(' ');
+      corrected.claims ||= claims.length > 0; corrected.amounts ||= amounts.length > 0; corrected.repeated ||= repeated;
       messages.push({ role: 'assistant', content: text });
-      messages.push({ role: 'user', content: `[SISTEMA — não é o cliente] Sua resposta afirma que algo foi concluído (${claims.join(', ')}), mas nenhuma ferramenta confirmou isso nesta conversa. Se ainda não foi feito, execute a ferramenta correta (ou peça o que falta / a confirmação do cliente). Se já foi feito antes, consulte os dados reais. Depois reescreva a resposta ao cliente sem afirmar nada que o sistema não confirmou.` });
+      messages.push({ role: 'user', content: `[SISTEMA — não é o cliente] ${reasons} Depois reescreva a resposta ao cliente sem afirmar nada que o sistema não confirmou.` });
       continue;
     }
-    handoff = handoff ?? { reason: 'O robô tentou afirmar uma operação que o sistema não confirmou', summary: `Cliente disse: "${args.text.slice(0, 300)}". Verifique o que ele precisa.` };
-    finalText = 'Quero ter certeza de que está tudo certo antes de confirmar. Vou chamar um atendente para concluir isso com você. 🙋';
+    // Still wrong after its chance. An invented fact never reaches the customer; a mere repeat falls back to the classic bot, which answers by intent.
+    if (claims.length === 0 && amounts.length === 0) { failure = { code: 'REPEATED', reason: 'O atendente de IA repetiu a resposta anterior.' }; break; }
+    handoff = handoff ?? { reason: claims.length ? 'O robô tentou afirmar uma operação que o sistema não confirmou' : 'O robô tentou citar valores que o sistema não confirmou', summary: `Cliente disse: "${args.text.slice(0, 300)}". Verifique o que ele precisa.` };
+    finalText = claims.length ? 'Quero ter certeza de que está tudo certo antes de confirmar. Vou chamar um atendente para concluir isso com você. 🙋' : 'Quero confirmar os valores certinho com a equipe antes de passar para você. Vou chamar um atendente. 🙋';
     break;
   }
 
