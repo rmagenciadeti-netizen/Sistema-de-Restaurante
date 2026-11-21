@@ -23,7 +23,8 @@ const ITEM_STATUS_AFTER_EDIT: Partial<Record<OrderStatus, OrderItemStatus>> = { 
 
 // Full manual control over an order that is still in progress: customer, address, delivery fee, items, discounts and the
 // payment method of registered payments. Totals are recomputed here so the order, the KDS, the stock and the cash book stay consistent.
-export async function editOrder(tx: Prisma.TransactionClient, scope: { orderId: string; tenantId: string; unitId: string | null; actorUserId: string; role: UserRole }, input: OrderEditInput) {
+// `actorUserId` null = a system actor (the WhatsApp attendant); it never changes discounts, which need a manager.
+export async function editOrder(tx: Prisma.TransactionClient, scope: { orderId: string; tenantId: string; unitId: string | null; actorUserId: string | null; role?: UserRole }, input: OrderEditInput) {
   const { orderId, tenantId, unitId, actorUserId, role } = scope;
   const order = await tx.order.findFirst({
     where: { id: orderId, tenantId, ...(unitId ? { unitId } : {}) },

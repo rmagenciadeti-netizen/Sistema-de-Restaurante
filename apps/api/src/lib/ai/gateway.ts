@@ -3,7 +3,8 @@ import { currentAiProvider } from '../ai-provider';
 import { prisma } from '../prisma';
 import { loadSettings, type TenantSettingsData } from '../settings';
 import { cached, cacheKey } from './cache';
-import { limitStatus, recordUsage } from './usage';
+import { AGENT_MODULE, limitStatus, recordUsage } from './usage';
+import type { ChatFinish, ChatMessage, ToolCall, ToolSpec } from './chat';
 
 // The single door to the external language model. Every caller (SUPER IA specialists, RM Assistente, WhatsApp bot, migration mapping) goes through it, so consent, the on/off switch,
 // persistent limits (company, unit, user, module), the circuit breaker, reuse and consumption metering are enforced in one place and nowhere else.
@@ -31,6 +32,7 @@ export async function modelGate(ctx: ModelCtx, settings: TenantSettingsData, mod
   const status = await limitStatus(ctx.tenantId, ctx.userId ?? '', module, effectiveLimits(settings), ctx.unitId ?? null);
   if (status.blocked) {
     await recordUsage({ tenantId: ctx.tenantId, unitId: ctx.unitId, userId: ctx.userId, module, operation, kind: 'BLOCKED_LIMIT', ok: false, errorCode: status.blocked });
+    if (module === AGENT_MODULE) return { ok: false as const, reason: 'Limite diário de chamadas da IA do atendimento por WhatsApp atingido.' };
     const scope = { tenant: 'da empresa', unit: 'desta unidade', user: 'do usuário', module: 'deste especialista' }[status.blocked];
     return { ok: false as const, reason: `Limite diário de chamadas ao modelo ${scope} atingido. As análises determinísticas continuam disponíveis.` };
   }
@@ -91,6 +93,43 @@ export async function callModel(input: ModelCall): Promise<ModelResult> {
     // No automatic retry: the failed call may already have been billed.
     breakerFailed();
     await recordUsage({ tenantId: input.ctx.tenantId, unitId: input.ctx.unitId, userId: input.ctx.userId, module: input.module, operation: input.operation, kind: 'ERROR', provider: gate.provider.name, ok: false, latencyMs: Date.now() - started, errorCode: 'PROVIDER_FAILED' });
+    return { ok: false, reason: 'O provedor de IA não respondeu agora.', code: 'FAILED' };
+  }
+}
+
+// ---- Conversational calls with tool calling (WhatsApp attendant). Same gate as callModel: consent, switches, limits, breaker and metering; never cached, never reused. ----
+export type ChatCall = {
+  ctx: ModelCtx; module: string; operation: string; system: string; messages: ChatMessage[]; tools?: ToolSpec[]; model?: string; maxTokens?: number; temperature?: number; timeoutMs?: number;
+  // Hard cap on the prompt size (characters of system + messages): larger prompts are refused instead of silently truncated.
+  maxChars: number; settings?: TenantSettingsData;
+};
+export type ChatResult =
+  | { ok: true; text: string | null; toolCalls: ToolCall[]; finish: ChatFinish; usage: { model: string | null; inputTokens: number | null; outputTokens: number | null; estimated: boolean } }
+  | { ok: false; reason: string; code: 'NOT_AVAILABLE' | 'TOO_LARGE' | 'FAILED' | 'UNSUPPORTED' };
+
+export async function callChat(input: ChatCall): Promise<ChatResult> {
+  const settings = input.settings ?? await loadSettings(prisma, input.ctx.tenantId);
+  const gate = await modelGate(input.ctx, settings, input.module, input.operation);
+  if (!gate.ok) return { ok: false, reason: gate.reason, code: 'NOT_AVAILABLE' };
+  const provider = gate.provider;
+  if (!provider.chat) return { ok: false, reason: 'O provedor de IA configurado não oferece conversa com ferramentas.', code: 'UNSUPPORTED' };
+  const size = input.system.length + JSON.stringify(input.messages).length;
+  if (size > input.maxChars) {
+    await recordUsage({ tenantId: input.ctx.tenantId, unitId: input.ctx.unitId, userId: input.ctx.userId, module: input.module, operation: input.operation, kind: 'DENIED', ok: false, errorCode: 'INPUT_TOO_LARGE' });
+    return { ok: false, reason: 'A conversa excede o tamanho máximo permitido para envio ao modelo.', code: 'TOO_LARGE' };
+  }
+  const started = Date.now();
+  try {
+    const answer = await provider.chat({ system: input.system, messages: input.messages, tools: input.tools, model: input.model, maxTokens: input.maxTokens, temperature: input.temperature, timeoutMs: input.timeoutMs });
+    breakerOk();
+    const estimated = answer.inputTokens === null || answer.outputTokens === null;
+    const inputTokens = answer.inputTokens ?? estimateTokens(input.system) + estimateTokens(JSON.stringify(input.messages));
+    const outputTokens = answer.outputTokens ?? estimateTokens((answer.text ?? '') + JSON.stringify(answer.toolCalls));
+    await recordUsage({ tenantId: input.ctx.tenantId, unitId: input.ctx.unitId, userId: input.ctx.userId, module: input.module, operation: input.operation, kind: 'LLM', provider: provider.name, model: answer.model, inputTokens, outputTokens, tokensEstimated: estimated, latencyMs: Date.now() - started });
+    return { ok: true, text: answer.text, toolCalls: answer.toolCalls, finish: answer.finish, usage: { model: answer.model, inputTokens, outputTokens, estimated } };
+  } catch {
+    breakerFailed();
+    await recordUsage({ tenantId: input.ctx.tenantId, unitId: input.ctx.unitId, userId: input.ctx.userId, module: input.module, operation: input.operation, kind: 'ERROR', provider: provider.name, ok: false, latencyMs: Date.now() - started, errorCode: 'PROVIDER_FAILED' });
     return { ok: false, reason: 'O provedor de IA não respondeu agora.', code: 'FAILED' };
   }
 }

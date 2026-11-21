@@ -2,8 +2,8 @@ import { Router } from 'express';
 import { OrderChannel, Prisma } from '@prisma/client';
 import { z } from 'zod';
 import { prisma } from '../lib/prisma';
-import { serializable } from '../lib/serializable';
-import { createOrder, OrderEngineError } from '../lib/order-engine';
+import { OrderEngineError } from '../lib/order-engine';
+import { placeStoreOrder, StoreOrderError } from '../lib/store-order';
 import { loadSettings } from '../lib/settings';
 import { positiveQuantitySchema } from '../lib/money';
 import { isStoreOpen } from '../lib/scheduling';
@@ -129,55 +129,13 @@ storeRoutes.post('/:slug/orders', async (req, res, next) => {
     const input = parsed.data;
     const store = await resolveStore(req.params.slug, input.unitId);
     if (!store) return res.status(404).json({ message: 'Store not found' });
-    const { tenant, unit } = store;
-    const now = new Date();
-    const settings = await loadSettings(prisma, tenant.id);
-    if (settings.store.minorControl && input.adultConfirmed !== true) return res.status(400).json({ message: 'AGE_CONFIRMATION_REQUIRED' });
-    const channel = input.fulfillment === 'DELIVERY' ? OrderChannel.DELIVERY : OrderChannel.TAKEAWAY;
-    if ((channel === OrderChannel.DELIVERY && !settings.fulfillment.allowDelivery) || (channel === OrderChannel.TAKEAWAY && !settings.fulfillment.allowPickup)) return res.status(400).json({ message: 'FULFILLMENT_NOT_ALLOWED' });
-    if (!input.scheduledFor && !settings.store.allowBuyWhenClosed && !isStoreOpen(settings.hours, now)) return res.status(409).json({ message: 'STORE_CLOSED' });
-    if (channel === OrderChannel.DELIVERY && !input.address) return res.status(400).json({ message: 'ADDRESS_REQUIRED' });
-    if (channel === OrderChannel.TAKEAWAY && input.deliveryZoneId) return res.status(400).json({ message: 'DELIVERY_ZONE_ONLY_FOR_DELIVERY' });
-    // Venue-only products and components are not on the online menu, so they cannot be ordered through it either.
-    if (await prisma.product.count({ where: { tenantId: tenant.id, id: { in: input.items.map(item => item.productId) }, OR: [{ localOnly: true }, { isComponent: true }] } }) > 0) return res.status(400).json({ message: 'PRODUCTS_UNAVAILABLE' });
-
-    let deliveryFeeOverride: Prisma.Decimal | undefined;
-    if (channel === OrderChannel.DELIVERY && !input.deliveryZoneId) {
-      const { deliveryFeeMode, singleFee } = settings.fulfillment;
-      if (deliveryFeeMode === 'SINGLE' || deliveryFeeMode === 'UNMAPPED') deliveryFeeOverride = new Prisma.Decimal(singleFee);
-      else if (await prisma.deliveryZone.count({ where: { tenantId: tenant.id, active: true, OR: [{ unitId: unit.id }, { unitId: null }] } }) > 0) return res.status(400).json({ message: 'DELIVERY_ZONE_REQUIRED' });
-    }
-    const method = input.paymentMethodId ? await prisma.paymentMethodConfig.findFirst({ where: { id: input.paymentMethodId, tenantId: tenant.id, active: true, showStore: true }, select: { name: true, equivalent: true } }) : null;
-    if (input.paymentMethodId && !method) return res.status(400).json({ message: 'PAYMENT_METHOD_UNAVAILABLE' });
-
-    // Free text has no field on Order, so the customer's remark travels on the first item (visible to the kitchen).
-    const items = input.items.map((item, index) => (index === 0 && input.notes ? { ...item, notes: [item.notes, `Obs.: ${input.notes}`].filter(Boolean).join(' | ').slice(0, 500) } : item));
-    const { minDelivery, freeDeliveryMin } = settings.fulfillment;
-    const order = await serializable(prisma, async tx => {
-      const created = await createOrder(tx, {
-        tenantId: tenant.id, unitId: unit.id, channel, items, couponCode: input.couponCode, deliveryZoneId: input.deliveryZoneId, deliveryFeeOverride,
-        customer: { name: input.customer.name, phone: input.customer.phone, untrusted: true }, scheduledFor: input.scheduledFor ? new Date(input.scheduledFor) : undefined,
-      });
-      let { total, deliveryFee } = created;
-      if (channel === OrderChannel.DELIVERY) {
-        const goods = created.subtotal.sub(created.discount);
-        if (minDelivery > 0 && goods.lt(minDelivery)) throw new OrderEngineError('BELOW_DELIVERY_MINIMUM');
-        if (freeDeliveryMin > 0 && deliveryFee.gt(0) && goods.gte(freeDeliveryMin)) {
-          total = total.sub(deliveryFee); deliveryFee = new Prisma.Decimal(0);
-          await tx.order.update({ where: { id: created.id }, data: { deliveryFee, total } });
-        }
-        await tx.deliveryJob.create({ data: { tenantId: tenant.id, unitId: unit.id, orderId: created.id, address: input.address, provider: 'LOJA_VIRTUAL' } });
-      }
-      await tx.auditLog.create({
-        data: {
-          tenantId: tenant.id, action: 'STORE_ORDER_DETAILS', entityType: 'Order', entityId: created.id,
-          metadata: { fulfillment: input.fulfillment, address: input.address ?? null, notes: input.notes ?? null, payment: method ? { name: method.name, equivalent: method.equivalent, changeFor: input.changeFor ?? null } : null, autoAccept: settings.store.autoAccept, adultConfirmed: settings.store.minorControl ? input.adultConfirmed === true : null },
-        },
-      });
-      return { ...created, total, deliveryFee };
+    const order = await placeStoreOrder(prisma, {
+      tenantId: store.tenant.id, unitId: store.unit.id, fulfillment: input.fulfillment, customer: input.customer, address: input.address, deliveryZoneId: input.deliveryZoneId, couponCode: input.couponCode,
+      scheduledFor: input.scheduledFor ? new Date(input.scheduledFor) : undefined, notes: input.notes, paymentMethodId: input.paymentMethodId, changeFor: input.changeFor, adultConfirmed: input.adultConfirmed, items: input.items,
     });
-    return res.status(201).json({ code: order.code, number: order.number, total: order.total, deliveryFee: order.deliveryFee, scheduledFor: order.scheduledFor, autoAccept: settings.store.autoAccept });
+    return res.status(201).json({ code: order.code, number: order.number, total: order.total, deliveryFee: order.deliveryFee, scheduledFor: order.scheduledFor, autoAccept: order.autoAccept });
   } catch (error) {
+    if (error instanceof StoreOrderError) return res.status(error.status).json({ message: error.code });
     if (error instanceof OrderEngineError) return res.status(error.httpStatus).json({ message: error.reason === 'FRACTIONAL_QUANTITY_NOT_ALLOWED' ? 'Este produto não permite quantidade fracionada.' : error.reason === 'PACKAGING_NOT_ALLOWED' ? 'Este produto não permite embalagem.' : error.reason });
     return next(error);
   }

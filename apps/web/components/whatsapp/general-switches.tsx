@@ -10,7 +10,7 @@ export function GeneralSwitches({ settings, saving, canEdit, aiConfigured, onCha
   const disabled = !settings || saving || !canEdit;
   return <section className={`${panelClass} mb-4 !p-4`} aria-label="Chaves gerais do WhatsApp">
     <div className="grid gap-3 lg:grid-cols-3">
-      <Toggle label="Robô de atendimento" hint="Responde automaticamente cardápio, horários, entrega, pagamento, status do pedido, reservas e a base de conhecimento." checked={settings?.botEnabled ?? false} disabled={disabled} onChange={botEnabled => onChange({ botEnabled })} />
+      <Toggle label="Robô de atendimento" hint="Atende os clientes no WhatsApp: com o atendente de IA (aba “Atendente de IA”) quando disponível; senão, pelo robô clássico de palavras-chave." checked={settings?.botEnabled ?? false} disabled={disabled} onChange={botEnabled => onChange({ botEnabled })} />
       <Toggle label="Mensagens automáticas" hint="Boas-vindas e avisos de pedido e reserva. Desligado, nada é enviado, mas os textos continuam editáveis." checked={settings?.autoMessagesEnabled ?? true} disabled={disabled} onChange={autoMessagesEnabled => onChange({ autoMessagesEnabled })} />
       <Toggle label="Interação com IA" hint="A IA só responde sobre o restaurante, usando cardápio, horários e a base de conhecimento. A pergunta do cliente é enviada ao provedor de IA configurado no servidor." checked={settings?.aiFallback ?? false} disabled={disabled} onChange={aiFallback => onChange({ aiFallback })} />
     </div>

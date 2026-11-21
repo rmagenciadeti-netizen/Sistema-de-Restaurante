@@ -5250,10 +5250,11 @@
    ],
    "module": "whatsapp",
    "title": "WhatsApp e robô de atendimento",
-   "subtitle": "Conecte o número do restaurante, acompanhe as conversas, ajuste as mensagens automáticas e ensine o robô.",
+   "subtitle": "Conecte o número do restaurante, acompanhe as conversas, configure o atendente de IA, ajuste as mensagens automáticas e ensine o robô.",
    "tabs": [
     "Conexão",
     "Conversas",
+    "Atendente de IA",
     "Mensagens automáticas",
     "Robô e conhecimento",
     "Testar robô",

@@ -64,10 +64,18 @@ platformAiRoutes.post('/test', async (req, res, next) => {
     if (!provider) return res.status(409).json({ ok: false, message: 'Nenhum provedor de IA configurado.' });
     const started = Date.now();
     try {
+      // The WhatsApp attendant needs tool calling: prove the configured model can call a tool, not only answer text (checked first; the plain call below stays the last request).
+      let toolCalling: 'ok' | 'unsupported' | 'failed' = 'unsupported';
+      if (provider.chat) {
+        try {
+          const probe = await provider.chat({ system: 'Você é um verificador. Use a ferramenta pedida.', messages: [{ role: 'user', content: 'Chame a ferramenta ping com value="ok".' }], tools: [{ name: 'ping', description: 'Verifica a conexão.', parameters: { type: 'object', properties: { value: { type: 'string' } }, required: ['value'] } }], maxTokens: 64, temperature: 0 });
+          toolCalling = probe.toolCalls.some(call => call.name === 'ping') ? 'ok' : 'failed';
+        } catch { toolCalling = 'failed'; }
+      }
       const answer = await provider.answerDetailed?.({ system: 'Você é um verificador de conexão.', question: 'Responda apenas com a palavra OK.', maxTokens: 16 }) ?? { text: await provider.answer({ system: 'Você é um verificador de conexão.', question: 'Responda apenas com a palavra OK.', maxTokens: 16 }) ?? '', model: '', inputTokens: null, outputTokens: null };
       if (!answer.text) throw new Error('empty answer');
       await prisma.platformAiConfig.updateMany({ where: { id: 'default' }, data: { validatedAt: new Date(), lastError: null } }); await refreshAiConfig(prisma);
-      return res.json({ ok: true, latencyMs: Date.now() - started, model: answer.model || aiSource().model, status: (await view()).status });
+      return res.json({ ok: true, latencyMs: Date.now() - started, model: answer.model || aiSource().model, status: (await view()).status, toolCalling });
     } catch (error) {
       const message = error instanceof Error && /^AI provider error \d+$/.test(error.message) ? `${error.message}. Confira a chave, o modelo e o endereço.` : error instanceof Error && error.name === 'TimeoutError' ? 'O provedor não respondeu a tempo.' : 'Falha ao conectar ao provedor. Confira a chave, o modelo e o endereço.';
       await prisma.platformAiConfig.updateMany({ where: { id: 'default' }, data: { validatedAt: null, lastError: message } }); await refreshAiConfig(prisma);

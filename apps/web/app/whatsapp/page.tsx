@@ -12,6 +12,7 @@ import { PageHeader, PanelSkeleton, StatCard, Tabs } from '../../components/ui';
 import dynamic from 'next/dynamic';
 import { Flash, friendlyError } from '../../components/whatsapp/common';
 
+const AgentTab = dynamic(() => import('../../components/whatsapp/agent-tab').then(module => module.AgentTab), { loading: () => <PanelSkeleton lines={5} /> });
 const AutoMessagesTab = dynamic(() => import('../../components/whatsapp/auto-messages-tab').then(module => module.AutoMessagesTab), { loading: () => <PanelSkeleton lines={5} /> });
 const BotSettingsPanel = dynamic(() => import('../../components/whatsapp/bot-settings-panel').then(module => module.BotSettingsPanel), { loading: () => <PanelSkeleton lines={5} /> });
 const ConnectionTab = dynamic(() => import('../../components/whatsapp/connection-tab').then(module => module.ConnectionTab), { loading: () => <PanelSkeleton lines={5} /> });
@@ -22,9 +23,12 @@ const OutboxTab = dynamic(() => import('../../components/whatsapp/outbox-tab').t
 const SimulatorTab = dynamic(() => import('../../components/whatsapp/simulator-tab').then(module => module.SimulatorTab), { loading: () => <PanelSkeleton lines={5} /> });
 
 type WhatsappSettings = TenantSettings['whatsapp'];
+// Restaurants saved before the AI attendant existed have no `agent` block: show the same defaults the server applies.
+const DEFAULT_AGENT: WhatsappSettings['agent'] = { enabled: true, assistantName: '', tone: 'FRIENDLY', emojis: true, instructions: '', allowReservations: true, allowOrders: true, allowOrderChanges: true, autoConfirmReservations: false, maxPartySize: 12, maxOrderTotal: 500, orderChangeWindowMinutes: 10 };
 const tabs = [
   { key: 'connection', label: 'Conexão' },
   { key: 'conversations', label: 'Conversas' },
+  { key: 'agent', label: 'Atendente de IA' },
   { key: 'auto', label: 'Mensagens automáticas' },
   { key: 'bot', label: 'Robô e conhecimento' },
   { key: 'simulator', label: 'Testar robô' },
@@ -68,7 +72,7 @@ function WhatsappCenter() {
   async function loadSettings() {
     try {
       const result = await api<SettingsResponse>('/settings');
-      const value = { ...result.settings.whatsapp, autoMessagesEnabled: result.settings.whatsapp.autoMessagesEnabled ?? true };
+      const value = { ...result.settings.whatsapp, autoMessagesEnabled: result.settings.whatsapp.autoMessagesEnabled ?? true, agent: { ...DEFAULT_AGENT, ...result.settings.whatsapp.agent } };
       waRef.current = value; setWa(value); setRole(storedUser().role);
     } catch (e) { setNotice({ text: friendlyError(e, 'Erro ao carregar as configurações do robô'), kind: 'error' }); }
   }
@@ -105,7 +109,7 @@ function WhatsappCenter() {
   const autoMessagesEnabled = wa?.autoMessagesEnabled ?? true;
 
   return <>
-    <PageHeader title="WhatsApp e robô de atendimento" subtitle="Conecte o número do restaurante, acompanhe as conversas, ajuste as mensagens automáticas e ensine o robô." />
+    <PageHeader title="WhatsApp e robô de atendimento" subtitle="Conecte o número do restaurante, acompanhe as conversas, configure o atendente de IA, ajuste as mensagens automáticas e ensine o robô." />
     {notice && <Notice message={notice.text} kind={notice.kind} />}
     <div className="mb-4 grid grid-cols-2 gap-3 md:grid-cols-3 xl:grid-cols-7">
       <StatCard label="Conversas" value={count(stats?.conversations)} />
@@ -120,6 +124,7 @@ function WhatsappCenter() {
     <Tabs tabs={[...tabs]} value={tab} onChange={changeTab} label="Seções do WhatsApp" />
     {tab === 'connection' && <ConnectionTab session={session} loadError={sessionError} onSession={setSession} />}
     {tab === 'conversations' && <ConversationsTab onChanged={() => void loadStats()} />}
+    {tab === 'agent' && (wa ? <AgentTab settings={wa} canEdit={canEdit} saving={saving} onSave={change => saveWhatsapp(change, 'Atendente de IA salvo.')} /> : <p className="text-sm text-slate-500">Carregando configurações do atendente…</p>)}
     {tab === 'auto' && <AutoMessagesTab autoMessagesEnabled={autoMessagesEnabled} />}
     {tab === 'bot' && <div className="grid gap-4">
       {wa ? <BotSettingsPanel settings={wa} canEdit={canEdit} saving={saving} onSave={change => saveWhatsapp(change, 'Configurações do robô salvas.')} /> : <p className="text-sm text-slate-500">Carregando configurações do robô…</p>}

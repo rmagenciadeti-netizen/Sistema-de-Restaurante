@@ -2,7 +2,7 @@
 
 import { useEffect, useRef, useState } from 'react';
 import { api, ListResponse } from '../../lib/api';
-import type { ChatMessage, ConversationFilter, WhatsappConversation } from '../../lib/types-whatsapp';
+import type { ChatMessage, ConversationAgentInfo, ConversationFilter, WhatsappConversation } from '../../lib/types-whatsapp';
 import { useAutoLoad } from '../../lib/use-auto-load';
 import { Notice, inputClass, panelClass, secondaryButtonClass, buttonClass } from '../app-shell';
 import { Badge, EmptyState } from '../ui';
@@ -25,6 +25,8 @@ export function ConversationsTab({ onChanged }: { onChanged: () => void }) {
   const [busy, setBusy] = useState(false);
   const [flash, setFlash] = useState<Flash>(null);
   const [showChat, setShowChat] = useState(false);
+  const [agentInfo, setAgentInfo] = useState<ConversationAgentInfo | null>(null);
+  const [showAgent, setShowAgent] = useState(false);
   const selectedId = useRef<string | null>(null);
   const query = useRef({ q: '', filter: 'all' as ConversationFilter });
   const listInFlight = useRef(false);
@@ -32,6 +34,7 @@ export function ConversationsTab({ onChanged }: { onChanged: () => void }) {
   const messagesSeq = useRef(0);
   const debounce = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
   const scroller = useRef<HTMLDivElement>(null);
+  const showAgentRef = useRef(false);
 
   async function loadList() {
     if (listInFlight.current) return;
@@ -48,6 +51,9 @@ export function ConversationsTab({ onChanged }: { onChanged: () => void }) {
     } catch (e) { setFlash({ text: friendlyError(e, 'Erro ao carregar conversas'), kind: 'error' }); setLoaded(true); } finally { listInFlight.current = false; }
   }
 
+  async function loadAgentInfo(id: string) {
+    try { const info = await api<ConversationAgentInfo>(`/whatsapp/conversations/${id}/agent`); if (selectedId.current === id) setAgentInfo(info); } catch { if (selectedId.current === id) setAgentInfo(null); }
+  }
   async function loadMessages(id: string, force = false) {
     if (messagesInFlight.current && !force) return;
     messagesInFlight.current = true;
@@ -61,7 +67,7 @@ export function ConversationsTab({ onChanged }: { onChanged: () => void }) {
     } catch (e) { if (selectedId.current === id) setFlash({ text: friendlyError(e, 'Erro ao carregar mensagens'), kind: 'error' }); } finally { if (seq === messagesSeq.current) messagesInFlight.current = false; }
   }
 
-  useAutoLoad(async () => { await loadList(); if (selectedId.current) await loadMessages(selectedId.current); }, 5000);
+  useAutoLoad(async () => { await loadList(); if (selectedId.current) { await loadMessages(selectedId.current); if (showAgentRef.current) await loadAgentInfo(selectedId.current); } }, 5000);
 
   const bubbleCount = messages.length + pending.length;
   useEffect(() => { if (scroller.current) scroller.current.scrollTop = scroller.current.scrollHeight; }, [bubbleCount, selected?.id]);
@@ -74,7 +80,7 @@ export function ConversationsTab({ onChanged }: { onChanged: () => void }) {
   function changeFilter(value: ConversationFilter) { setFilter(value); query.current.filter = value; listInFlight.current = false; void loadList(); }
   function select(conversation: WhatsappConversation) {
     selectedId.current = conversation.id; messagesSeq.current += 1; messagesInFlight.current = false;
-    setSelected(conversation); setMessages([]); setPending([]); setText(''); setFlash(null); setShowChat(true);
+    setSelected(conversation); setMessages([]); setPending([]); setText(''); setFlash(null); setShowChat(true); setAgentInfo(null); if (showAgentRef.current) void loadAgentInfo(conversation.id);
     void loadMessages(conversation.id, true).then(() => { void loadList(); onChanged(); });
   }
 
@@ -140,6 +146,20 @@ export function ConversationsTab({ onChanged }: { onChanged: () => void }) {
               <button type="button" disabled={busy} onClick={() => void patch({ optOut: !selected.optOut })} className={`${secondaryButtonClass} min-h-10`}>{selected.optOut ? 'Liberar mensagens automáticas' : 'Bloquear mensagens automáticas'}</button>
             </div>
           </header>
+          <div className="border-b border-slate-200 bg-white px-4 py-2 text-xs">
+            <button type="button" aria-expanded={showAgent} className="font-semibold text-brand-700 outline-none focus-visible:ring-2 focus-visible:ring-brand-500" onClick={() => { const next = !showAgent; showAgentRef.current = next; setShowAgent(next); if (next && selected) void loadAgentInfo(selected.id); }}>{showAgent ? '▾' : '▸'} O que o atendente de IA sabe e fez nesta conversa</button>
+            {showAgent && (agentInfo ? <div className="mt-2 grid gap-1 text-slate-700">
+              {agentInfo.handoff && <p><strong>Motivo do atendimento humano:</strong> {agentInfo.handoff.reason} — {agentInfo.handoff.summary}</p>}
+              {agentInfo.profile.name && <p><strong>Nome:</strong> {agentInfo.profile.name}</p>}
+              {agentInfo.profile.addresses.length > 0 && <p><strong>Endereços:</strong> {agentInfo.profile.addresses.join(' | ')}</p>}
+              {agentInfo.facts.length > 0 && <p><strong>Lembra que:</strong> {agentInfo.facts.join('; ')}</p>}
+              {(agentInfo.reservation.partySize || agentInfo.reservation.date) && <p><strong>Reserva em andamento:</strong> {agentInfo.reservation.partySize ?? '?'} pessoa(s), {agentInfo.reservation.date ?? '?'} {agentInfo.reservation.time ?? ''}</p>}
+              {agentInfo.order.items.length > 0 && <p><strong>Pedido em andamento:</strong> {agentInfo.order.items.map(item => `${item.quantity}x ${item.name}`).join(', ')}</p>}
+              {agentInfo.pending.map(item => <p key={item.action}><strong>Aguardando o cliente confirmar:</strong> {item.summary}</p>)}
+              {agentInfo.actions.length > 0 && <p><strong>Ações:</strong> {agentInfo.actions.slice(0, 6).map(action => `${action.tool}${action.ok ? '' : ' (recusada)'}`).join(', ')}</p>}
+              {!agentInfo.handoff && !agentInfo.profile.name && agentInfo.turns === 0 && <p className="text-slate-500">O atendente de IA ainda não conversou com este cliente.</p>}
+            </div> : <p className="mt-2 text-slate-500">Carregando…</p>)}
+          </div>
           <div ref={scroller} className="flex-1 space-y-2 overflow-y-auto bg-slate-50 p-4" style={{ maxHeight: '55vh' }} aria-live="polite">
             {bubbles.length === 0 && <p className="py-8 text-center text-sm text-slate-500">Nenhuma mensagem ainda.</p>}
             {bubbles.map(message => {

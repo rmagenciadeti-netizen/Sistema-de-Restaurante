@@ -16,7 +16,7 @@ const MAX_UNCONFIRMED_CLOSES = 4;
 export const VIEWER_ACTIVE_MS = 3 * 60_000;
 const MAX_SESSIONS = () => Math.max(1, Number(process.env.WHATSAPP_MAX_SESSIONS) || 25);
 
-type Live = { transport: WaTransport; connected: boolean; unconfirmedCloses: number; sentAt: number[]; chain: Promise<void> };
+type Live = { transport: WaTransport; connected: boolean; unconfirmedCloses: number; sentAt: number[]; chains: Map<string, Promise<void>> };
 type Options = { factory?: TransportFactory; pollMs?: number; sleep?: (ms: number) => Promise<void>; log?: (message: string) => void; identity?: { pid: number; host: string }; lockId?: string; tenantIds?: string[] };
 
 const defaultSleep = (ms: number) => new Promise<void>(resolve => setTimeout(resolve, ms));
@@ -138,7 +138,7 @@ export class WhatsappSessionManager {
 
   private async connect(tenantId: string) {
     const transport = this.factory(tenantId);
-    const entry: Live = { transport, connected: false, unconfirmedCloses: this.failures.get(tenantId) ?? 0, sentAt: [], chain: Promise.resolve() };
+    const entry: Live = { transport, connected: false, unconfirmedCloses: this.failures.get(tenantId) ?? 0, sentAt: [], chains: new Map() };
     this.live.set(tenantId, entry);
     await this.setSession(tenantId, { status: 'CONNECTING', qr: null });
     try {
@@ -150,7 +150,12 @@ export class WhatsappSessionManager {
           void this.setSession(tenantId, { status: 'CONNECTED', qr: null, phone: info.phone, pushName: info.name, connectedAt: new Date(), lastError: null });
         },
         onClose: info => { void this.handleClose(tenantId, entry, info); },
-        onMessage: message => { entry.chain = entry.chain.then(() => this.handleMessage(tenantId, entry, message)).catch(error => this.log(`message error: ${error instanceof Error ? error.message : String(error)}`)); },
+        // One customer's messages are handled strictly in order (a reply may depend on the previous one); different customers are handled in parallel.
+        onMessage: message => {
+          const previous = entry.chains.get(message.jid) ?? Promise.resolve();
+          const next: Promise<void> = previous.then(() => this.withSlot(() => this.handleMessage(tenantId, entry, message))).catch(error => this.log(`message error: ${error instanceof Error ? error.message : String(error)}`)).finally(() => { if (entry.chains.get(message.jid) === next) entry.chains.delete(message.jid); });
+          entry.chains.set(message.jid, next);
+        },
       });
     } catch (error) {
       this.live.delete(tenantId);
@@ -186,6 +191,16 @@ export class WhatsappSessionManager {
     }
     if (entry.connected) { this.failures.delete(tenantId); this.retryAt.set(tenantId, Date.now() + 2_000); await this.setSession(tenantId, { status: 'CONNECTING', lastError: info.error?.slice(0, 300) ?? null }); return; }
     await this.failConnection(tenantId, entry, info.error ?? 'CONNECTION_CLOSED');
+  }
+
+  // The AI attendant can take seconds per message: a few conversations run at once (the provider has its own rate limits), the rest wait their turn.
+  private active = 0;
+  private readonly waiters: (() => void)[] = [];
+  private async withSlot<T>(work: () => Promise<T>): Promise<T> {
+    const limit = Math.max(1, Number(process.env.WHATSAPP_PARALLEL_CHATS) || 4);
+    // A waiter inherits the slot of whoever finishes, so the limit is never exceeded, not even for an instant.
+    if (this.active >= limit) await new Promise<void>(resolve => this.waiters.push(resolve)); else this.active += 1;
+    try { return await work(); } finally { const next = this.waiters.shift(); if (next) next(); else this.active -= 1; }
   }
 
   private async throttle(entry: Live) {

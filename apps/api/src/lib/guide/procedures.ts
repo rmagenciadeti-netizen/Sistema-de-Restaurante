@@ -415,7 +415,14 @@ export const PROCEDURES: Procedure[] = [
     aliases: ['whatsapp', 'robo de atendimento', 'mensagens automaticas', 'conectar whatsapp', 'qr do whatsapp'],
     summary: 'Conecta o número do restaurante, responde clientes com o robô e envia mensagens automáticas de pedido.',
     steps: ['Abra Integração › Integração WhatsApp Business.', 'Na aba "Conexão", conecte o número lendo o QR Code (ou use a API oficial, se configurada pela RM).', 'Em "Mensagens automáticas" ajuste os textos e ative/desative cada aviso.', 'Em "Robô e conhecimento" ative o robô e cadastre as respostas; teste em "Testar robô".', 'Acompanhe "Conversas" e a "Caixa de saída".'],
-    fields: [], verify: ['Envie uma mensagem de teste ao número: o robô responde (se ativado).'], mistakes: ['Robô ligado sem revisar as respostas.'], related: [],
+    fields: [], verify: ['Envie uma mensagem de teste ao número: o robô responde (se ativado).'], mistakes: ['Robô ligado sem revisar as respostas.'], related: ['whatsapp-atendente-ia'],
+  },
+  {
+    id: 'whatsapp-atendente-ia', title: 'Configurar o atendente de IA do WhatsApp (reservas e pedidos)', href: '/whatsapp', menuHref: '/whatsapp', tab: 'Atendente de IA', module: 'whatsapp', view: 'CASH', edit: 'MANAGEMENT',
+    aliases: ['atendente de ia', 'atendente virtual', 'robo com ia', 'ia no whatsapp', 'reserva pelo whatsapp', 'pedido pelo whatsapp', 'personalidade do robo', 'instrucoes do robo'],
+    summary: 'O atendente de IA conversa livremente com o cliente, consulta cardápio, taxas e horários reais e cria reservas e pedidos de verdade; você define o jeito de falar, o que ele pode fazer e acompanha tudo.',
+    steps: ['Abra Integração › Integração WhatsApp Business e ligue a chave "Robô de atendimento".', 'Abra a aba "Atendente de IA" e confira o estado (a IA precisa estar configurada pela RM e a empresa precisa ter autorizado o envio de dados ao provedor de IA).', 'Em "Personalidade e comportamento" escolha o "Jeito de falar", o nome e escreva as "Instruções do seu restaurante".', 'Em "O que o atendente pode fazer" ligue ou desligue "Reservas", "Pedidos para entrega e retirada" e "Alterar e cancelar pedidos", e ajuste os limites.', 'Clique em "Salvar atendente de IA" e teste em "Testar robô".', 'Acompanhe o "Registro de ações" e, em "Conversas", abra "O que o atendente de IA sabe e fez nesta conversa"; use "Assumir atendimento" para falar você mesmo.'],
+    fields: [], verify: ['No "Registro de ações" aparecem as reservas e pedidos que o atendente realizou de verdade.'], mistakes: ['Esperar que o atendente confirme algo que o sistema recusou (fechado, sem mesa, sem estoque).', 'Esquecer de revisar o limite de valor do pedido.'], related: ['whatsapp-configurar'],
   },
   {
     id: 'integracoes-pix-pos', title: 'Configurar PIX, maquininhas (POS/TEF) e marketplaces', href: '/integrations', menuHref: '/integrations?tab=payments', module: 'integrations', view: 'CASH', edit: 'MANAGEMENT',

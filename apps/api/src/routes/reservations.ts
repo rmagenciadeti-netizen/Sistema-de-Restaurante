@@ -8,9 +8,9 @@ import { requireRoles, SALES_ROLES } from '../lib/permissions';
 import { enqueueAutoMessage } from '../lib/whatsapp-auto';
 import { loadSettings } from '../lib/settings';
 import { formatLocal } from '../lib/whatsapp-text';
+import { ACTIVE_RESERVATION_STATUSES as ACTIVE_STATUSES, RESERVATION_WINDOW_MS, tableConflict as tableConflictIn } from '../lib/reservations';
 
-export const RESERVATION_WINDOW_MS = 90 * 60 * 1000;
-const ACTIVE_STATUSES: ReservationStatus[] = [ReservationStatus.PENDING, ReservationStatus.CONFIRMED, ReservationStatus.SEATED];
+export { RESERVATION_WINDOW_MS };
 
 export const reservationRoutes = Router();
 reservationRoutes.use(requireAuth, requireTenant, requireRoles(...SALES_ROLES));
@@ -26,9 +26,7 @@ reservationRoutes.get('/', async (req, res, next) => {
   } catch (error) { return next(error); }
 });
 
-async function tableConflict(tx: Parameters<Parameters<typeof serializable>[1]>[0], tenantId: string, tableId: string, reservedAt: Date, ignoreId?: string) {
-  return tx.reservation.findFirst({ where: { tenantId, tableId, status: { in: ACTIVE_STATUSES }, ...(ignoreId ? { id: { not: ignoreId } } : {}), reservedAt: { gt: new Date(reservedAt.getTime() - RESERVATION_WINDOW_MS), lt: new Date(reservedAt.getTime() + RESERVATION_WINDOW_MS) } } });
-}
+const tableConflict = tableConflictIn;
 
 reservationRoutes.post('/', async (req, res, next) => {
   try {

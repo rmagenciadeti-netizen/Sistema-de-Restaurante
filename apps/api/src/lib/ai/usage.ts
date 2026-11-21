@@ -13,12 +13,19 @@ export async function recordUsage(input: UsageInput) {
 const startOfUtcDay = () => { const now = new Date(); return new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate())); };
 
 // Persistent (database) counters, so limits survive deploys and are shared by every API instance.
+// The customer-facing WhatsApp attendant has its own daily budget (a conversation takes several model calls): it neither eats the analysts' budget nor is blocked by it.
+export const AGENT_MODULE = 'whatsapp_agent';
 export async function llmCalls(tenantId: string, filter: { userId?: string; module?: string; unitId?: string } = {}) {
-  return prisma.aiUsageEvent.count({ where: { tenantId, kind: 'LLM', createdAt: { gte: startOfUtcDay() }, ...(filter.userId ? { userId: filter.userId } : {}), ...(filter.module ? { module: filter.module } : {}), ...(filter.unitId ? { unitId: filter.unitId } : {}) } });
+  return prisma.aiUsageEvent.count({ where: { tenantId, kind: 'LLM', createdAt: { gte: startOfUtcDay() }, ...(filter.userId ? { userId: filter.userId } : {}), module: filter.module ?? { not: AGENT_MODULE }, ...(filter.unitId ? { unitId: filter.unitId } : {}) } });
 }
-export type Limits = { llmCallsPerTenantDay: number; llmCallsPerUserDay: number; llmCallsPerModuleDay: number; llmCallsPerUnitDay?: number };
+export type Limits = { llmCallsPerTenantDay: number; llmCallsPerUserDay: number; llmCallsPerModuleDay: number; llmCallsPerUnitDay?: number; llmCallsWhatsappDay?: number };
 export async function limitStatus(tenantId: string, userId: string, module: string, limits: Limits, unitId: string | null = null) {
   const unitLimit = limits.llmCallsPerUnitDay ?? 60;
+  if (module === AGENT_MODULE) {
+    const used = await llmCalls(tenantId, { module });
+    const limit = limits.llmCallsWhatsappDay ?? 2000;
+    return { blocked: used >= limit ? 'module' as const : null, tenant: { used: 0, limit: limits.llmCallsPerTenantDay }, unit: { used: 0, limit: unitLimit }, user: { used: 0, limit: limits.llmCallsPerUserDay }, module: { used, limit } };
+  }
   const [tenant, user, mod, unit] = await Promise.all([llmCalls(tenantId), userId ? llmCalls(tenantId, { userId }) : Promise.resolve(0), llmCalls(tenantId, { module }), unitId ? llmCalls(tenantId, { unitId }) : Promise.resolve(0)]);
   const blocked = tenant >= limits.llmCallsPerTenantDay ? 'tenant' as const : unitId && unit >= unitLimit ? 'unit' as const : user >= limits.llmCallsPerUserDay ? 'user' as const : mod >= limits.llmCallsPerModuleDay ? 'module' as const : null;
   return { blocked, tenant: { used: tenant, limit: limits.llmCallsPerTenantDay }, unit: { used: unit, limit: unitLimit }, user: { used: user, limit: limits.llmCallsPerUserDay }, module: { used: mod, limit: limits.llmCallsPerModuleDay } };
@@ -74,6 +81,7 @@ export async function purgeOld(tenantId: string, retentionDays: number) {
   const before = new Date(Date.now() - retentionDays * 86_400_000);
   try {
     await prisma.aiConversation.deleteMany({ where: { tenantId, updatedAt: { lt: before } } });
+    await prisma.whatsappAgentAction.deleteMany({ where: { tenantId, createdAt: { lt: before } } });
     await prisma.aiUsageEvent.deleteMany({ where: { tenantId, createdAt: { lt: new Date(Date.now() - Math.max(retentionDays, 90) * 86_400_000) } } });
   } catch { /* best effort */ }
 }
