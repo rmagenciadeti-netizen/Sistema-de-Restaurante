@@ -2,9 +2,34 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 import { buildHistory } from './index';
 import { emptyMemory, loadMemory, pruneMemory } from './memory';
-import { cleanReply, receiptFor, safeName, unbackedClaims, type Executed } from './safety';
+import { amountsIn, cleanReply, collectAmounts, receiptFor, repeatsLastReply, safeName, unbackedAmounts, unbackedClaims, type Executed } from './safety';
 
 const wrote = (tool: string, kind: Executed['wrote'], data: unknown = {}): Executed => ({ tool, kind: 'WRITE', ok: true, wrote: kind, data });
+
+const pool = (...sources: unknown[]) => { const out = new Set<number>(); for (const source of sources) collectAmounts(source, out); return out; };
+
+test('money in the reply must come from the backend: invented, estimated or rounded values are caught', () => {
+  assert.deepEqual(amountsIn('Fica R$ 32,90, mais R$5 de taxa e 1.250,50 reais de entrada: R$ 1.250,50'), [3290, 500, 125050, 125050]);
+  // What the tools returned (JSON numbers are reais) and what the customer said are both stated figures.
+  const known = pool({ items: [{ name: 'Hambúrguer', price: 32.9 }], zones: [{ name: 'Centro', fee: 5 }], total: 70.8 }, 'preciso de troco para R$ 100');
+  assert.deepEqual(unbackedAmounts('O Hambúrguer custa R$ 32,90 e a entrega no Centro R$ 5,00.', known), []);
+  assert.deepEqual(unbackedAmounts('O Hambúrguer custa R$ 33,00.', known), [3300], 'rounding is inventing');
+  assert.deepEqual(unbackedAmounts('A entrega custa R$ 12,00.', known), [1200]);
+  assert.deepEqual(unbackedAmounts('2 hambúrgueres = R$ 65,80; total R$ 70,80.', known), [], 'simple arithmetic on stated values is fine');
+  assert.deepEqual(unbackedAmounts('O troco é R$ 29,20.', known), [], 'change for a stated bill');
+  assert.deepEqual(unbackedAmounts('Sai por R$ 20,00.', pool({ quantity: 2, count: 1, id: 3 })), [2000], 'small whole numbers do not explain a price');
+  assert.deepEqual(unbackedAmounts('Entrega grátis, sem custo.', known), []);
+});
+
+test('a reply that repeats the previous one to a new message is detected; a repeated question may get the same answer', () => {
+  const answer = 'Aceitamos PIX, dinheiro e cartão de crédito. Quando quiser, continuamos a sua reserva para quantas pessoas?';
+  assert.equal(repeatsLastReply(answer, answer, 'e a taxa de entrega?', 'quais formas de pagamento?'), true);
+  assert.equal(repeatsLastReply(`${answer} 😊`, answer, 'e a taxa de entrega?', 'quais formas de pagamento?'), true);
+  assert.equal(repeatsLastReply(answer, answer, 'quais formas de pagamento?', 'quais formas de pagamento?'), false);
+  assert.equal(repeatsLastReply('A taxa é R$ 5,00 no Centro.', answer, 'e a taxa de entrega?', 'quais formas de pagamento?'), false);
+  assert.equal(repeatsLastReply('ok', answer, 'obrigado', 'quais formas de pagamento?'), false);
+  assert.equal(repeatsLastReply(answer, undefined, 'oi', undefined), false);
+});
 
 test('the attendant cannot claim an operation the backend did not confirm in this turn', () => {
   assert.deepEqual(unbackedClaims('Pronto! Reservei sua mesa para sábado às 20h.', []), ['reservation']);

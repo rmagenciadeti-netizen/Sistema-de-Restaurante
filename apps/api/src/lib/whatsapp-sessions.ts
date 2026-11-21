@@ -1,7 +1,7 @@
 import os from 'node:os';
 import { MessageStatus, Prisma, PrismaClient } from '@prisma/client';
 import { loadSettings } from './settings';
-import { findOrCreateConversation, processInbound, recordOutbound } from './whatsapp-inbound';
+import { findOrCreateConversation, answerInbound, recordOutbound, storeInbound, type InboundInput, type StoredInbound } from './whatsapp-inbound';
 import { isOptedOut, renderStored, toWhatsappDigits } from './whatsapp-auto';
 import { autoMessageDef } from './whatsapp-messages';
 import { effectiveModules, globallyBlockedModules, licenseDenial } from './licensing';
@@ -16,7 +16,7 @@ const MAX_UNCONFIRMED_CLOSES = 4;
 export const VIEWER_ACTIVE_MS = 3 * 60_000;
 const MAX_SESSIONS = () => Math.max(1, Number(process.env.WHATSAPP_MAX_SESSIONS) || 25);
 
-type Live = { transport: WaTransport; connected: boolean; unconfirmedCloses: number; sentAt: number[]; chains: Map<string, Promise<void>> };
+type Live = { transport: WaTransport; connected: boolean; unconfirmedCloses: number; sentAt: number[]; chains: Map<string, Promise<void>>; storing: Map<string, Promise<unknown>> };
 type Options = { factory?: TransportFactory; pollMs?: number; sleep?: (ms: number) => Promise<void>; log?: (message: string) => void; identity?: { pid: number; host: string }; lockId?: string; tenantIds?: string[] };
 
 const defaultSleep = (ms: number) => new Promise<void>(resolve => setTimeout(resolve, ms));
@@ -138,7 +138,7 @@ export class WhatsappSessionManager {
 
   private async connect(tenantId: string) {
     const transport = this.factory(tenantId);
-    const entry: Live = { transport, connected: false, unconfirmedCloses: this.failures.get(tenantId) ?? 0, sentAt: [], chains: new Map() };
+    const entry: Live = { transport, connected: false, unconfirmedCloses: this.failures.get(tenantId) ?? 0, sentAt: [], chains: new Map(), storing: new Map() };
     this.live.set(tenantId, entry);
     await this.setSession(tenantId, { status: 'CONNECTING', qr: null });
     try {
@@ -150,12 +150,7 @@ export class WhatsappSessionManager {
           void this.setSession(tenantId, { status: 'CONNECTED', qr: null, phone: info.phone, pushName: info.name, connectedAt: new Date(), lastError: null });
         },
         onClose: info => { void this.handleClose(tenantId, entry, info); },
-        // One customer's messages are handled strictly in order (a reply may depend on the previous one); different customers are handled in parallel.
-        onMessage: message => {
-          const previous = entry.chains.get(message.jid) ?? Promise.resolve();
-          const next: Promise<void> = previous.then(() => this.withSlot(() => this.handleMessage(tenantId, entry, message))).catch(error => this.log(`message error: ${error instanceof Error ? error.message : String(error)}`)).finally(() => { if (entry.chains.get(message.jid) === next) entry.chains.delete(message.jid); });
-          entry.chains.set(message.jid, next);
-        },
+        onMessage: message => this.receive(tenantId, entry, message),
       });
     } catch (error) {
       this.live.delete(tenantId);
@@ -210,9 +205,34 @@ export class WhatsappSessionManager {
     entry.sentAt.push(Date.now());
   }
 
-  private async handleMessage(tenantId: string, entry: Live, message: InboundMessage) {
+  // A customer's message is stored the moment it arrives (one at a time, in arrival order) and answered when its turn comes: one customer's messages are handled
+  // strictly in order, so a reply may rely on the previous one, and a burst of messages sent in pieces is answered once, together. Different customers run in parallel.
+  private receive(tenantId: string, entry: Live, message: InboundMessage) {
     if (message.timestamp && Date.now() / 1000 - message.timestamp > 120) return;
-    const outcome = await processInbound(this.prisma, { tenantId, jid: message.jid, phone: message.phone, name: message.name, text: message.text, externalId: message.id });
+    const input: InboundInput = { tenantId, jid: message.jid, phone: message.phone, name: message.name, text: message.text, externalId: message.id };
+    const previousStore = entry.storing.get(message.jid) ?? Promise.resolve();
+    const stored: Promise<StoredInbound | null> = previousStore.then(() => storeInbound(this.prisma, input)).catch(error => { this.log(`could not store a message: ${error instanceof Error ? error.message : String(error)}`); return null; });
+    const storeTail = stored.then(() => undefined);
+    entry.storing.set(message.jid, storeTail);
+    void storeTail.then(() => { if (entry.storing.get(message.jid) === storeTail) entry.storing.delete(message.jid); });
+    const previous = entry.chains.get(message.jid) ?? Promise.resolve();
+    const next: Promise<void> = previous
+      .then(async () => { const saved = await stored; if (!saved) return; await this.settle(entry, message.jid); await this.withSlot(() => this.answer(tenantId, entry, input, saved, message.jid)); })
+      .catch(error => this.log(`message error: ${error instanceof Error ? error.message : String(error)}`))
+      .finally(() => { if (entry.chains.get(message.jid) === next) entry.chains.delete(message.jid); });
+    entry.chains.set(message.jid, next);
+  }
+
+  // People type in pieces ("quero reservar" ... "pra 4 pessoas"): wait a moment for the rest of the burst and for any piece still being stored, so the customer gets
+  // one answer to everything they said. Outside the concurrency limit: waiting never holds a slot the AI attendant could use.
+  private async settle(entry: Live, jid: string) {
+    const wait = Math.max(0, Number(process.env.WHATSAPP_BATCH_WAIT_MS ?? 1000) || 0);
+    if (wait > 0) await this.sleep(wait);
+    await entry.storing.get(jid);
+  }
+
+  private async answer(tenantId: string, entry: Live, input: InboundInput, stored: StoredInbound, jid: string) {
+    const outcome = await answerInbound(this.prisma, input, stored, new Date(), { batch: true });
     if (!outcome.conversationId || outcome.replies.length === 0) return;
     const settings = await loadSettings(this.prisma, tenantId);
     for (const reply of outcome.replies) {
@@ -220,7 +240,7 @@ export class WhatsappSessionManager {
       const typingMs = settings.whatsapp.humanizeTyping ? Math.min(4000, 600 + reply.length * 15) : 0;
       if (settings.whatsapp.replyDelaySeconds > 0) await this.sleep(settings.whatsapp.replyDelaySeconds * 1000);
       try {
-        const id = await entry.transport.sendText(message.jid, reply, { typingMs });
+        const id = await entry.transport.sendText(jid, reply, { typingMs });
         await recordOutbound(this.prisma, tenantId, outcome.conversationId, reply, 'BOT', id);
       } catch (error) { this.log(`reply failed: ${error instanceof Error ? error.message : String(error)}`); break; }
     }

@@ -75,6 +75,7 @@ import { fiscalRegistryRoutes } from './routes/fiscal-registry';
 import { inboundRoutes, integrationRoutes } from './routes/integrations';
 import { auditRoutes } from './routes/audit';
 import { registerProviders } from './providers.config';
+import { embeddedWorkerEnabled, startEmbeddedWorker } from './lib/worker-runtime';
 
 export const app = express();
 app.set('trust proxy', 1);
@@ -216,10 +217,13 @@ if (require.main === module) {
   startAiConfigRefresh(prisma);
   ensureModuleCatalogOnce().then(created => { if (created) console.log(`module catalog: ${created} module(s) added automatically`); }).catch(error => console.error('module catalog sync failed:', error instanceof Error ? error.message : error));
   // In 'api' mode (default outside production) this process also owns the WhatsApp Web sessions and releases scheduled orders.
+  let manager: WhatsappSessionManager | null = null;
   if (runsInApi()) {
-    const manager = new WhatsappSessionManager(prisma);
+    manager = new WhatsappSessionManager(prisma);
     manager.start().catch(error => console.error('WhatsApp session manager not started:', error instanceof Error ? error.message : error));
-    server.on('close', () => { void manager.stop(); });
-    for (const signal of ['SIGINT', 'SIGTERM'] as const) process.once(signal, () => { void manager.stop().finally(() => process.exit(0)); });
+    server.on('close', () => { void manager?.stop(); });
   }
+  // No separate worker service (a free plan)? The API runs the worker tasks itself; a running dedicated worker always takes precedence (see lib/worker-runtime.ts).
+  const embedded = embeddedWorkerEnabled() ? startEmbeddedWorker(prisma, manager) : null;
+  if (manager || embedded) for (const signal of ['SIGINT', 'SIGTERM'] as const) process.once(signal, () => { void Promise.all([embedded?.stop(), manager?.stop()]).finally(() => process.exit(0)); });
 }

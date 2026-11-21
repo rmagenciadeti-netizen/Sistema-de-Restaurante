@@ -10,7 +10,8 @@ import { aiSource, currentAiProvider } from '../lib/ai-provider';
 import { AGENT_MODULE, llmCalls } from '../lib/ai/usage';
 import { agentGate, loadMemory, simulateAgentTurn, simulationSessionSchema } from '../lib/whatsapp-agent';
 import { AUTO_MESSAGES, autoMessageDef } from '../lib/whatsapp-messages';
-import { loadBotEnv, respond } from '../lib/whatsapp-bot';
+import { loadBotEnv } from '../lib/whatsapp-bot';
+import { botStateSchema, respond } from '../lib/whatsapp-router';
 
 export const whatsappRoutes = Router();
 whatsappRoutes.use(requireAuth, requireTenant, requireRoles(...CASH_ROLES));
@@ -219,15 +220,14 @@ whatsappRoutes.delete('/unanswered/:id', manage, async (req, res, next) => {
 });
 
 // Runs the real bot logic against real tenant data without sending anything or writing state (reservations are not created).
-const stateSchema = z.object({ step: z.enum(['RESERVE_PEOPLE', 'RESERVE_WHEN', 'RESERVE_CONFIRM']), people: z.number().int().optional(), at: z.string().optional() }).nullable();
 whatsappRoutes.post('/bot/simulate', async (req, res, next) => {
   try {
-    const parsed = z.object({ text: z.string().trim().min(1).max(1000), state: stateSchema.optional() }).safeParse(req.body); if (!parsed.success) return res.status(400).json({ message: 'Validation failed', errors: parsed.error.flatten() });
+    const parsed = z.object({ text: z.string().trim().min(1).max(1000), state: botStateSchema.optional() }).safeParse(req.body); if (!parsed.success) return res.status(400).json({ message: 'Validation failed', errors: parsed.error.flatten() });
     const tenantId = req.auth!.tenantId!;
     const env = await loadBotEnv(prisma, tenantId);
     const user = await prisma.user.findUnique({ where: { id: req.auth!.userId }, select: { name: true } });
     const result = await respond(prisma, env, { text: parsed.data.text, phone: null, name: user?.name ?? 'Cliente', state: parsed.data.state ?? null, greetDue: !parsed.data.state && /^(oi|ola|olá|bom dia|boa tarde|boa noite)\b/i.test(parsed.data.text) }, { dryRun: true });
-    return res.json({ replies: result.replies, state: result.state, intent: result.intent, handoff: result.handoff });
+    return res.json({ replies: result.replies, state: result.state, intent: result.intent, intents: result.intents, handoff: result.handoff });
   } catch (error) { return next(error); }
 });
 

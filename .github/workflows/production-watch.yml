@@ -1,0 +1,38 @@
+name: Production watch
+
+# Acorda a API gratuita da Render (que dorme sem tráfego) e confere o worker. O repositório é público: minutos de Actions grátis.
+on:
+  schedule:
+    - cron: '*/10 * * * *'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  watch:
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    env:
+      API: https://rm-restaurant-api.onrender.com/api/v1
+    steps:
+      - name: API health (wakes the service if it was asleep)
+        run: |
+          for i in $(seq 1 12); do
+            code=$(curl -s -o health.json -w '%{http_code}' --max-time 40 "$API/health" || true)
+            echo "attempt $i: HTTP $code"
+            if [ "$code" = "200" ]; then cat health.json; echo; exit 0; fi
+            sleep 15
+          done
+          echo "::error::API did not answer 200 after waking it up"; exit 1
+      - name: Worker health (proof of processing)
+        run: |
+          for i in $(seq 1 8); do
+            code=$(curl -s -o worker.json -w '%{http_code}' --max-time 30 "$API/health/worker" || true)
+            status=$(jq -r '.status // "unknown"' worker.json 2>/dev/null || echo unknown)
+            echo "attempt $i: HTTP $code status=$status"
+            if [ "$code" = "200" ] && [ "$status" = "up" ]; then jq '{status, mode, heartbeatAgeSeconds, commit, tasks}' worker.json; exit 0; fi
+            sleep 15
+          done
+          cat worker.json 2>/dev/null || true
+          echo "::error::worker is not up (see docs/DEPLOY.md)"; exit 1
