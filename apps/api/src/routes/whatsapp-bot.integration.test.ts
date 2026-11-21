@@ -190,7 +190,8 @@ test('WhatsApp bot, QR session manager and panel API', { skip: !enabled }, async
     transports[0].handlers.onMessage({ jid, phone: '5566111110000', name: 'Pedro', text: 'olá, qual o cardápio?', id: `wa-${suffix()}`, timestamp: Math.floor(Date.now() / 1000) });
     await waitFor(async () => transports[0].sent.length > 0);
     assert.match(transports[0].sent[0].text, /Hambúrguer Artesanal/);
-    assert.equal(await prisma.whatsappChatMessage.count({ where: { tenantId: tenant.id, source: 'BOT', conversation: { jid } } }) > 0, true);
+    // The reply is recorded right after it is sent: wait for it instead of racing the database.
+    assert.equal(await waitFor(async () => (await prisma.whatsappChatMessage.count({ where: { tenantId: tenant.id, source: 'BOT', conversation: { jid } } })) > 0), true);
     transports[0].handlers.onMessage({ jid, phone: '5566111110000', name: 'Pedro', text: 'antiga', id: 'old', timestamp: Math.floor(Date.now() / 1000) - 3600 });
 
     // Automatic notices go through the same session; order_received is on by default.
