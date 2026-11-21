@@ -35,7 +35,8 @@ services:
       name: migration-backups
       mountPath: /var/data
       sizeGB: 5
-  # Worker (pedidos agendados, WhatsApp, automações).
+  # Worker (pedidos agendados, WhatsApp, automações). Um único processo; reinicia sozinho se cair.
+  # Prova de funcionamento (não só "Live"): GET https://rm-restaurant-api.onrender.com/api/v1/health/worker  ->  200 {"status":"up",...}  (ver docs/DEPLOY.md).
   - type: worker
     name: rm-restaurant-worker
     runtime: node
@@ -47,10 +48,12 @@ services:
     envVars:
       - { key: NODE_ENV, value: production }
       - { key: NODE_VERSION, value: 22 }
-      - { key: DATABASE_URL, sync: false }
-      - { key: JWT_SECRET, sync: false }
-      - { key: MFA_ENCRYPTION_KEY, sync: false }
-      - { key: FISCAL_ENCRYPTION_KEY, sync: false }
+      # Mesmo banco e mesmas chaves da API, lidos do serviço rm-restaurant-api a cada sync do Blueprint: nada para copiar à mão e nenhum segredo no repositório.
+      # (As chaves devem ser idênticas: a MFA_ENCRYPTION_KEY abre o pareamento do WhatsApp e a chave de IA gravados no banco.)
+      - { key: DATABASE_URL, fromService: { type: web, name: rm-restaurant-api, envVarKey: DATABASE_URL } }
+      - { key: MFA_ENCRYPTION_KEY, fromService: { type: web, name: rm-restaurant-api, envVarKey: MFA_ENCRYPTION_KEY } }
+      - { key: RM_RESTAURANT_URL, fromService: { type: web, name: rm-restaurant-api, envVarKey: RM_RESTAURANT_URL } }
+      # Opcionais (a IA do painel admin fica no banco e vale mesmo sem estas): preencha no painel da Render só se usar variáveis de ambiente.
       - { key: AI_PROVIDER, sync: false }
       - { key: AI_API_KEY, sync: false }
       - { key: AI_MODEL, sync: false }

@@ -10,6 +10,7 @@ import { sessionRateKey } from './middleware/auth';
 import { authRoutes } from './routes/auth';
 import { prisma } from './lib/prisma';
 import { WhatsappSessionManager, runsInApi } from './lib/whatsapp-sessions';
+import { readWorkerHealth } from './lib/worker-health';
 import { scaleRoutes } from './routes/scale';
 import { migrationRoutes } from './routes/migrations';
 import { promotionRoutes } from './routes/promotions';
@@ -114,6 +115,18 @@ app.use('/api/v1/payments/webhook', express.raw({ type: () => true, limit: '256k
 app.use(express.json({ limit: '1mb' }));
 registerProviders();
 app.get('/api/v1/health', (_req, res) => res.json({ status: 'ok', service: 'rm-restaurant-api', version: '1.0.0' }));
+// Tells a worker that is really processing (fresh heartbeat, every task succeeding) from one that is merely "Live" on the host: 200 only when it is up.
+// Kept apart from the health check above, which the host uses to restart the API and must not depend on the worker or the database.
+app.get('/api/v1/health/worker', async (_req, res) => {
+  res.set('Cache-Control', 'no-store');
+  try {
+    const health = await readWorkerHealth(prisma);
+    return res.status(health.status === 'up' ? 200 : 503).json(health);
+  } catch (error) {
+    console.error('worker health could not be read:', error instanceof Error ? error.message : error);
+    return res.status(503).json({ status: 'unknown', service: 'rm-restaurant-worker', reason: 'the worker status could not be read' });
+  }
+});
 app.use('/api/v1/auth', authRoutes);
 app.use('/api/v1/tenants', tenantRoutes);
 app.use('/api/v1/migrations', migrationRoutes);
