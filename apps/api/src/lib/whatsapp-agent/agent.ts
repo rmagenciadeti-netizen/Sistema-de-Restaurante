@@ -16,7 +16,9 @@ import type { ToolContext, ToolKind, ToolOutput } from './types';
 export const MAX_STEPS = 7;
 const MAX_CALLS_PER_STEP = 6;
 const MAX_CALLS_PER_TURN = 14;
-const TURN_BUDGET_MS = 75_000;
+// Generous for hosted models (a call takes seconds); raise both for slow or self-hosted ones.
+const TURN_BUDGET_MS = Math.max(15_000, Number(process.env.WHATSAPP_AGENT_TURN_BUDGET_MS) || 75_000);
+const CALL_TIMEOUT_MS = Math.max(5_000, Number(process.env.WHATSAPP_AGENT_CALL_TIMEOUT_MS) || 40_000);
 const RESULT_LIMIT = 7000;
 
 export type ActionRecord = { tool: string; kind: ToolKind | 'PROPOSAL'; ok: boolean; args: unknown; result: unknown; summary: string; dedupeKey?: string; durationMs: number; duplicate?: boolean };
@@ -109,7 +111,7 @@ export async function runAgentTurn(args: AgentTurnArgs): Promise<AgentTurnResult
   }
 
   for (; steps < MAX_STEPS && Date.now() < deadline; steps += 1) {
-    const res = await callChat({ ctx: { tenantId: env.tenantId, unitId: env.unitId, userId: null }, module: AGENT_MODULE, operation: 'chat', system, messages, tools: specs, maxTokens: 900, temperature: 0.3, timeoutMs: 40_000, maxChars: 110_000, settings: env.settings });
+    const res = await callChat({ ctx: { tenantId: env.tenantId, unitId: env.unitId, userId: null }, module: AGENT_MODULE, operation: 'chat', system, messages, tools: specs, maxTokens: 900, temperature: 0.3, timeoutMs: CALL_TIMEOUT_MS, maxChars: 110_000, settings: env.settings });
     if (!res.ok) { failure = { code: res.code, reason: res.reason }; break; }
     model = res.usage.model;
     if (res.toolCalls.length > 0) {
