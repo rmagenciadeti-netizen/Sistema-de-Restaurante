@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { checkProductionEnv } from './env-check';
+import { checkProductionEnv, checkWorkerEnv } from './env-check';
 
 const good = { NODE_ENV: 'production', JWT_SECRET: 'q7Zk2mVx9LpR4tYw8NbC3dFhJ6sA1gUe0oIiXzMn', MFA_ENCRYPTION_KEY: Buffer.alloc(32, 7).toString('base64'), DATABASE_URL: 'postgresql://u:p@ep-x.neon.tech/db?sslmode=require', CORS_ORIGIN: 'https://app.example', RM_RESTAURANT_URL: 'https://app.example', RM_ADMIN_URL: 'https://admin.example', MIGRATION_BACKUP_DIR: '/data/b', MIGRATION_BACKUP_ENCRYPTION_KEY: Buffer.alloc(32, 9).toString('hex'), FISCAL_ENCRYPTION_KEY: Buffer.alloc(32, 3).toString('base64') } as NodeJS.ProcessEnv;
 
@@ -20,4 +20,24 @@ test('backup variables only warn (the migration stays blocked), a malformed back
   const result = checkProductionEnv(missing);
   assert.equal(result.errors.length, 0); assert.equal(result.warnings.length, 2);
   assert.equal(checkProductionEnv({ ...good, MIGRATION_BACKUP_ENCRYPTION_KEY: 'xx' } as NodeJS.ProcessEnv).errors.length, 1);
+});
+
+const worker = { NODE_ENV: 'production', DATABASE_URL: 'postgresql://u:p@ep-x-pooler.neon.tech/db?sslmode=require', MFA_ENCRYPTION_KEY: Buffer.alloc(32, 7).toString('base64'), RM_RESTAURANT_URL: 'https://app.example' } as NodeJS.ProcessEnv;
+
+test('the worker only needs the database, the encryption key and the store URL; API-only settings are not required', () => {
+  assert.deepEqual(checkWorkerEnv(worker), { errors: [], warnings: [] });
+});
+
+test('a worker without database or key, or with a bad one, is refused; messages never contain values', () => {
+  const missing = checkWorkerEnv({ NODE_ENV: 'production' } as NodeJS.ProcessEnv);
+  assert.deepEqual(missing.errors.map(e => e.split(':')[0]).sort(), ['DATABASE_URL', 'MFA_ENCRYPTION_KEY']);
+  const bad = checkWorkerEnv({ ...worker, DATABASE_URL: 'postgresql://u:SENHA-SECRETA@ep-x.neon.tech/db', MFA_ENCRYPTION_KEY: 'curta', WHATSAPP_TEMPLATES: '{nao-e-json' } as NodeJS.ProcessEnv);
+  assert.equal(bad.errors.length, 3, bad.errors.join('|'));
+  assert.equal(bad.errors.join().includes('SENHA-SECRETA') || bad.errors.join().includes('curta') || bad.errors.join().includes('nao-e-json'), false);
+});
+
+test('worker warnings: missing store URL and half-configured optional channels', () => {
+  const result = checkWorkerEnv({ ...worker, RM_RESTAURANT_URL: '', WHATSAPP_TOKEN: 'x', AI_API_KEY: 'y' } as NodeJS.ProcessEnv);
+  assert.equal(result.errors.length, 0);
+  assert.deepEqual(result.warnings.map(w => w.split(':')[0].split(' ')[0]).sort(), ['AI_API_KEY', 'RM_RESTAURANT_URL', 'WHATSAPP_TOKEN,']);
 });

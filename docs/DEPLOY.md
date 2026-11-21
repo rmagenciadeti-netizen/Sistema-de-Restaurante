@@ -14,6 +14,13 @@ Estado: o repositório está pronto; **as contas Vercel, Render e Neon ainda pre
 - O disco `/var/data` guarda os backups da RM Smart Migration (exige plano com disco).
 - `TEF_ENABLE_SIMULATOR` e `DEV_DISABLE_MFA` **não** devem existir em produção.
 
+### Worker (`rm-restaurant-worker`)
+- Variáveis: `DATABASE_URL`, `MFA_ENCRYPTION_KEY` e `RM_RESTAURANT_URL` vêm **da própria API** (`fromService` no `render.yaml`, atualizadas a cada sync do Blueprint): mesmo banco, mesmas chaves, nada para copiar. As variáveis `AI_*` são opcionais.
+- Em produção o worker **recusa subir** (e o deploy falha, mantendo a versão anterior) se faltar/estiver inválida `DATABASE_URL` ou `MFA_ENCRYPTION_KEY`, ou se o banco não responder após 6 tentativas; o motivo aparece no log (só nomes, nunca valores).
+- Logs: `Worker started`, `database connection OK`, linhas de evento (`scheduled orders released=N`, `automation notifications created=N`) e um resumo `[worker] heartbeat ...` a cada 5 min (`WORKER_LOG_EVERY_MS`).
+- **Prova de que está processando** (não só "Live"): `GET /api/v1/health/worker` na API → `200` com `"status":"up"`, idade do heartbeat, `commit` em execução e, por tarefa (`scheduling`, `automations`, `outbox`), `runs`/`processed`/`failures`. `503` = `degraded` (vivo, mas uma tarefa falha/parou), `down` (parou ou sem heartbeat há >45 s) ou `absent` (nunca reportou). Verificação automática: `node scripts/verify-worker.mjs https://<api>.onrender.com [--commit <sha>]`.
+- A migration `worker_heartbeat` (tabela do heartbeat) roda no `preDeployCommand` da API; até ela terminar o worker apenas registra "heartbeat could not be saved" e segue trabalhando.
+
 ### WhatsApp (QR Code) e IA nos restaurantes
 - **WhatsApp:** sem variáveis por cliente. A API (e o worker, se existir) inicia o serviço de sessões sozinho (`WHATSAPP_SESSIONS_MODE=auto`); só um processo opera por vez (eleição no banco) e assume se o outro cair ou for reiniciado. O pareamento fica **criptografado no banco** (chave `WHATSAPP_AUTH_ENCRYPTION_KEY`, ou `MFA_ENCRYPTION_KEY`; **não troque a chave** depois de existirem pareamentos, ou será preciso ler o QR de novo). O restaurante só precisa do módulo *WhatsApp* liberado no painel admin e ler o QR em *WhatsApp › Conexão*.
 - **IA:** no RM Painel Admin › *Serviços da plataforma*, escolha provedor e modelo, informe a chave e clique em *Testar conexão*. A chave é guardada criptografada e nunca volta ao navegador. Alternativa por ambiente: `AI_PROVIDER`, `AI_API_KEY`, `AI_MODEL`, `AI_BASE_URL`. Sem chave válida o sistema exibe "IA não configurada"; só aparece "verificada" após uma chamada real bem-sucedida.

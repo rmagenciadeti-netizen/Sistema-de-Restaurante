@@ -2002,6 +2002,18 @@ model WhatsappManager {
   host        String?
 }
 
+// Liveness and progress of the background worker (apps/api/src/worker.ts): the worker rewrites this row every few seconds and the API serves it at
+// GET /api/v1/health/worker, so "running" can be told apart from "actually processing". `details` holds per-task counters; no secrets.
+model WorkerHeartbeat {
+  id          String    @id @default("main")
+  instance    String
+  commit      String?
+  startedAt   DateTime
+  heartbeatAt DateTime
+  stoppedAt   DateTime?
+  details     Json?
+}
+
 // Fiscal registries: they store parameters and documents received by the company; nothing is transmitted to the SEFAZ from here.
 model OperationNature {
   id            String            @id @default(uuid())
